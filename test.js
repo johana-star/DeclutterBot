@@ -10,6 +10,7 @@ var dir  = __dirname;
 var testFiles = [
   'test_move.js',
   'test_remove.js',
+  'test_box_batch.js',
 ];
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -35,15 +36,15 @@ testFiles.forEach(function(file) {
   var origLog   = console.log;
   var origError = console.error;
 
-  // Count by intercepting assert output lines
+  // Count by intercepting assert output lines — exactly 2 leading spaces, no "passed"/"failed"
   console.log = function() {
     var msg = arguments[0];
-    if (typeof msg === 'string' && msg.match(/^\s+\u2705/)) suitePassed++;
+    if (typeof msg === 'string' && msg.match(/^  \u2705 /) && msg.indexOf('passed') === -1) suitePassed++;
     origLog.apply(console, arguments);
   };
   console.error = function() {
     var msg = arguments[0];
-    if (typeof msg === 'string' && msg.match(/^\s+\u274c/)) suiteFailed++;
+    if (typeof msg === 'string' && msg.match(/^  \u274c /) && msg.indexOf('failed') === -1) suiteFailed++;
     origError.apply(console, arguments);
   };
 

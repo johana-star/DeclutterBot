@@ -7,6 +7,7 @@ var state = {
   activeBoxId: null,
   activeItemId: null,
   pendingBatch: null,
+  pendingBoxBatch: null,
   conversationStage: 'WELCOME',
   conversationHistory: []
 };
@@ -213,8 +214,11 @@ function processInput(text, photos) {
 
   switch(state.conversationStage) {
     case 'WELCOME':               handleWelcome(text,photos); break;
-    case 'AWAITING_BOX_NAME':     handleBoxName(text); break;
-    case 'AWAITING_LOCATION':     handleLocation(text); break;
+    case 'AWAITING_BOX_NAME':         handleBoxName(text); break;
+    case 'AWAITING_BOX_BATCH_CONFIRM': handleBoxBatchConfirm(text); break;
+    case 'AWAITING_BOX_BATCH_QTY':     handleBoxBatchQty(text); break;
+    case 'AWAITING_BOX_BATCH_LOCATION': handleBoxBatchLocation(text); break;
+    case 'AWAITING_LOCATION':           handleLocation(text); break;
     case 'BOX_OPEN':              handleItemName(text,photos); break;
     case 'AWAITING_ITEM_NAME':    handleItemName(text,photos); break;
     case 'AWAITING_BATCH_CONFIRM':handleBatchConfirm(text,photos); break;
@@ -307,13 +311,125 @@ function startNewBox() {
   state.conversationStage='AWAITING_BOX_NAME';
   addBotMessage('Starting a new box. What would you like to call it?');
 }
+// ── SINGULARIZER ─────────────────────────────────────────────────────────────
+function singularize(word) {
+  var w = word.toLowerCase().trim();
+  // Explicit irregular plurals — add more here as edge cases are found
+  var irregulars = {
+    'shelves':'shelf', 'knives':'knife', 'leaves':'leaf', 'lives':'life',
+    'wolves':'wolf', 'halves':'half', 'loaves':'loaf', 'scarves':'scarf',
+    'wives':'wife', 'thieves':'thief', 'men':'man', 'women':'woman',
+    'children':'child', 'teeth':'tooth', 'feet':'foot', 'mice':'mouse',
+    'geese':'goose', 'oxen':'ox', 'dice':'die', 'people':'person',
+  };
+  if (irregulars[w]) return irregulars[w];
+  // Words that are already singular or uncountable — leave alone
+  var invariant = ['series','species','scissors','trousers','glasses','clothes','furniture',
+    'equipment','luggage','baggage','box','shelf','knife','leaf'];
+  if (invariant.indexOf(w) !== -1) return w;
+  // Common suffix rules
+  if (w.match(/[^aeiou]ies$/)) return w.slice(0,-3)+'y'; // berries->berry
+  if (w.match(/(s|sh|ch|x|z)es$/)) return w.slice(0,-2);  // boxes->box, dishes->dish
+  if (w.match(/ses$/)) return w.slice(0,-2);               // buses->bus
+  if (w.match(/[^s]s$/)) return w.slice(0,-1);             // rolls->roll, bags->bag
+  return w; // already singular or unrecognised
+}
+
+function singularizeLast(phrase) {
+  // Singularize only the last word of a multi-word phrase
+  var words = phrase.trim().split(/\s+/);
+  var last = words[words.length - 1];
+  var singular = singularize(last);
+  // Preserve original casing of first letter
+  if (last[0] === last[0].toUpperCase() && last[0] !== last[0].toLowerCase()) {
+    singular = singular[0].toUpperCase() + singular.slice(1);
+  }
+  words[words.length - 1] = singular;
+  return words.join(' ');
+}
+
+var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
 function handleBoxName(text) {
-  var name = text.trim()||'Unnamed box';
-  var box = {id:uid(),name:name,location:'',notes:'',createdAt:new Date().toISOString(),items:[]};
+  var raw = text.trim() || 'Unnamed box';
+  // Check for batch: "five wooden boxes", "3 shelves"
+  var parsed = parseQuantity(raw);
+  if (parsed && parsed.qty >= 2 && parsed.qty <= 26) {
+    var singular = singularizeLast(parsed.itemName);
+    state.pendingBoxBatch = { qty: parsed.qty, baseName: singular };
+    state.conversationStage = 'AWAITING_BOX_BATCH_CONFIRM';
+    addBotMessage('I see **' + parsed.qty + ' \u00d7 ' + singular + '**. Should I create ' + parsed.qty + ' boxes named **' + singular + ' A** through **' + singular + ' ' + LETTERS[parsed.qty-1] + '**?');
+    setChips(['Yes, create ' + parsed.qty, 'No, just 1', 'Change quantity']);
+    return;
+  }
+  var box = {id:uid(),name:raw,location:'',notes:'',createdAt:new Date().toISOString(),items:[]};
   state.boxes.push(box); state.activeBoxId=box.id;
   state.conversationStage='AWAITING_LOCATION';
-  addBotMessage('Got it \u2014 **"'+name+'"**.\n\nWhere is this box located? (e.g. "spare bedroom", "garage shelf 2", "storage unit A")');
+  addBotMessage('Got it \u2014 **"'+raw+'"**.\n\nWhere is this box located? (e.g. "spare bedroom", "garage shelf 2", "storage unit A")');
 }
+
+function handleBoxBatchConfirm(text) {
+  var t = text.toLowerCase().trim();
+  var batch = state.pendingBoxBatch;
+  if (!batch) { state.conversationStage = 'AWAITING_BOX_NAME'; return; }
+
+  if (t.startsWith('no') || t.includes('just 1') || t === '1') {
+    state.pendingBoxBatch = null;
+    var box = {id:uid(),name:batch.baseName,location:'',notes:'',createdAt:new Date().toISOString(),items:[]};
+    state.boxes.push(box); state.activeBoxId=box.id;
+    state.conversationStage='AWAITING_LOCATION';
+    addBotMessage('Just the one **"'+batch.baseName+'"** then.\n\nWhere is this box located?');
+    return;
+  }
+  if (t.includes('change') || t.includes('quantity')) {
+    addBotMessage('How many **' + batch.baseName + '** boxes are there?');
+    state.conversationStage = 'AWAITING_BOX_BATCH_QTY';
+    return;
+  }
+  // Affirmative
+  var numMatch = t.match(/\d+/);
+  var qty = numMatch ? parseInt(numMatch[0], 10) : batch.qty;
+  batch.qty = qty;
+  state.conversationStage = 'AWAITING_BOX_BATCH_LOCATION';
+  addBotMessage('Where are all ' + qty + ' **' + batch.baseName + '** boxes located? (They\'ll share the same location)');
+}
+
+function handleBoxBatchQty(text) {
+  var batch = state.pendingBoxBatch;
+  if (!batch) { state.conversationStage = 'AWAITING_BOX_NAME'; return; }
+  var wordQty = WORD_NUMBERS[text.toLowerCase().trim()];
+  var qty = wordQty || parseInt(text, 10);
+  if (!qty || isNaN(qty) || qty < 1 || qty > 26) {
+    addBotMessage('Please give a number between 1 and 26.');
+    return;
+  }
+  batch.qty = qty;
+  state.conversationStage = 'AWAITING_BOX_BATCH_CONFIRM';
+  addBotMessage('Got it \u2014 **' + qty + ' \u00d7 ' + batch.baseName + '**. Create boxes **' + batch.baseName + ' A** through **' + batch.baseName + ' ' + LETTERS[qty-1] + '**?');
+  setChips(['Yes, create ' + qty, 'No, just 1']);
+}
+
+function handleBoxBatchLocation(text) {
+  var batch = state.pendingBoxBatch;
+  if (!batch) { state.conversationStage = 'AWAITING_BOX_NAME'; return; }
+  var location = text.trim() || 'unspecified';
+  var now = new Date().toISOString();
+  var firstId = null;
+  for (var i = 0; i < batch.qty; i++) {
+    var name = batch.baseName + ' ' + LETTERS[i];
+    var id = uid();
+    if (i === 0) firstId = id;
+    state.boxes.push({id:id,name:name,location:location,notes:'',createdAt:now,items:[]});
+  }
+  state.activeBoxId = firstId;
+  state.pendingBoxBatch = null;
+  state.conversationStage = 'BOX_OPEN';
+  var names = [];
+  for (var i = 0; i < batch.qty; i++) names.push(batch.baseName + ' ' + LETTERS[i]);
+  addBotMessage('Created **' + batch.qty + '** boxes in _' + location + '_:\n' + names.join(', ') + '.\n\nStarting with **' + names[0] + '**. Tell me about the first item you pick up.');
+  setChips(['Skip to next box','Review items','Done']);
+}
+
 function handleLocation(text) {
   var box=activeBox(); box.location=text.trim()||'unspecified';
   state.conversationStage='BOX_OPEN';
@@ -547,7 +663,7 @@ function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createOb
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('sortie_state');
-  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,conversationStage:'WELCOME',conversationHistory:[]};
+  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,conversationStage:'WELCOME',conversationHistory:[]};
   pendingPhotos=[];
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
@@ -595,8 +711,9 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
 
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
-  module.exports = { state, FATES, uid, activeBox, activeItem, countFates,
+  module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, countFates,
     processInput, handleMove, handleRemove, handleBatchConfirm, handleBatchQty,
     commitBatch, handleFate, handleItemNotes, handleItemName,
-    handleBoxName, handleLocation, startNewBox, doneWithBox, reviewBox };
+    handleBoxName, handleBoxBatchConfirm, handleBoxBatchQty, handleBoxBatchLocation,
+    singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox };
 }

@@ -177,9 +177,6 @@ processInput('remove 2', []);
 assert('one item removed from batch', box.items.length === 2);
 assert('remaining items still correct', box.items[0].name === 'Paper towel roll');
 
-// ── SUMMARY ───────────────────────────────────────────────────────────────────
-console.log('\n' + (failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed\n');
-process.exit(failed > 0 ? 1 : 0);
 
 // 13. After removing an item the updated list is shown
 console.log('\n13. After remove, updated item list is shown');
@@ -212,3 +209,6 @@ assert('box is empty', box.items.length === 0);
 assertIncludes('empty message shown', lastBotMessage, 'empty');
 assert('no remove chips shown', lastChips.indexOf('Remove 1') === -1);
 assert('add item chip shown', lastChips.indexOf('Add item') !== -1);
+// ── SUMMARY ──────────────────────────────────────────────────────────────────────────────
+console.log('\n' + (failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed\n');
+process.exit(failed > 0 ? 1 : 0);
