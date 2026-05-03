@@ -72,7 +72,8 @@ function selectBox(id) {
   state.conversationStage = 'BOX_OPEN';
   saveState(); renderSidebar(); updateContextBar();
   var box = activeBox();
-  addBotMessage('Switched to **'+box.name+'**. It has '+box.items.length+' item(s) logged.\n\nWhat would you like to do? Add a new item, review what\'s inside, or move on to another box?');
+  var summary = box.items.length > 0 ? boxSummaryLine(box) : 'empty';
+  addBotMessage('Switched to **'+box.name+'**. Contents: '+summary+'.\n\nWhat would you like to do?');
   setBoxOpenChips();
 }
 
@@ -268,49 +269,70 @@ function handleRemove(arg) {
     addBotMessage('What would you like to remove? Say _"remove <item name>"_ or _"remove <number>"_ (use "review items" to see the list).');
     return;
   }
-  // Try by number first
+
+  // Build groups (same as reviewBox uses) so Remove N maps to group N
+  var groups = groupItems(box.items);
   var num = parseInt(arg, 10);
-  var idx = -1;
-  if (!isNaN(num) && num >= 1 && num <= box.items.length) {
-    idx = num - 1;
-  } else {
-    // Match by name (case-insensitive, partial ok)
-    var argLower = arg.toLowerCase();
-    for (var i = 0; i < box.items.length; i++) {
-      if (box.items[i].name.toLowerCase() === argLower) { idx = i; break; }
+  var removedName = null;
+  var removedCount = 0;
+
+  if (!isNaN(num) && num >= 1 && num <= groups.length) {
+    // Remove by group number — remove ALL items in that group
+    var g = groups[num - 1];
+    removedName = g.name;
+    removedCount = g.count;
+    var key = g.name + '|' + g.fate;
+    box.items = box.items.filter(function(it) {
+      return !(it.name === g.name && it.fate === g.fate);
+    });
+    if (state.activeItemId) {
+      var still = box.items.some(function(it){ return it.id === state.activeItemId; });
+      if (!still) state.activeItemId = null;
     }
-    // Partial match fallback
-    if (idx === -1) {
+  } else {
+    // Remove by name — remove ALL items matching the name
+    var argLower = arg.toLowerCase();
+    var matchName = null;
+    for (var i = 0; i < box.items.length; i++) {
+      if (box.items[i].name.toLowerCase() === argLower) { matchName = box.items[i].name; break; }
+    }
+    if (!matchName) {
       for (var i = 0; i < box.items.length; i++) {
-        if (box.items[i].name.toLowerCase().indexOf(argLower) !== -1) { idx = i; break; }
+        if (box.items[i].name.toLowerCase().indexOf(argLower) !== -1) { matchName = box.items[i].name; break; }
       }
     }
+    if (!matchName) {
+      addBotMessage('Could not find **"' + arg + '"** in "' + box.name + '". Use _"review items"_ to see the list, then _"remove <number>"_ to delete one.');
+      return;
+    }
+    removedName = matchName;
+    removedCount = box.items.filter(function(it){ return it.name === matchName; }).length;
+    box.items = box.items.filter(function(it){ return it.name !== matchName; });
+    if (state.activeItemId) {
+      var still = box.items.some(function(it){ return it.id === state.activeItemId; });
+      if (!still) state.activeItemId = null;
+    }
   }
-  if (idx === -1) {
-    addBotMessage('Could not find **"' + arg + '"** in "' + box.name + '". Use _"review items"_ to see the list, then _"remove <number>"_ to delete one.');
-    return;
-  }
-  var removed = box.items[idx];
-  box.items.splice(idx, 1);
-  // Clear activeItemId if we just removed the active item
-  if (state.activeItemId === removed.id) {
-    state.activeItemId = null;
-  }
+
   state.conversationStage = 'BOX_OPEN';
+  var countLabel = removedCount > 1 ? removedCount + ' \u00d7 ' : '';
+
   if (box.items.length === 0) {
-    addBotMessage('Removed **"' + removed.name + '"** from "' + box.name + '". The box is now empty.');
-    setChips(['Add item','Move box','Done with this box']);
+    addBotMessage('Removed **"' + countLabel + removedName + '"** from "' + box.name + '". The box is now empty.');
+    setChips(['Add item', 'Move box', 'Done with this box', 'Delete box']);
   } else {
-    // Re-show the updated list with fresh remove chips
+    // Re-show grouped list
+    var newGroups = groupItems(box.items);
     var lines = '';
     var removeChips = [];
-    for (var i = 0; i < box.items.length; i++) {
-      var it = box.items[i];
-      lines += (i+1) + '. **' + it.name + '** \u2192 ' + it.fate + (it.notes ? ' (' + it.notes + ')' : '') + '\n';
+    for (var i = 0; i < newGroups.length; i++) {
+      var g = newGroups[i];
+      var prefix = g.count > 1 ? g.count + ' \u00d7 ' : '';
+      lines += (i+1) + '. **' + prefix + g.name + '** \u2192 ' + g.fate + '\n';
       removeChips.push('Remove ' + (i+1));
     }
-    addBotMessage('Removed **"' + removed.name + '"**. Remaining items in "' + box.name + '":\n' + lines.trim());
-    setChips(removeChips.concat(['Add item','Move box','Done with this box']));
+    addBotMessage('Removed **"' + countLabel + removedName + '"**. Remaining in "' + box.name + '":\n' + lines.trim());
+    setChips(removeChips.concat(['Add item', 'Move box', 'Done with this box']));
   }
 }
 
@@ -590,17 +612,48 @@ function doneWithBox() {
   setChips(['New box','Done for now','Review all boxes']);
 }
 
+// Group items by name+fate, return array of {name, fate, count, notes}
+function groupItems(items) {
+  var groups = [];
+  var seen = {};
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var key = it.name + '|' + it.fate;
+    if (seen[key] !== undefined) {
+      groups[seen[key]].count++;
+    } else {
+      seen[key] = groups.length;
+      groups.push({ name: it.name, fate: it.fate, count: 1, notes: it.notes });
+    }
+  }
+  return groups;
+}
+
+// One-line summary of a box's contents, grouped
+function boxSummaryLine(box) {
+  if (box.items.length === 0) return 'empty';
+  var groups = groupItems(box.items);
+  return groups.map(function(g) {
+    return (g.count > 1 ? g.count + ' × ' : '') + g.name + ' → ' + g.fate;
+  }).join(', ');
+}
+
 function reviewBox() {
   var box=activeBox();
   if(!box||box.items.length===0){addBotMessage('This box has no items logged yet. Add some!');return;}
+  var groups = groupItems(box.items);
   var lines='';
   var removeChips=[];
-  for(var i=0;i<box.items.length;i++){
-    var it=box.items[i];
-    lines+=(i+1)+'. **'+it.name+'** \u2192 '+it.fate+(it.notes?' ('+it.notes+')':'')+'\n';
+  for(var i=0;i<groups.length;i++){
+    var g=groups[i];
+    var prefix = g.count > 1 ? g.count + ' \u00d7 ' : '';
+    lines+=(i+1)+'. **'+prefix+g.name+'** \u2192 '+g.fate+(g.notes?' ('+g.notes+')':'')+'\n';
     removeChips.push('Remove '+(i+1));
   }
-  addBotMessage('**Items in "'+box.name+'":**\n'+lines.trim());
+  var header = box.items.length !== groups.length
+    ? '**Items in "'+box.name+'" ('+box.items.length+' items, '+groups.length+' unique):**'
+    : '**Items in "'+box.name+'":**';
+  addBotMessage(header+'\n'+lines.trim());
   setChips(removeChips.concat(['Add item','Move box','Done with this box']));
   state.conversationStage='BOX_OPEN';
 }
@@ -615,9 +668,9 @@ function handleFinished(text) {
   } else if(t.indexOf('review all')!==-1){
     var lines='';
     for(var i=0;i<state.boxes.length;i++){
-      var b=state.boxes[i]; var fates=countFates(b); var parts=[];
-      for(var j=0;j<FATES.length;j++){if(fates[FATES[j]])parts.push(fates[FATES[j]]+' '+FATES[j]);}
-      lines+='**'+b.name+'** ('+b.location+') \u2014 '+(parts.length?parts.join(', '):'no items')+'\n';
+      var b=state.boxes[i];
+      var loc = b.location ? ' (' + b.location + ')' : '';
+      lines+='**'+b.name+'**'+loc+' \u2014 '+boxSummaryLine(b)+'\n';
     }
     addBotMessage('**All boxes:**\n'+lines.trim()); setChips(['New box','Done for now']);
   } else { handleFreeform(text,[]); }
@@ -863,5 +916,6 @@ if (typeof module !== 'undefined') {
     commitBatch, handleFate, handleItemNotes, handleItemName,
     handleBoxName, handleBoxBatchConfirm, handleBoxBatchQty, handleBoxBatchLocation,
     singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox,
-    handleDeleteBox, handleDeleteBoxConfirm, handleDump, handleDumpTarget };
+    handleDeleteBox, handleDeleteBoxConfirm, handleDump, handleDumpTarget,
+    groupItems, boxSummaryLine };
 }

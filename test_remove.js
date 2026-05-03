@@ -166,16 +166,16 @@ assert('activeItemId cleared', state.activeItemId === null);
 assert('stage reset to BOX_OPEN', state.conversationStage === 'BOX_OPEN');
 
 // 12. Remove one item from a batch, others remain
-console.log('\n12. remove one item from a batch leaves the rest');
+console.log('\n12. remove by group number removes all items in that group');
 reset();
 box = makeBox('Test Box', 'bedroom');
 var now = new Date().toISOString();
 for (var i = 0; i < 3; i++) {
   box.items.push({ id: uid(), name: 'Paper towel roll', fate: 'keep', description: '', notes: '', photos: [], addedAt: now, batchSize: 3 });
 }
-processInput('remove 2', []);
-assert('one item removed from batch', box.items.length === 2);
-assert('remaining items still correct', box.items[0].name === 'Paper towel roll');
+processInput('remove 1', []); // group 1 = all 3 Paper towel rolls
+assert('all items in group removed', box.items.length === 0);
+assert('confirms count in removal message', lastBotMessage && lastBotMessage.indexOf('3') !== -1);
 
 
 // 13. After removing an item the updated list is shown

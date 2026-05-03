@@ -11,6 +11,7 @@ var testFiles = [
   'test_move.js',
   'test_remove.js',
   'test_box_batch.js',
+  'test_delete_dump.js',
 ];
 // ─────────────────────────────────────────────────────────────────────────────
 
