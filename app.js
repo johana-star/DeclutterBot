@@ -181,7 +181,11 @@ function processInput(text, photos) {
   if (t==='reset'||t==='start over') { clearAll(); return; }
   if (t==='review items'&&activeBox()) { reviewBox(); return; }
   if (t==='new box') { startNewBox(); return; }
-  if (t==='done with this box'||t==='done') { doneWithBox(); return; }
+  if (t==='done with this box'||t==='done'||t==='skip to next box') { doneWithBox(); return; }
+  if (t==='add item') { state.conversationStage='BOX_OPEN'; addBotMessage('What\'s the item?'); return; }
+  if (t==='start sorting'||t==='start new box'||t==='continue last box') { return; } // chips handled by init, ignore if replayed
+  if (t==='done for now') { handleFinished('done'); return; }
+  if (t==='review all boxes') { handleFinished('review all'); return; }
 
   // Move command: "move [location]" or "m [location]"
   if (t==='m'||t==='move'||t.startsWith('move ')||t.startsWith('m ')) {
