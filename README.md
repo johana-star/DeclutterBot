@@ -95,6 +95,7 @@ Commands can be typed or tapped as suggestion chips. Single-letter shorthands ar
 | `review all boxes` | — | Summary of every box |
 | `reset` | — | Clear all data (asks for confirmation) |
 | `y` / `n` | — | Shorthand for yes / no at any prompt |
+| ↑ / ↓ arrow keys | — | Cycle through previously sent messages (like a terminal) |
 
 ---
 

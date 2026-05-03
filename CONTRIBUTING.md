@@ -250,7 +250,8 @@ All files exit with code `0` on success and `1` on any failure.
 
 ## Punchlist (upcoming features needing tests on implementation)
 
-- Arrow up — recall previous user message (terminal-style history)
+- Compound command history — multi-step exchanges (e.g. `move` then `bedroom`) should be stored as a single history entry (`move bedroom`) rather than two separate ones. Approach: when a command triggers an `AWAITING_*` stage, save the command as a pending prefix; when the next message is sent in that stage, combine prefix + answer into one history entry instead of storing them separately. Stages to consider: `AWAITING_MOVE_LOCATION`, `AWAITING_DUMP_TARGET`, `AWAITING_NEST_PARENT`, `AWAITING_BOX_NAME`, `AWAITING_LOCATION`, `AWAITING_BATCH_CONFIRM`, `AWAITING_DELETE_BOX_CONFIRM`
+- Arrow up/down ✅ implemented — cycles through sent message history; arrow down returns to draft
 - Context bar says "say hi to get started" but saying "hi" returns a freeform error — either make "hi" trigger the welcome flow when there is no active box, or update the context bar copy to give accurate guidance
 - Move any box by name (not just the active box)
 - Rename app from "Sortie" to "DeclutterBot" — update title tag, header logo, and any hardcoded references in app.js and README.md

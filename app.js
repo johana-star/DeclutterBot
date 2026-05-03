@@ -121,6 +121,11 @@ function selectBox(id) {
   saveState(); renderSidebar(); updateContextBar();
   var box = activeBox();
   addUserMessage(box.name, []);
+  // Add to arrow-up history so sidebar clicks are navigable
+  if (inputHistory.length === 0 || inputHistory[inputHistory.length - 1] !== box.name) {
+    inputHistory.push(box.name);
+    if (inputHistory.length > 100) inputHistory.shift();
+  }
   var summary = box.items.length > 0 ? boxSummaryLine(box) : 'empty';
   addBotMessage('Switched to **'+box.name+'**. Contents: '+summary+'.\n\nWhat would you like to do?');
   setBoxOpenChips();
@@ -187,7 +192,48 @@ function chipClick(t) {
 function showTyping() { document.getElementById('typing').classList.add('visible'); document.getElementById('chat-messages').scrollTop=9999; }
 function hideTyping() { document.getElementById('typing').classList.remove('visible'); }
 
-function handleKey(e) { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendUserMessage();} }
+// ── INPUT HISTORY (arrow up/down) ────────────────────────────────────────────
+var inputHistory = [];   // sent messages, oldest first
+var historyIndex = -1;   // -1 = not browsing; 0 = oldest
+var historyDraft = '';   // text in field before arrow-up was pressed
+
+function handleKey(e) {
+  var input = document.getElementById('user-input');
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendUserMessage();
+    return;
+  }
+  if (e.key === 'ArrowUp') {
+    if (inputHistory.length === 0) return;
+    e.preventDefault();
+    if (historyIndex === -1) {
+      historyDraft = input.value; // save current draft
+      historyIndex = inputHistory.length - 1;
+    } else if (historyIndex > 0) {
+      historyIndex--;
+    }
+    input.value = inputHistory[historyIndex];
+    autoResize(input);
+    // Move cursor to end
+    input.selectionStart = input.selectionEnd = input.value.length;
+    return;
+  }
+  if (e.key === 'ArrowDown') {
+    if (historyIndex === -1) return;
+    e.preventDefault();
+    if (historyIndex < inputHistory.length - 1) {
+      historyIndex++;
+      input.value = inputHistory[historyIndex];
+    } else {
+      historyIndex = -1;
+      input.value = historyDraft;
+    }
+    autoResize(input);
+    input.selectionStart = input.selectionEnd = input.value.length;
+    return;
+  }
+}
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
 
 
@@ -196,6 +242,13 @@ async function sendUserMessage() {
   var input = document.getElementById('user-input');
   var text = input.value.trim();
   if (!text) return;
+  // Add to history (avoid consecutive duplicates)
+  if (inputHistory.length === 0 || inputHistory[inputHistory.length - 1] !== text) {
+    inputHistory.push(text);
+    if (inputHistory.length > 100) inputHistory.shift(); // cap at 100
+  }
+  historyIndex = -1;
+  historyDraft = '';
   input.value = ''; input.style.height = 'auto';
   setChips([]);
   addUserMessage(text, []);
@@ -1237,5 +1290,8 @@ if (typeof module !== 'undefined') {
     handleNest, handleNestParent, getDescendantIds, childBoxes,
     renderBoxTree, groupItems, sameProximity, locSegments,
     handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail,
-    selectBox, toggleCollapse };
+    selectBox, toggleCollapse,
+    inputHistory, historyDraft, getHistoryIndex: function(){ return historyIndex; },
+    setHistoryIndex: function(v){ historyIndex = v; },
+    handleKey };
 }
