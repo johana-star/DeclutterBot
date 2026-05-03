@@ -1,0 +1,21 @@
+#!/bin/sh
+# Pre-commit hook — runs the full test suite before every commit.
+# If any test fails, the commit is aborted.
+#
+# Setup (one-time, per developer):
+#   git config core.hooksPath .githooks
+#
+# To bypass in an emergency:
+#   git commit --no-verify
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "Running tests..."
+node test.js
+
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "❌ Tests failed — commit aborted. Fix the failures above and try again."
+  echo "   To bypass: git commit --no-verify"
+  exit 1
+fi

@@ -134,9 +134,10 @@ flowchart.html      Visual process flowchart — open in browser
 
 ## Setup
 
-Clone the repo, then run this once to activate the pre-commit hook:
+Clone the repo, then run these two commands once to activate the pre-commit hook:
 
 ```bash
+chmod +x .githooks/pre-commit
 git config core.hooksPath .githooks
 ```
 
