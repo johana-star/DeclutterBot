@@ -161,6 +161,8 @@ If a command only makes sense in a specific stage, handle it in the `switch`. If
 
 **Any label used in `setChips()` must also be intercepted as a global command.** Chip labels can appear as user input at any stage, including `BOX_OPEN` where unrecognised text is treated as an item name. Failing to intercept a chip label will cause it to be logged as an item — this has already happened with "Skip to next box".
 
+Similarly, **natural language commands must be intercepted before they reach `handleItemName`**. Any phrase not caught by the global intercepts will be treated as an item name — this is how "Remove Skip to next box from Desktop" became a logged item.
+
 ### Input normalisation
 
 Single-character shorthands are expanded at the very top of `processInput`, before any other logic runs:
@@ -174,11 +176,31 @@ if (t === 'n') { t = 'no';  text = 'no';  }
 
 ---
 
+## Running Tests
+
+To run all tests at once:
+
+```bash
+node test.js
+```
+
+To run a single suite:
+
+```bash
+node test_move.js
+node test_remove.js
+```
+
+All files exit with code `0` on success and `1` on any failure.
+
+**When adding a new test file**, register it in `test.js` — there is a clearly marked list at the top of that file.
+
 ## Existing Tests
 
 | File | Feature covered |
 |------|----------------|
 | `test_move.js` | Move box to a new location (`move`, `m`) |
+| `test_remove.js` | Remove an item from a box (`remove`, `delete`) |
 
 ---
 
@@ -201,7 +223,7 @@ When you make a code change, ask yourself:
 - [ ] Did I add a new global command (intercepted above the `switch`)? → Document it in the global command intercept section
 - [ ] Did I add a new chip label? → Also add it as a global intercept in `processInput`
 - [ ] Did I add a new single-character shorthand? → Document it in the input normalisation section
-- [ ] Did I add a new test file? → Add a row to the existing tests table
+- [ ] Did I add a new test file? → Add a row to the existing tests table and register it in the list at the top of `test.js`
 - [ ] Did I move a function into or out of the DOM guard? → Update the DOM guard section
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
 - [ ] Did I change how tests are structured or stubbed? → Update the How Tests Work section

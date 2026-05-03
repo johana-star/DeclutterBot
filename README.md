@@ -43,6 +43,8 @@ Commands can be typed or tapped as suggestion chips. Single-letter shorthands ar
 | `review items` | — | List all items in the current box |
 | `move <location>` | `m <location>` | Move the active box to a new location |
 | `move` | `m` | Prompts for the new location |
+| `remove <name or number>` | `delete <name or number>` | Remove an item from the active box |
+| `remove` | `delete` | Prompts with usage hint |
 | `review all boxes` | — | Summary of every box |
 | `reset` | — | Clear all data (asks for confirmation) |
 | `y` / `n` | — | Shorthand for yes / no at any prompt |
@@ -84,6 +86,16 @@ test_move.js        Tests for the move box feature
 CONTRIBUTING.md     Development guide — read before making changes
 README.md           This file
 ```
+
+---
+
+## Running Tests
+
+```bash
+node test.js
+```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to add new test files.
 
 ---
 

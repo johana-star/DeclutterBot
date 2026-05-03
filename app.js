@@ -183,9 +183,23 @@ function processInput(text, photos) {
   if (t==='new box') { startNewBox(); return; }
   if (t==='done with this box'||t==='done'||t==='skip to next box') { doneWithBox(); return; }
   if (t==='add item') { state.conversationStage='BOX_OPEN'; addBotMessage('What\'s the item?'); return; }
-  if (t==='start sorting'||t==='start new box'||t==='continue last box') { return; } // chips handled by init, ignore if replayed
+  if (t==='start sorting'||t==='start new box') { return; } // chips handled by init, ignore if replayed
+  if (t==='continue last box') {
+    if (state.activeBoxId && activeBox()) { selectBox(state.activeBoxId); }
+    else if (state.boxes.length > 0) { selectBox(state.boxes[state.boxes.length - 1].id); }
+    else { startNewBox(); }
+    return;
+  }
   if (t==='done for now') { handleFinished('done'); return; }
   if (t==='review all boxes') { handleFinished('review all'); return; }
+
+  // Remove command: "remove <name or number>" or "delete <name or number>"
+  if (t === 'remove' || t === 'delete' || t.startsWith('remove ') || t.startsWith('delete ')) {
+    var removeArg = t.startsWith('remove ') ? text.slice(7).trim()
+                  : t.startsWith('delete ') ? text.slice(7).trim()
+                  : '';
+    handleRemove(removeArg); return;
+  }
 
   // Move command: "move [location]" or "m [location]"
   if (t==='m'||t==='move'||t.startsWith('move ')||t.startsWith('m ')) {
@@ -229,6 +243,59 @@ function handleMove(loc) {
     state.conversationStage = 'BOX_OPEN';
   }
   addBotMessage('Moved **"' + box.name + '"** from _' + prev + '_ to _' + box.location + '_.');
+}
+
+function handleRemove(arg) {
+  var box = activeBox();
+  if (!box) { addBotMessage('No active box. Open a box first.'); return; }
+  if (!arg || !arg.trim()) {
+    addBotMessage('What would you like to remove? Say _"remove <item name>"_ or _"remove <number>"_ (use "review items" to see the list).');
+    return;
+  }
+  // Try by number first
+  var num = parseInt(arg, 10);
+  var idx = -1;
+  if (!isNaN(num) && num >= 1 && num <= box.items.length) {
+    idx = num - 1;
+  } else {
+    // Match by name (case-insensitive, partial ok)
+    var argLower = arg.toLowerCase();
+    for (var i = 0; i < box.items.length; i++) {
+      if (box.items[i].name.toLowerCase() === argLower) { idx = i; break; }
+    }
+    // Partial match fallback
+    if (idx === -1) {
+      for (var i = 0; i < box.items.length; i++) {
+        if (box.items[i].name.toLowerCase().indexOf(argLower) !== -1) { idx = i; break; }
+      }
+    }
+  }
+  if (idx === -1) {
+    addBotMessage('Could not find **"' + arg + '"** in "' + box.name + '". Use _"review items"_ to see the list, then _"remove <number>"_ to delete one.');
+    return;
+  }
+  var removed = box.items[idx];
+  box.items.splice(idx, 1);
+  // Clear activeItemId if we just removed the active item
+  if (state.activeItemId === removed.id) {
+    state.activeItemId = null;
+  }
+  state.conversationStage = 'BOX_OPEN';
+  if (box.items.length === 0) {
+    addBotMessage('Removed **"' + removed.name + '"** from "' + box.name + '". The box is now empty.');
+    setChips(['Add item','Move box','Done with this box']);
+  } else {
+    // Re-show the updated list with fresh remove chips
+    var lines = '';
+    var removeChips = [];
+    for (var i = 0; i < box.items.length; i++) {
+      var it = box.items[i];
+      lines += (i+1) + '. **' + it.name + '** \u2192 ' + it.fate + (it.notes ? ' (' + it.notes + ')' : '') + '\n';
+      removeChips.push('Remove ' + (i+1));
+    }
+    addBotMessage('Removed **"' + removed.name + '"**. Remaining items in "' + box.name + '":\n' + lines.trim());
+    setChips(removeChips.concat(['Add item','Move box','Done with this box']));
+  }
 }
 
 function handleWelcome(text, photos) {
@@ -399,12 +466,14 @@ function reviewBox() {
   var box=activeBox();
   if(!box||box.items.length===0){addBotMessage('This box has no items logged yet. Add some!');return;}
   var lines='';
+  var removeChips=[];
   for(var i=0;i<box.items.length;i++){
     var it=box.items[i];
     lines+=(i+1)+'. **'+it.name+'** \u2192 '+it.fate+(it.notes?' ('+it.notes+')':'')+'\n';
+    removeChips.push('Remove '+(i+1));
   }
   addBotMessage('**Items in "'+box.name+'":**\n'+lines.trim());
-  setChips(['Add item','Review items','Move box','Done with this box']);
+  setChips(removeChips.concat(['Add item','Move box','Done with this box']));
   state.conversationStage='BOX_OPEN';
 }
 
@@ -527,7 +596,7 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
   module.exports = { state, FATES, uid, activeBox, activeItem, countFates,
-    processInput, handleMove, handleBatchConfirm, handleBatchQty,
+    processInput, handleMove, handleRemove, handleBatchConfirm, handleBatchQty,
     commitBatch, handleFate, handleItemNotes, handleItemName,
     handleBoxName, handleLocation, startNewBox, doneWithBox, reviewBox };
 }
