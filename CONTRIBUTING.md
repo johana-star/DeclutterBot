@@ -57,6 +57,18 @@ var state        = app.state;
 var processInput = app.processInput;
 ```
 
+### Adding tests to an existing file
+
+Always insert new tests **before the summary block** at the bottom of the file — never append with `cat >>` or add them after the `process.exit` call. Tests placed after `process.exit` will silently not run when the file is executed standalone (the process exits before reaching them), but will run inside the test runner where `process.exit` is suppressed — causing the runner's count to diverge from the individual file's count.
+
+The summary block looks like this and must remain the last thing in the file:
+
+```js
+// ── SUMMARY ──────────────────
+console.log('\n' + (failed === 0 ? '✅' : '❌') + ' ' + passed + ' passed, ' + failed + ' failed\n');
+process.exit(failed > 0 ? 1 : 0);
+```
+
 ### Reset between tests
 
 Each test case should call a `reset()` helper that wipes `state` back to a clean slate and clears captured output:
@@ -214,7 +226,20 @@ All files exit with code `0` on success and `1` on any failure.
 ## Punchlist (upcoming features needing tests on implementation)
 
 - Arrow up — recall previous user message (terminal-style history)
+- Context bar says "say hi to get started" but saying "hi" returns a freeform error — either make "hi" trigger the welcome flow when there is no active box, or update the context bar copy to give accurate guidance
 - Move any box by name (not just the active box)
+- Nested boxes (put a box inside another box)
+  - Data model: add `parentId: null` to each box; null = top level; unlimited depth via recursive relationships
+  - Nest command: `nest`, `put <box> inside <box>`, or `put inside` with chip selection; chips exclude the active box and its own descendants
+  - Sidebar: indent children under their parent; add a fold/unfold caret to any box that has children
+  - Delete guard: refuse `delete box` if the box has children; explain why
+  - Dump with children: dumping box A into box C moves box A's own items to box C and re-parents box A's direct children to box C; deeper descendants stay parented to their immediate parent (whole subtree moves intact)
+  - Export: nested structure should be reflected in the JSON output
+  - Tests required for: nest command, circular nesting prevention, delete guard, dump with children (flat items + child boxes), sidebar rendering logic, JSON export structure
+- Location-as-box: treat a location as a named container so you can say "bedroom > Mac mini > screenshots" and have the hierarchy reflected as nested boxes (depends on: nested boxes feature)
+  - A location string like "bedroom - Mac mini" should optionally be parsed as a path: bedroom (location) > Mac mini (parent box) > screenshots (this box)
+  - Entering a sub-location that matches an existing box name should nest rather than duplicate
+  - The location prompt UX needs to guide users toward this syntax without requiring it
 - Filter by location
   - Two entry points: a chat command (e.g. "show boxes in bedroom") and a sidebar control (exact UI TBD — could be a clickable location label on each box card, a dedicated filter button, or similar)
   - When active, the sidebar shows only boxes matching the location filter; a visible "clear filter" control should appear in the sidebar
@@ -235,6 +260,7 @@ When you make a code change, ask yourself:
 - [ ] Did I add a new chip label? → Also add it as a global intercept in `processInput`
 - [ ] Did I add a new single-character shorthand? → Document it in the input normalisation section
 - [ ] Did I add a new test file? → Add a row to the existing tests table and register it in the list at the top of `test.js`
+- [ ] Did I add tests to an existing file? → Inserted them **before** the summary block, not appended after `process.exit`
 - [ ] Did I move a function into or out of the DOM guard? → Update the DOM guard section
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
 - [ ] Did I change how tests are structured or stubbed? → Update the How Tests Work section

@@ -209,6 +209,24 @@ assert('box is empty', box.items.length === 0);
 assertIncludes('empty message shown', lastBotMessage, 'empty');
 assert('no remove chips shown', lastChips.indexOf('Remove 1') === -1);
 assert('add item chip shown', lastChips.indexOf('Add item') !== -1);
+// 16. "add item" with no active box shows error, not item prompt
+console.log('\n16. add item with no active box shows error');
+reset();
+state.activeBoxId = null;
+state.conversationStage = 'FINISHED'; // simulate no active box state
+processInput('add item', []);
+assertIncludes('explains no active box', lastBotMessage, 'No active box');
+assert('stage not set to BOX_OPEN', state.conversationStage !== 'BOX_OPEN');
+assert('no box created', state.boxes.length === 0);
+
+// 17. "add item" with an active box works normally
+console.log('\n17. add item with active box prompts for item');
+reset();
+var box = makeBox('Test Box', 'bedroom');
+processInput('add item', []);
+assert('stage set to BOX_OPEN', state.conversationStage === 'BOX_OPEN');
+assertIncludes('asks what the item is', lastBotMessage, 'item');
+
 // ── SUMMARY ──────────────────────────────────────────────────────────────────────────────
 console.log('\n' + (failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed\n');
 process.exit(failed > 0 ? 1 : 0);
