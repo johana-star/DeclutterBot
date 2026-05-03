@@ -564,6 +564,8 @@ async function sendUserMessage() {
 
 function processInput(text, photos) {
   var t = text.toLowerCase().trim();
+  if (t==='y') { t='yes'; text='yes'; }
+  if (t==='n') { t='no';  text='no';  }
   if (t==='reset'||t==='start over') { clearAll(); return; }
   if (t==='review items'&&activeBox()) { reviewBox(); return; }
   if (t==='new box') { startNewBox(); return; }
