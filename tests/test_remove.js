@@ -19,7 +19,7 @@ global.renderMarkdown = function(s) { return s; };
 global.localStorage = { getItem: function() { return null; }, setItem: function() {}, removeItem: function() {} };
 global.JSZip = function() {};
 
-var app = require('./app.js');
+var app = require('../app.js');
 var state        = app.state;
 var uid          = app.uid;
 var activeBox    = app.activeBox;

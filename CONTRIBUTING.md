@@ -17,7 +17,7 @@ node test_<feature>.js
 | Item | Convention |
 |------|------------|
 | File name | `test_<feature>.js` (e.g. `test_move.js`, `test_batch.js`) |
-| Location | Same directory as `app.js` and `index.html` |
+| Location | `tests/` subfolder |
 | Runner | Node.js — no install required |
 | Exit code | `0` on all pass, `1` on any failure |
 
@@ -71,7 +71,7 @@ global.setChips      = function(chips) { lastChips = chips; };
 global.renderSidebar = function() {};
 // ... etc.
 
-var app = require('./app.js');
+var app = require('../app.js');
 var state        = app.state;
 var processInput = app.processInput;
 ```
@@ -221,30 +221,32 @@ if (t === 'n') { t = 'no';  text = 'no';  }
 To run all tests at once:
 
 ```bash
-node test.js
+node tests/test.js
 ```
 
 To run a single suite:
 
 ```bash
-node test_move.js
-node test_remove.js
+node tests/test_move.js
+node tests/test_remove.js
 ```
 
 All files exit with code `0` on success and `1` on any failure.
 
-**When adding a new test file**, name it `test_<feature>.js` — `test.js` auto-discovers all files matching that pattern. No registration required.
+**When adding a new test file**, place it in the `tests/` folder and name it `test_<feature>.js` — `tests/test.js` auto-discovers all files matching that pattern inside the `tests/` folder. No registration required.
 
 ## Existing Tests
 
 | File | Feature covered |
 |------|----------------|
-| `test_move.js` | Move box to a new location (`move`, `m`) |
-| `test_remove.js` | Remove an item from a box (`remove`, `delete`) |
-| `test_box_batch.js` | Batch box creation with singularizer (`five wooden boxes`, `3 shelves`) |
-| `test_delete_dump.js` | Delete empty box; dump all items into another box |
-| `test_nest.js` | Nested boxes: nest command, circular prevention, delete guard, dump with children |
-| `test_item_view.js` | Item detail view: number selection, actions, notes editing, photo count |
+| `tests/test_move.js` | Move box to a new location (`move`, `m`) |
+| `tests/test_remove.js` | Remove an item from a box (`remove`, `delete`) |
+| `tests/test_box_batch.js` | Batch box creation with singularizer (`five wooden boxes`, `3 shelves`) |
+| `tests/test_delete_dump.js` | Delete empty box; dump all items into another box |
+| `tests/test_nest.js` | Nested boxes: nest command, circular prevention, delete guard, dump with children |
+| `tests/test_item_view.js` | Item detail view: number selection, actions, notes editing, photo count |
+| `tests/test_history.js` | Arrow up/down input history; sidebar click history |
+| `tests/test_import.js` | Import JSON: valid import, validation, normalisation, confirm/cancel |
 
 ---
 
@@ -295,6 +297,7 @@ When you make a code change, ask yourself:
 - [ ] Did I move a function into or out of the DOM guard? → Update the DOM guard section
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
 - [ ] Did I change how tests are structured or stubbed? → Update the How Tests Work section
+- [ ] After making a batch change to a structured section (table, list, code block), did I verify the entire section — not just that the operation reported success? A partial replacement can leave the rest unchanged without any error.
 - [ ] Did I share all modified files? → Every file changed in a session should be included in the final present_files call, including test files
 - [ ] Did I fix a bug? → Write a test that reproduces the original failure
 - [ ] Did I change existing behaviour? → Update or add tests covering the new behaviour

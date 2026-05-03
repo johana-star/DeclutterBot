@@ -143,15 +143,21 @@ chmod +x .githooks/pre-commit
 git config core.hooksPath .githooks
 ```
 
-After that, `node test.js` will run automatically before every commit. Any test failure aborts the commit.
+After that, `node tests/test.js` will run automatically before every commit. Any test failure aborts the commit.
 
 ## Running Tests
 
 ```bash
-node test.js
+node tests/test.js
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to add new test files.
+
+To run a single suite:
+
+```bash
+node tests/test_move.js
+```
 
 ---
 

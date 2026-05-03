@@ -31,7 +31,7 @@ global.document = {
   }
 };
 
-var app = require('./app.js');
+var app = require('../app.js');
 var inputHistory    = app.inputHistory;
 var historyDraft    = app.historyDraft;
 var getHistoryIndex = app.getHistoryIndex;

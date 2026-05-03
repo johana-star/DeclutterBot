@@ -28,7 +28,7 @@ global.localStorage = {
 global.JSZip = function() {};
 
 // Load app.js and pull exports into global scope
-var app = require('./app.js');
+var app = require('../app.js');
 var state = app.state;
 var FATES = app.FATES;
 var uid = app.uid;

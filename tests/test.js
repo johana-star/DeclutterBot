@@ -48,7 +48,7 @@ testFiles.forEach(function(file) {
 
   // Clear module cache so each suite runs in isolation
   delete require.cache[require.resolve(fullPath)];
-  var appPath = path.join(dir, 'app.js');
+  var appPath = path.join(dir, '..', 'app.js');
   if (require.cache[appPath]) delete require.cache[appPath];
 
   try {
