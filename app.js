@@ -18,8 +18,12 @@ var FATES = ['keep','donate','trash','sell','unsure'];
 var collapsedBoxIds = [];
 function toggleCollapse(id) {
   var idx = collapsedBoxIds.indexOf(id);
-  if (idx === -1) collapsedBoxIds.push(id);
+  var collapsing = idx === -1;
+  if (collapsing) collapsedBoxIds.push(id);
   else collapsedBoxIds.splice(idx, 1);
+  var box = null;
+  for (var i = 0; i < state.boxes.length; i++) { if (state.boxes[i].id === id) { box = state.boxes[i]; break; } }
+  if (box) addUserMessage((collapsing ? 'collapse ' : 'expand ') + box.name, []);
   renderSidebar();
 }
 
@@ -116,6 +120,7 @@ function selectBox(id) {
   state.conversationStage = 'BOX_OPEN';
   saveState(); renderSidebar(); updateContextBar();
   var box = activeBox();
+  addUserMessage(box.name, []);
   var summary = box.items.length > 0 ? boxSummaryLine(box) : 'empty';
   addBotMessage('Switched to **'+box.name+'**. Contents: '+summary+'.\n\nWhat would you like to do?');
   setBoxOpenChips();
@@ -804,16 +809,16 @@ if(state.boxes.length===0){
 }
 }
 
-// In Node, alias global stubs into local scope so logic functions can call them
+// In Node, alias global stubs via wrappers so tests can override globals at runtime
 if (typeof window === 'undefined' && typeof global !== 'undefined') {
-  var addBotMessage    = global.addBotMessage    || function(){};
-  var setChips         = global.setChips         || function(){};
-  var addUserMessage   = global.addUserMessage   || function(){};
-  var renderSidebar    = global.renderSidebar    || function(){};
-  var updateContextBar = global.updateContextBar || function(){};
-  var showTyping       = global.showTyping       || function(){};
-  var hideTyping       = global.hideTyping       || function(){};
-  var saveState        = global.saveState        || function(){};
+  var addBotMessage    = function(t,p){ return (global.addBotMessage    ||function(){})(t,p); };
+  var setChips         = function(c){   return (global.setChips         ||function(){})(c);   };
+  var addUserMessage   = function(t,p){ return (global.addUserMessage   ||function(){})(t,p); };
+  var renderSidebar    = function(){    return (global.renderSidebar    ||function(){})();    };
+  var updateContextBar = function(){    return (global.updateContextBar ||function(){})();    };
+  var showTyping       = function(){    return (global.showTyping       ||function(){})();    };
+  var hideTyping       = function(){    return (global.hideTyping       ||function(){})();    };
+  var saveState        = function(){    return (global.saveState        ||function(){})();    };
 }
 
 
@@ -1231,5 +1236,6 @@ if (typeof module !== 'undefined') {
     groupItems, boxSummaryLine,
     handleNest, handleNestParent, getDescendantIds, childBoxes,
     renderBoxTree, groupItems, sameProximity, locSegments,
-    handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail };
+    handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail,
+    selectBox, toggleCollapse };
 }

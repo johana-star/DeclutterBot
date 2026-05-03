@@ -78,22 +78,22 @@ assertIncludes('shows item name', lastBotMessage, 'Lamp');
 assertIncludes('shows fate', lastBotMessage, 'keep');
 assertIncludes('shows notes', lastBotMessage, 'vintage brass');
 
-// 2. Item detail shows photo count
-console.log('\n2. Item detail shows photo count when photos attached');
+// 2. Item detail does not show photo info (feature deactivated)
+console.log('\n2. Item detail does not show photo references (photos deactivated)');
 reset();
 box = makeBox('Test Box', 'bedroom');
-var item = makeItem(box, 'Lamp', 'keep');
-item.photos.push({ name: 'lamp.jpg', dataUrl: 'data:image/jpeg;base64,abc' });
+makeItem(box, 'Lamp', 'keep');
 handleItemViewByNumber(1);
-assertIncludes('shows photo count', lastBotMessage, '1 photo');
+assert('no photo count shown', !lastBotMessage || lastBotMessage.indexOf('photo') === -1);
 
-// 3. Item detail shows "No photos" when none attached
-console.log('\n3. Item detail shows "No photos" when none attached');
+// 3. Item detail does not mention photos at all
+console.log('\n3. Item detail has no photo copy anywhere');
 reset();
 box = makeBox('Test Box', 'bedroom');
 makeItem(box, 'Chair', 'donate');
 handleItemViewByNumber(1);
-assertIncludes('shows no photos', lastBotMessage, 'No photos');
+assert('no photos text', !lastBotMessage || lastBotMessage.indexOf('No photos') === -1);
+assert('no photo count text', !lastBotMessage || lastBotMessage.indexOf('photo(s)') === -1);
 
 // 4. Item detail chips include Change fate, Edit notes, Remove, Back to list
 console.log('\n4. Item detail offers correct action chips');

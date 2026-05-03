@@ -32,6 +32,7 @@ var getDescendantIds = app.getDescendantIds;
 var childBoxes       = app.childBoxes;
 var renderBoxTree    = app.renderBoxTree;
 var sameProximity    = app.sameProximity;
+// selectBox and toggleCollapse accessed via app.* to allow stubbing addUserMessage
 
 // ── HARNESS ───────────────────────────────────────────────────────────────────
 var passed = 0, failed = 0;
@@ -341,6 +342,47 @@ var box = makeBox('Empty Box', 'room');
 state.activeBoxId = null;
 var html = renderBoxTree(null, 0, []);
 assert('shows empty', html.indexOf('empty') !== -1);
+
+
+// ── SIDEBAR INTERACTION ECHO TESTS ───────────────────────────────────────────
+// Guard: clicking sidebar UI should always echo a user-visible command.
+
+console.log('\n28. selectBox echoes box name as user message');
+reset();
+var echoedUserMessages = [];
+// Capture by overriding the global that app.js calls through
+var _origAddUser = global.addUserMessage;
+global.addUserMessage = function(text) { echoedUserMessages.push(text); };
+var box28 = makeBox('Mac mini', 'bedroom');
+state.activeBoxId = null;
+app.selectBox(box28.id);
+global.addUserMessage = _origAddUser;
+assert('user message echoed on selectBox', echoedUserMessages.length > 0);
+assert('echoed message is box name', echoedUserMessages[0] === 'Mac mini');
+
+console.log('\n29. toggleCollapse echoes collapse command as user message');
+reset();
+var echoedCollapse = [];
+global.addUserMessage = function(text) { echoedCollapse.push(text); };
+var parent29 = makeBox('Desktop', 'bedroom');
+var child29  = makeBox('Mac mini', 'bedroom'); child29.parentId = parent29.id;
+state.activeBoxId = null;
+app.toggleCollapse(parent29.id);
+global.addUserMessage = _origAddUser;
+assert('user message echoed on collapse', echoedCollapse.length > 0);
+assert('echoed message is collapse + box name', echoedCollapse[0] === 'collapse Desktop');
+
+console.log('\n30. toggleCollapse echoes expand command on second click');
+reset();
+var echoedExpand = [];
+global.addUserMessage = function(text) { echoedExpand.push(text); };
+var parent30 = makeBox('Desktop', 'bedroom');
+var child30  = makeBox('Mac mini', 'bedroom'); child30.parentId = parent30.id;
+state.activeBoxId = null;
+app.toggleCollapse(parent30.id); // collapse
+app.toggleCollapse(parent30.id); // expand
+global.addUserMessage = _origAddUser;
+assert('second toggle echoes expand', echoedExpand[1] === 'expand Desktop');
 
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────

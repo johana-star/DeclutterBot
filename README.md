@@ -126,9 +126,21 @@ test_move.js        Tests for the move box feature
 CONTRIBUTING.md     Development guide — read before making changes
 README.md           This file
 flowchart.html      Visual process flowchart — open in browser
+.githooks/          Git hooks — run `git config core.hooksPath .githooks` to activate
+  pre-commit        Runs test.js before every commit; aborts on failure
 ```
 
 ---
+
+## Setup
+
+Clone the repo, then run this once to activate the pre-commit hook:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+After that, `node test.js` will run automatically before every commit. Any test failure aborts the commit.
 
 ## Running Tests
 

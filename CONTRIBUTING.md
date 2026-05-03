@@ -23,6 +23,25 @@ node test_<feature>.js
 
 ---
 
+## Tests Are Required for Bug Fixes Too
+
+**Bug fixes require a test that would have caught the bug.** A fix without a test is just a guess — it may regress silently.
+
+When fixing a bug, write a test that:
+1. **Reproduces the original failure** — the test should fail before the fix is applied
+2. **Passes after the fix** — confirming the fix works
+3. **Is named after the bug** — e.g. `assert('selectBox echoes user message (regression)')` so it's clear why the test exists if it ever fails again
+
+This applies to:
+- Incorrect behaviour (wrong output, wrong state)
+- Missing behaviour (something that should happen but doesn't — like a UI action not echoing a command)
+- Scoping / initialisation bugs (e.g. `renderBoxTree` not defined at call time)
+- Data migration bugs (e.g. `parentId` undefined vs null from localStorage)
+
+**Feature changes also require tests.** If you change how an existing feature behaves — not just add a new one — update or add tests to cover the new behaviour. The existing tests may still pass while the changed behaviour is untested.
+
+---
+
 ## What to Test
 
 For each feature, cover at minimum:
@@ -267,6 +286,9 @@ When you make a code change, ask yourself:
 - [ ] Did I move a function into or out of the DOM guard? → Update the DOM guard section
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
 - [ ] Did I change how tests are structured or stubbed? → Update the How Tests Work section
+- [ ] Did I share all modified files? → Every file changed in a session should be included in the final present_files call, including test files
+- [ ] Did I fix a bug? → Write a test that reproduces the original failure
+- [ ] Did I change existing behaviour? → Update or add tests covering the new behaviour
 - [ ] Did I complete a punchlist item? → Remove it from the punchlist
 - [ ] Did I change the app's conversation flow? → Update the Mermaid diagram in README.md and flowchart.html
 - [ ] Did I identify a new upcoming feature? → Add it to the punchlist
