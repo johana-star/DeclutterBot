@@ -465,7 +465,7 @@ function selectBox(id) {
   saveState(); renderSidebar(); updateContextBar();
   var box = activeBox();
   addBotMessage('Switched to **'+box.name+'**. It has '+box.items.length+' item(s) logged.\n\nWhat would you like to do? Add a new item, review what\'s inside, or move on to another box?');
-  setChips(['Add item','Review items','New box','Done with this box']);
+  setChips(['Add item','Review items','Move box','New box','Done with this box']);
 }
 
 function updateContextBar() {
@@ -525,7 +525,10 @@ function setChips(chips) {
   }
   el.innerHTML = html;
 }
-function chipClick(t) { document.getElementById('user-input').value=t; sendUserMessage(); }
+function chipClick(t) {
+  if (t==='Move box') t='move';
+  document.getElementById('user-input').value=t; sendUserMessage();
+}
 function showTyping() { document.getElementById('typing').classList.add('visible'); document.getElementById('chat-messages').scrollTop=9999; }
 function hideTyping() { document.getElementById('typing').classList.remove('visible'); }
 
@@ -571,6 +574,16 @@ function processInput(text, photos) {
   if (t==='new box') { startNewBox(); return; }
   if (t==='done with this box'||t==='done') { doneWithBox(); return; }
 
+  // Move command: "move [location]" or "m [location]"
+  if (t==='m'||t==='move'||t.startsWith('move ')||t.startsWith('m ')) {
+    var loc = t.startsWith('move ') ? text.slice(5).trim()
+            : t.startsWith('m ')    ? text.slice(2).trim()
+            : '';
+    handleMove(loc); return;
+  }
+  // Response to awaiting move location
+  if (state.conversationStage==='AWAITING_MOVE_LOCATION') { handleMove(text); return; }
+
   switch(state.conversationStage) {
     case 'WELCOME':               handleWelcome(text,photos); break;
     case 'AWAITING_BOX_NAME':     handleBoxName(text); break;
@@ -586,6 +599,23 @@ function processInput(text, photos) {
     case 'FINISHED':              handleFinished(text); break;
     default: handleFreeform(text,photos);
   }
+}
+
+function handleMove(loc) {
+  var box = activeBox();
+  if (!box) { addBotMessage('No active box to move. Open a box first.'); return; }
+  if (!loc || !loc.trim()) {
+    state.conversationStage = 'AWAITING_MOVE_LOCATION';
+    addBotMessage('Where would you like to move **"' + box.name + '"**?');
+    return;
+  }
+  var prev = box.location || 'unspecified';
+  box.location = loc.trim();
+  // Restore the stage we were in before the move command
+  if (state.conversationStage === 'AWAITING_MOVE_LOCATION') {
+    state.conversationStage = 'BOX_OPEN';
+  }
+  addBotMessage('Moved **"' + box.name + '"** from _' + prev + '_ to _' + box.location + '_.');
 }
 
 function handleWelcome(text, photos) {
@@ -708,7 +738,7 @@ function handleBatchFate(text, photos) {
   var fm={keep:'\u2705 **Keep** \u2014 all going back home.',donate:'\uD83D\uDC99 **Donate** \u2014 great!',trash:'\uD83D\uDDD1 **Trash** \u2014 out they go.',sell:'\uD83D\uDCB0 **Sell** \u2014 nice haul!',unsure:'\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit.'};
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   addBotMessage(fm[matched]+'\n\n**'+box.items.length+'** item(s) logged in "'+box.name+'". What\'s next?');
-  setChips(['Done with this box','New box','Review items']);
+  setChips(['Add item','Review items','Move box','Done with this box']);
 }
 
 function handleItemDesc(text, photos) {
@@ -739,7 +769,7 @@ function handleItemNotes(text) {
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   var box=activeBox();
   addBotMessage('Got it. **'+box.items.length+'** item(s) logged in "'+box.name+'".\n\nWhat\'s the next item?');
-  setChips(['Done with this box','New box','Review items']);
+  setChips(['Add item','Review items','Move box','Done with this box']);
 }
 
 function doneWithBox() {
@@ -761,7 +791,7 @@ function reviewBox() {
     lines+=(i+1)+'. **'+it.name+'** \u2192 '+it.fate+(it.notes?' ('+it.notes+')':'')+'\n';
   }
   addBotMessage('**Items in "'+box.name+'":**\n'+lines.trim());
-  setChips(['Add item','Done with this box','New box']);
+  setChips(['Add item','Review items','Move box','Done with this box']);
   state.conversationStage='BOX_OPEN';
 }
 
@@ -785,7 +815,7 @@ function handleFinished(text) {
 
 function handleFreeform(text, photos) {
   addBotMessage('I\'m not sure what you mean \u2014 try: _"New box"_, _"Add item"_, _"Done with this box"_, or _"Review items"_.');
-  setChips(['New box','Add item','Done with this box','Review items']);
+  setChips(['Add item','Review items','Move box','New box','Done with this box']);
 }
 
 function exportJSON() {
