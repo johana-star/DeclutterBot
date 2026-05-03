@@ -208,7 +208,11 @@ All files exit with code `0` on success and `1` on any failure.
 
 - Arrow up — recall previous user message (terminal-style history)
 - Move any box by name (not just the active box)
-- Provide a process flowchart for this app (see README.md for context)
+- Filter by location
+  - Two entry points: a chat command (e.g. "show boxes in bedroom") and a sidebar control (exact UI TBD — could be a clickable location label on each box card, a dedicated filter button, or similar)
+  - When active, the sidebar shows only boxes matching the location filter; a visible "clear filter" control should appear in the sidebar
+  - Partial matching: "bedroom" should match "bedroom - east wall" and "bedroom - west wall"
+  - Location strings should be split on common separators (dash, comma, slash, colon) before matching, so individual segments are matched independently
 ---
 
 ## Keeping CONTRIBUTING.md Up to Date
@@ -228,4 +232,5 @@ When you make a code change, ask yourself:
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
 - [ ] Did I change how tests are structured or stubbed? → Update the How Tests Work section
 - [ ] Did I complete a punchlist item? → Remove it from the punchlist
+- [ ] Did I change the app's conversation flow? → Update the Mermaid diagram in README.md and flowchart.html
 - [ ] Did I identify a new upcoming feature? → Add it to the punchlist

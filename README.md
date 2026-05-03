@@ -27,7 +27,54 @@ Sortie walks you through a structured workflow:
 4. **Add notes** — optional condition, value, or destination
 5. **Repeat** until the box is empty, then move to the next
 
-> A process flowchart is planned to visually document this workflow — see the punchlist in [CONTRIBUTING.md](./CONTRIBUTING.md).
+> Open [flowchart.html](./flowchart.html) in a browser for a visual walkthrough of this workflow.
+
+```mermaid
+flowchart TD
+    START([Start session]) --> HAS_BOXES{Any boxes\nalready logged?}
+
+    HAS_BOXES -->|No| NAME_BOX[Name the box\ne.g. Garage #1]
+    HAS_BOXES -->|Yes| CONTINUE{Continue last box\nor start new one?}
+
+    CONTINUE -->|New box| NAME_BOX
+    CONTINUE -->|Continue| PICK_UP
+
+    NAME_BOX --> SET_LOC[Set location\ne.g. spare bedroom]
+    SET_LOC --> PICK_UP[Pick up an item\nand describe it]
+
+    PICK_UP --> QUANTITY{More than\none of this item?}
+
+    QUANTITY -->|Yes| CONFIRM_QTY[Confirm quantity\ne.g. 11 × paper towel rolls]
+    QUANTITY -->|No| FATE
+
+    CONFIRM_QTY --> BATCH_FATE[Assign fate\nto all at once]
+    BATCH_FATE --> MIXED{Mixed fates?}
+    MIXED -->|Yes| FATE
+    MIXED -->|No| NOTES
+
+    FATE[Assign fate] --> KEEP([Keep])
+    FATE --> DONATE([Donate])
+    FATE --> TRASH([Trash])
+    FATE --> SELL([Sell])
+    FATE --> UNSURE([Unsure — revisit later])
+
+    KEEP --> NOTES
+    DONATE --> NOTES
+    TRASH --> NOTES
+    SELL --> NOTES
+    UNSURE --> NOTES
+
+    NOTES[Add notes?\ne.g. condition, value, destination] --> MORE_ITEMS{More items\nin this box?}
+
+    MORE_ITEMS -->|Yes| PICK_UP
+    MORE_ITEMS -->|No| BOX_DONE[Box summary\nkeep · donate · trash · sell · unsure]
+
+    BOX_DONE --> ANOTHER{Another\nbox to sort?}
+
+    ANOTHER -->|Yes| NAME_BOX
+    ANOTHER -->|No| EXPORT[Export inventory\nJSON or ZIP with photos]
+    EXPORT --> END([Session complete])
+```
 
 ---
 
@@ -85,6 +132,7 @@ app.js              All application logic
 test_move.js        Tests for the move box feature
 CONTRIBUTING.md     Development guide — read before making changes
 README.md           This file
+flowchart.html      Visual process flowchart — open in browser
 ```
 
 ---

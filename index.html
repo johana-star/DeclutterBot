@@ -7,20 +7,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,400&family=IBM+Plex+Mono:wght@400;500&family=Lato:wght@300;400;700&display=swap" rel="stylesheet"/>
 <style>
   :root {
-    --cream: #f5f0e8;
-    --warm-white: #faf8f3;
-    --brown: #5c4a32;
-    --brown-mid: #8b6f4e;
-    --brown-light: #c4a882;
-    --brown-pale: #e8ddd0;
-    --rust: #b85c38;
-    --rust-light: #d4825f;
-    --sage: #6b8c6b;
-    --sage-light: #a8c2a8;
-    --ink: #2d2418;
-    --ink-mid: #4a3d2c;
-    --paper: #f0ebe0;
-    --border: #d4c9b5;
+    /* Tide Garden palette */
+    --cream: #f5f5ef;        /* cream */
+    --warm-white: #ffffff;   /* white */
+    --brown: #1a2244;        /* abyss */
+    --brown-mid: #4a5472;    /* navy */
+    --brown-light: #88bcd8;  /* coastal */
+    --brown-pale: #d1e5f0;   /* horizon */
+    --rust: #c7508c;         /* peony */
+    --rust-light: #e8a0c0;   /* sakura */
+    --sage: #7aaa82;         /* sage */
+    --sage-light: #a8d0b0;   /* thyme */
+    --ink: #1a2244;          /* abyss */
+    --ink-mid: #4a5472;      /* navy */
+    --paper: #eeeee4;        /* feta */
+    --border: #d8d8c8;       /* chevre */
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -143,11 +144,11 @@
     letter-spacing: 0.05em;
     font-weight: 500;
   }
-  .tag-keep    { background: #d4edda; color: #2d6a3f; }
-  .tag-donate  { background: #cce5ff; color: #1a5276; }
-  .tag-trash   { background: #f8d7da; color: #7b2335; }
-  .tag-sell    { background: #fff3cd; color: #7d5a00; }
-  .tag-unsure  { background: #e2d9f3; color: #4a3378; }
+  .tag-keep    { background: #e8f4ea; color: #2a5a32; }  /* mint / pine */
+  .tag-donate  { background: #d1e5f0; color: #4a5472; }  /* horizon / navy */
+  .tag-trash   { background: #fceef5; color: #883060; }  /* blush / cherry */
+  .tag-sell    { background: #faf5c0; color: #6a5800; }  /* butter / molasses */
+  .tag-unsure  { background: #e7e6f0; color: #494573; }  /* lilac / iris */
 
   .chat-area {
     flex: 1;
@@ -236,11 +237,11 @@
     white-space: nowrap;
   }
   .chip:hover { border-color: var(--rust); color: var(--rust); background: var(--cream); }
-  .chip.fate-keep   { border-color: #6aaa7e; color: #2d6a3f; }
-  .chip.fate-donate { border-color: #5b9bd5; color: #1a5276; }
-  .chip.fate-trash  { border-color: #d9737c; color: #7b2335; }
-  .chip.fate-sell   { border-color: #d4a017; color: #7d5a00; }
-  .chip.fate-unsure { border-color: #9b7ed4; color: #4a3378; }
+  .chip.fate-keep   { border-color: #7aaa82; color: #2a5a32; }  /* sage / pine */
+  .chip.fate-donate { border-color: #88bcd8; color: #4a5472; }  /* coastal / navy */
+  .chip.fate-trash  { border-color: #e8a0c0; color: #883060; }  /* sakura / cherry */
+  .chip.fate-sell   { border-color: #d8c030; color: #6a5800; }  /* mustard / molasses */
+  .chip.fate-unsure { border-color: #7570a9; color: #494573; }  /* lavender / iris */
 
   .chat-input-area {
     padding: 14px 20px;

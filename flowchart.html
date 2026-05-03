@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sortie — How It Works</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,400&family=Lato:wght@300;400;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --cream: #f5f5ef;
+    --feta: #eeeee4;
+    --chevre: #d8d8c8;
+    --abyss: #1a2244;
+    --navy: #4a5472;
+    --coastal: #88bcd8;
+    --horizon: #d1e5f0;
+    --peony: #c7508c;
+    --sakura: #e8a0c0;
+    --sage: #7aaa82;
+    --pine: #2a5a32;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Lato', sans-serif;
+    background: var(--cream);
+    color: var(--abyss);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: var(--abyss);
+    border-bottom: 3px solid var(--peony);
+    padding: 18px 32px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    color: var(--cream);
+    font-weight: 500;
+  }
+  header h1 em {
+    color: var(--sakura);
+  }
+  header p {
+    font-size: 0.8rem;
+    color: var(--coastal);
+    letter-spacing: 0.05em;
+  }
+  main {
+    flex: 1;
+    padding: 40px 32px;
+    max-width: 1000px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .intro {
+    margin-bottom: 36px;
+  }
+  .intro h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem;
+    font-weight: 500;
+    margin-bottom: 10px;
+    color: var(--abyss);
+  }
+  .intro p {
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--navy);
+    max-width: 640px;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--navy);
+  }
+  .legend-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .chart-wrap {
+    background: var(--feta);
+    border: 1px solid var(--chevre);
+    border-radius: 6px;
+    padding: 32px 24px;
+    overflow-x: auto;
+  }
+  .mermaid {
+    display: flex;
+    justify-content: center;
+  }
+  footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 0.75rem;
+    color: var(--navy);
+    border-top: 1px solid var(--chevre);
+    margin-top: 40px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sortie <em>— declutter companion</em></h1>
+  <p>Process flowchart</p>
+</header>
+
+<main>
+  <div class="intro">
+    <h2>How a sorting session works</h2>
+    <p>Sortie guides you through your boxes one at a time. For each box you name a location, then work through its contents item by item — deciding the fate of each one before moving on. When a box is done you can start the next, or finish your session and export your inventory.</p>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#d1e5f0;border:1px solid #88bcd8;"></div>
+      Start / end
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#eeeee4;border:1px solid #d8d8c8;"></div>
+      Action
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#fceef5;border:1px solid #e8a0c0;"></div>
+      Decision
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#e8f4ea;border:1px solid #7aaa82;"></div>
+      Fate assigned
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <div class="mermaid">
+flowchart TD
+    START([Start session]) --> HAS_BOXES{Any boxes\nalready logged?}
+
+    HAS_BOXES -->|No| NAME_BOX[Name the box\ne.g. Garage #1]
+    HAS_BOXES -->|Yes| CONTINUE{Continue last box\nor start new one?}
+
+    CONTINUE -->|New box| NAME_BOX
+    CONTINUE -->|Continue| PICK_UP
+
+    NAME_BOX --> SET_LOC[Set location\ne.g. spare bedroom]
+    SET_LOC --> PICK_UP[Pick up an item\nand describe it]
+
+    PICK_UP --> QUANTITY{More than\none of this item?}
+
+    QUANTITY -->|Yes| CONFIRM_QTY[Confirm quantity\ne.g. 11 × paper towel rolls]
+    QUANTITY -->|No| FATE
+
+    CONFIRM_QTY --> BATCH_FATE[Assign fate\nto all at once]
+    BATCH_FATE --> MIXED{Mixed fates?}
+    MIXED -->|Yes| FATE
+    MIXED -->|No| NOTES
+
+    FATE[Assign fate] --> KEEP([Keep])
+    FATE --> DONATE([Donate])
+    FATE --> TRASH([Trash])
+    FATE --> SELL([Sell])
+    FATE --> UNSURE([Unsure — revisit later])
+
+    KEEP --> NOTES
+    DONATE --> NOTES
+    TRASH --> NOTES
+    SELL --> NOTES
+    UNSURE --> NOTES
+
+    NOTES[Add notes?\ne.g. condition, value, destination] --> MORE_ITEMS{More items\nin this box?}
+
+    MORE_ITEMS -->|Yes| PICK_UP
+    MORE_ITEMS -->|No| BOX_DONE[Box summary\nkeep · donate · trash · sell · unsure]
+
+    BOX_DONE --> ANOTHER{Another\nbox to sort?}
+
+    ANOTHER -->|Yes| NAME_BOX
+    ANOTHER -->|No| EXPORT[Export inventory\nJSON or ZIP with photos]
+    EXPORT --> END([Session complete])
+
+    style START fill:#d1e5f0,stroke:#88bcd8,color:#1a2244
+    style END fill:#d1e5f0,stroke:#88bcd8,color:#1a2244
+    style KEEP fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
+    style DONATE fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
+    style TRASH fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
+    style SELL fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
+    style UNSURE fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
+    style HAS_BOXES fill:#fceef5,stroke:#e8a0c0,color:#883060
+    style CONTINUE fill:#fceef5,stroke:#e8a0c0,color:#883060
+    style QUANTITY fill:#fceef5,stroke:#e8a0c0,color:#883060
+    style MIXED fill:#fceef5,stroke:#e8a0c0,color:#883060
+    style MORE_ITEMS fill:#fceef5,stroke:#e8a0c0,color:#883060
+    style ANOTHER fill:#fceef5,stroke:#e8a0c0,color:#883060
+    </div>
+  </div>
+</main>
+
+<footer>
+  Sortie — declutter companion &nbsp;·&nbsp; See README.md for the full command reference
+</footer>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#eeeee4',
+      primaryBorderColor: '#d8d8c8',
+      primaryTextColor: '#1a2244',
+      lineColor: '#4a5472',
+      secondaryColor: '#d1e5f0',
+      tertiaryColor: '#f5f5ef',
+      background: '#eeeee4',
+      mainBkg: '#eeeee4',
+      nodeBorder: '#d8d8c8',
+      clusterBkg: '#f5f5ef',
+      titleColor: '#1a2244',
+      edgeLabelBackground: '#f5f5ef',
+      fontFamily: 'Lato, sans-serif',
+      fontSize: '14px',
+    }
+  });
+</script>
+
+</body>
+</html>
