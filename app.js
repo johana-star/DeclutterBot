@@ -1,4 +1,4 @@
-// app.js — Sortie core logic
+// app.js — DeclutterBot core logic
 // DOM-touching functions (addBotMessage, setChips, renderSidebar, etc.)
 // are expected to be defined globally or stubbed before this file runs.
 
@@ -27,9 +27,9 @@ function toggleCollapse(id) {
   renderSidebar();
 }
 
-function saveState() { localStorage.setItem('sortie_state', JSON.stringify(state)); }
+function saveState() { localStorage.setItem('declutterbot_state', JSON.stringify(state)); }
 function loadState() {
-  var raw = localStorage.getItem('sortie_state');
+  var raw = localStorage.getItem('declutterbot_state');
   if (raw) { try {
     state = JSON.parse(raw);
     // Normalise parentId: undefined -> null for boxes saved before nesting was added
@@ -451,7 +451,7 @@ function handleRemove(arg) {
 }
 
 function handleWelcome(text, photos) {
-  addBotMessage('Welcome to **Sortie**! I\'ll help you sort through boxes, log what\'s inside, and decide what to do with each item.\n\nLet\'s start with your first box. What would you like to call it?');
+  addBotMessage('Welcome to **DeclutterBot**! I\'ll help you sort through boxes, log what\'s inside, and decide what to do with each item.\n\nLet\'s start with your first box. What would you like to call it?');
   state.conversationStage = 'AWAITING_BOX_NAME';
 }
 function startNewBox() {
@@ -820,7 +820,7 @@ function exportJSON() {
     data.boxes.push(Object.assign({},box,{items:items}));
   }
   var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  dlBlob(blob,'sortie-inventory.json');
+  dlBlob(blob,'inventory.json');
 }
 
 
@@ -829,13 +829,13 @@ function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createOb
 
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
-  localStorage.removeItem('sortie_state');
+  localStorage.removeItem('declutterbot_state');
   state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,conversationStage:'WELCOME',conversationHistory:[]};
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
   renderSidebar(); updateContextBar();
   setTimeout(function(){
-    addBotMessage('Hello! I\'m **Sortie**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. Add notes and export your inventory when you\'re done.\n\nReady to start? Tell me what to call your first box.');
+    addBotMessage('Hello! I\'m **DeclutterBot**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. Add notes and export your inventory when you\'re done.\n\nReady to start? Tell me what to call your first box.');
     state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
   },100);
 }
@@ -848,7 +848,7 @@ loadState(); renderSidebar(); updateContextBar();
 
 if(state.boxes.length===0){
   setTimeout(function(){
-    addBotMessage('Hello! I\'m **Sortie**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. Add notes and export your inventory when you\'re done.\n\nReady to start? Tell me what to call your first box.');
+    addBotMessage('Hello! I\'m **DeclutterBot**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. Add notes and export your inventory when you\'re done.\n\nReady to start? Tell me what to call your first box.');
     state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
   },200);
 } else {

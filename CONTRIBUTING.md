@@ -1,4 +1,4 @@
-# Contributing to Sortie
+# Contributing to DeclutterBot
 
 ## New Features Require Tests
 
@@ -250,11 +250,13 @@ All files exit with code `0` on success and `1` on any failure.
 
 ## Punchlist (upcoming features needing tests on implementation)
 
+- Import JSON — allow users to load a previously exported `inventory.json` back into the app, populating state from the file. This is the primary mechanism for restoring data across devices or after a reset. UI: a file input button in the header alongside Export JSON. Logic: parse the JSON, validate structure, merge or replace current state, re-render. Needs tests for valid import, malformed JSON, and partial/legacy data shapes.
+- DRY common bot responses into a response dictionary — bot messages like fate confirmations, error strings, and stage transitions are currently hardcoded inline throughout the handlers. Extract them into a single `RESPONSES` object at the top of app.js so wording can be changed in one place. Needs tests to verify response keys exist and return strings.
 - Compound command history — multi-step exchanges (e.g. `move` then `bedroom`) should be stored as a single history entry (`move bedroom`) rather than two separate ones. Approach: when a command triggers an `AWAITING_*` stage, save the command as a pending prefix; when the next message is sent in that stage, combine prefix + answer into one history entry instead of storing them separately. Stages to consider: `AWAITING_MOVE_LOCATION`, `AWAITING_DUMP_TARGET`, `AWAITING_NEST_PARENT`, `AWAITING_BOX_NAME`, `AWAITING_LOCATION`, `AWAITING_BATCH_CONFIRM`, `AWAITING_DELETE_BOX_CONFIRM`
 - Arrow up/down ✅ implemented — cycles through sent message history; arrow down returns to draft
 - Context bar says "say hi to get started" but saying "hi" returns a freeform error — either make "hi" trigger the welcome flow when there is no active box, or update the context bar copy to give accurate guidance
 - Move any box by name (not just the active box)
-- Rename app from "Sortie" to "DeclutterBot" — update title tag, header logo, and any hardcoded references in app.js and README.md
+- Rename to DeclutterBot ✅ completed
 - `uid()` generates a random 7-char base-36 string (~78 billion possibilities) but does not verify uniqueness against existing IDs. A collision would silently corrupt parentId/activeBoxId foreign key relationships. Fix: collect all in-use IDs at generation time and retry on collision. Add a test that generates a large number of IDs and asserts no duplicates.
 - Photo support (currently deactivated) — camera button, ZIP export, and item photo display were removed due to reliability issues with base64 dataUrl persistence in localStorage. To re-enable: restore pendingPhotos flow in sendUserMessage, restore handlePhotoUpload, restore photo-btn and photo-input in index.html, restore exportZip, restore photo count in showItemDetail, restore photos array in exportJSON
 - Box photos (blocked on photo support reactivation above)

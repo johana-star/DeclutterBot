@@ -1,4 +1,4 @@
-# Sortie — Declutter Companion
+# DeclutterBot — Sorting Companion
 
 A browser-based chatbot that guides you through sorting boxes and their contents. Log every item, assign it a fate, attach photos, and export your inventory when you're done.
 
@@ -19,7 +19,7 @@ Your data is saved to `localStorage` automatically as you work, so you can close
 
 ## How It Works
 
-Sortie walks you through a structured workflow:
+DeclutterBot walks you through a structured workflow:
 
 1. **Name a box** — give it a label and a location
 2. **Pick up an item** — describe it to the bot
@@ -106,7 +106,7 @@ If you have multiple identical items, say so naturally:
 > "eleven paper towel rolls"  
 > "3 old magazines"
 
-Sortie will detect the quantity, ask you to confirm, then log each as a separate entry — all sharing the same fate when you assign it.
+DeclutterBot will detect the quantity, ask you to confirm, then log each as a separate entry — all sharing the same fate when you assign it.
 
 ---
 
