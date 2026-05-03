@@ -15,7 +15,6 @@ var state = {
   conversationHistory: []
 };
 var FATES = ['keep','donate','trash','sell','unsure'];
-var pendingPhotos = [];
 var collapsedBoxIds = [];
 function toggleCollapse(id) {
   var idx = collapsedBoxIds.indexOf(id);
@@ -150,9 +149,7 @@ function addBotMessage(text, photos) {
   var msgs = document.getElementById('chat-messages');
   var div = document.createElement('div');
   div.className = 'msg bot';
-  var ph = '';
-  if (photos && photos.length) for (var i=0;i<photos.length;i++) ph+='<img src="'+photos[i].dataUrl+'" class="chat-photo" alt="'+escHtml(photos[i].name)+'"/>';
-  div.innerHTML = '<div class="msg-avatar">S</div><div class="msg-bubble"><p>'+renderMarkdown(text)+'</p>'+ph+'</div>';
+  div.innerHTML = '<div class="msg-avatar">S</div><div class="msg-bubble"><p>'+renderMarkdown(text)+'</p></div>';
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
   state.conversationHistory.push({role:'assistant',content:text});
@@ -162,9 +159,7 @@ function addUserMessage(text, photos) {
   var msgs = document.getElementById('chat-messages');
   var div = document.createElement('div');
   div.className = 'msg user';
-  var ph = '';
-  if (photos && photos.length) for (var i=0;i<photos.length;i++) ph+='<img src="'+photos[i].dataUrl+'" class="chat-photo" alt="'+escHtml(photos[i].name)+'"/>';
-  div.innerHTML = '<div class="msg-avatar">You</div><div class="msg-bubble"><p>'+escHtml(text)+'</p>'+ph+'</div>';
+  div.innerHTML = '<div class="msg-avatar">You</div><div class="msg-bubble"><p>'+escHtml(text)+'</p></div>';
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
   state.conversationHistory.push({role:'user',content:text});
@@ -190,33 +185,19 @@ function hideTyping() { document.getElementById('typing').classList.remove('visi
 function handleKey(e) { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendUserMessage();} }
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
 
-function handlePhotoUpload(event) {
-  var files = Array.from(event.target.files);
-  for (var i=0;i<files.length;i++) {
-    (function(file){
-      var reader = new FileReader();
-      reader.onload = function(e){ pendingPhotos.push({name:file.name,dataUrl:e.target.result}); };
-      reader.readAsDataURL(file);
-    })(files[i]);
-  }
-  addBotMessage('\uD83D\uDCF7 Got '+files.length+' photo(s). They\'ll be attached to the next item you log.');
-  setChips([]);
-}
+
 
 async function sendUserMessage() {
   var input = document.getElementById('user-input');
   var text = input.value.trim();
-  var photos = pendingPhotos.slice();
-  pendingPhotos = [];
-  document.getElementById('photo-input').value = '';
-  if (!text && !photos.length) return;
+  if (!text) return;
   input.value = ''; input.style.height = 'auto';
   setChips([]);
-  addUserMessage(text, photos);
+  addUserMessage(text, []);
   showTyping();
   await new Promise(function(r){setTimeout(r,500);});
   hideTyping();
-  processInput(text, photos);
+  processInput(text, []);
   renderSidebar(); updateContextBar(); saveState();
 }
 
@@ -649,7 +630,6 @@ function handleBatchFate(text, photos) {
 function handleItemDesc(text, photos) {
   var item=activeItem(); if(!item){state.conversationStage='BOX_OPEN';handleFreeform(text,photos);return;}
   item.description=text.trim();
-  if(photos&&photos.length) for(var i=0;i<photos.length;i++) item.photos.push(photos[i]);
   state.conversationStage='AWAITING_FATE';
   addBotMessage('Got it. What should we do with **'+item.name+'**?');
   setChips(['Keep','Donate','Trash','Sell','Unsure']);
@@ -661,7 +641,6 @@ function handleFate(text, photos) {
   var matched=null; for(var i=0;i<FATES.length;i++){if(t.indexOf(FATES[i])!==-1){matched=FATES[i];break;}}
   if (!matched) { addBotMessage('I didn\'t catch that \u2014 what should we do with **'+item.name+'**?'); setChips(['Keep','Donate','Trash','Sell','Unsure']); return; }
   item.fate=matched;
-  if(photos&&photos.length) for(var i=0;i<photos.length;i++) item.photos.push(photos[i]);
   var fm={keep:'\u2705 **Keep** \u2014 going back home.',donate:'\uD83D\uDC99 **Donate** \u2014 someone will love this.',trash:'\uD83D\uDDD1 **Trash** \u2014 out it goes.',sell:'\uD83D\uDCB0 **Sell** \u2014 make some money!',unsure:'\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit it.'};
   state.conversationStage='AWAITING_ITEM_NOTES';
   addBotMessage(fm[matched]+'\n\nAny notes about this one? (condition, value, destination) \u2014 or say _"next"_ to move on.');
@@ -775,9 +754,10 @@ function exportJSON() {
   for(var i=0;i<state.boxes.length;i++){
     var box=state.boxes[i]; var items=[];
     for(var j=0;j<box.items.length;j++){
-      var it=box.items[j]; var photos=[];
-      for(var k=0;k<it.photos.length;k++) photos.push({name:it.photos[k].name});
-      items.push(Object.assign({},it,{photos:photos}));
+      var it=box.items[j];
+      var exported = Object.assign({},it);
+      delete exported.photos;
+      items.push(exported);
     }
     data.boxes.push(Object.assign({},box,{items:items}));
   }
@@ -785,32 +765,7 @@ function exportJSON() {
   dlBlob(blob,'sortie-inventory.json');
 }
 
-async function exportZip() {
-  var zip=new JSZip();
-  var data={exportedAt:new Date().toISOString(),boxes:[]};
-  for(var i=0;i<state.boxes.length;i++){
-    var box=state.boxes[i]; var items=[];
-    for(var j=0;j<box.items.length;j++){
-      var it=box.items[j]; var photos=[];
-      for(var k=0;k<it.photos.length;k++) photos.push({name:it.photos[k].name});
-      items.push(Object.assign({},it,{photos:photos}));
-    }
-    data.boxes.push(Object.assign({},box,{items:items}));
-  }
-  zip.file('inventory.json',JSON.stringify(data,null,2));
-  for(var i=0;i<state.boxes.length;i++){
-    var box=state.boxes[i];
-    for(var j=0;j<box.items.length;j++){
-      var it=box.items[j];
-      for(var k=0;k<it.photos.length;k++){
-        var p=it.photos[k];
-        if(p.dataUrl){var b64=p.dataUrl.split(',')[1];var ext=p.name.split('.').pop()||'jpg';zip.file('photos/'+box.name+'/'+it.name+'_'+(k+1)+'.'+ext,b64,{base64:true});}
-      }
-    }
-  }
-  var content=await zip.generateAsync({type:'blob'});
-  dlBlob(content,'sortie-export.zip');
-}
+
 
 function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);}
 
@@ -818,12 +773,11 @@ function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('sortie_state');
   state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,conversationStage:'WELCOME',conversationHistory:[]};
-  pendingPhotos=[];
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
   renderSidebar(); updateContextBar();
   setTimeout(function(){
-    addBotMessage('Hello! I\'m **Sortie**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. You can attach photos, add notes, and export everything when you\'re done.\n\nReady to start? Tell me what to call your first box.');
+    addBotMessage('Hello! I\'m **Sortie**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. Add notes and export your inventory when you\'re done.\n\nReady to start? Tell me what to call your first box.');
     state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
   },100);
 }
@@ -836,7 +790,7 @@ loadState(); renderSidebar(); updateContextBar();
 
 if(state.boxes.length===0){
   setTimeout(function(){
-    addBotMessage('Hello! I\'m **Sortie**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. You can attach photos, add notes, and export everything when you\'re done.\n\nReady to start? Tell me what to call your first box.');
+    addBotMessage('Hello! I\'m **Sortie**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. Add notes and export your inventory when you\'re done.\n\nReady to start? Tell me what to call your first box.');
     state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
   },200);
 } else {
@@ -1172,15 +1126,7 @@ function showItemDetail(group, groupIndex) {
   lines.push('**' + (group.count > 1 ? group.count + ' × ' : '') + group.name + '**');
   lines.push('Fate: ' + group.fate);
   if (group.notes) lines.push('Notes: ' + group.notes);
-  // Count photos across all items in the group
-  var photosCount = 0;
-  if (box) {
-    box.items.forEach(function(it){
-      if (it.name === group.name && it.fate === group.fate) photosCount += (it.photos||[]).length;
-    });
-  }
-  if (photosCount > 0) lines.push(photosCount + ' photo(s) attached');
-  else lines.push('No photos attached');
+
   state.conversationStage = 'AWAITING_ITEM_VIEW';
   state.activeItemViewGroup = groupIndex;
   addBotMessage(lines.join('\n'));

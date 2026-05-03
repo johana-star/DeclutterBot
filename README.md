@@ -109,18 +109,11 @@ Sortie will detect the quantity, ask you to confirm, then log each as a separate
 
 ---
 
-## Photos
-
-Tap the camera icon before describing an item to attach photos. Photos are embedded in the export ZIP, organised by box and item name.
-
----
-
 ## Exporting Your Data
 
 | Button | Output |
 |--------|--------|
 | **Export JSON** | Structured inventory — all boxes, items, fates, and notes |
-| **Export ZIP** | JSON + a `photos/` folder with all attached images |
 
 ---
 

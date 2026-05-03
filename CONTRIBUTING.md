@@ -236,12 +236,8 @@ All files exit with code `0` on success and `1` on any failure.
 - Move any box by name (not just the active box)
 - Rename app from "Sortie" to "DeclutterBot" — update title tag, header logo, and any hardcoded references in app.js and README.md
 - `uid()` generates a random 7-char base-36 string (~78 billion possibilities) but does not verify uniqueness against existing IDs. A collision would silently corrupt parentId/activeBoxId foreign key relationships. Fix: collect all in-use IDs at generation time and retry on collision. Add a test that generates a large number of IDs and asserts no duplicates.
-- ZIP export does not include item photos — photos are stored as base64 dataUrls on items but not written into the ZIP's photos/ folder correctly; needs investigation and fix, with tests
-- Boxes should support attached photos (currently only items have photos)
-  - Add photo attachment UI at the box level (same camera button flow as items)
-  - Store photos array on the box object
-  - Include box photos in ZIP export under photos/<box name>/box/
-  - Display box photos in the sidebar card or on box selection
+- Photo support (currently deactivated) — camera button, ZIP export, and item photo display were removed due to reliability issues with base64 dataUrl persistence in localStorage. To re-enable: restore pendingPhotos flow in sendUserMessage, restore handlePhotoUpload, restore photo-btn and photo-input in index.html, restore exportZip, restore photo count in showItemDetail, restore photos array in exportJSON
+- Box photos (blocked on photo support reactivation above)
 - Nested boxes ✅ implemented — nest command, parentId data model, sidebar indent/caret, delete guard, dump with child re-parenting
   - TODO: reflect nested structure in JSON export (currently exports flat)
 - Location-as-box: treat a location as a named container so you can say "bedroom > Mac mini > screenshots" and have the hierarchy reflected as nested boxes (depends on: nested boxes feature)

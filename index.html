@@ -282,20 +282,7 @@
   }
   .send-btn:hover { background: var(--rust-light); }
   .send-btn svg { width: 18px; height: 18px; }
-  .photo-btn {
-    width: 44px; height: 44px;
-    background: transparent;
-    border: 1.5px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--brown-mid);
-    flex-shrink: 0;
-    transition: all 0.15s;
-  }
-  .photo-btn:hover { border-color: var(--brown-mid); color: var(--brown); }
-  .photo-btn svg { width: 18px; height: 18px; }
-  #photo-input { display: none; }
+
 
   .typing-indicator {
     display: none;
@@ -316,13 +303,7 @@
     40%          { transform: scale(1.2); opacity: 1; }
   }
 
-  .chat-photo {
-    max-width: 200px; max-height: 160px;
-    border-radius: 4px; margin-top: 8px;
-    object-fit: cover;
-    border: 1px solid var(--border);
-    display: block;
-  }
+
 
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -361,7 +342,6 @@
   <div class="logo">Sortie <span>&#8212; declutter companion</span></div>
   <div class="actions">
     <button class="btn btn-outline" onclick="exportJSON()">&#8595; Export JSON</button>
-    <button class="btn btn-outline" onclick="exportZip()">&#8595; Export ZIP</button>
     <button class="btn btn-primary" onclick="clearAll()">Reset</button>
   </div>
 </header>
@@ -388,13 +368,6 @@
     </div>
     <div class="quick-replies" id="quick-replies"></div>
     <div class="chat-input-area">
-      <input type="file" id="photo-input" accept="image/*" multiple onchange="handlePhotoUpload(event)"/>
-      <button class="photo-btn" onclick="document.getElementById('photo-input').click()" title="Attach photo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-          <polyline points="21 15 16 10 5 21"/>
-        </svg>
-      </button>
       <textarea id="user-input" placeholder="Type here&#8230;" rows="1"
         onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
       <button class="send-btn" onclick="sendUserMessage()">
@@ -406,7 +379,6 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
