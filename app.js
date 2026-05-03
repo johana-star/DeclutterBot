@@ -9,16 +9,30 @@ var state = {
   pendingBatch: null,
   pendingBoxBatch: null,
   pendingDeleteBoxId: null,
+  pendingNest: null,
   conversationStage: 'WELCOME',
   conversationHistory: []
 };
 var FATES = ['keep','donate','trash','sell','unsure'];
 var pendingPhotos = [];
+var collapsedBoxIds = [];
+function toggleCollapse(id) {
+  var idx = collapsedBoxIds.indexOf(id);
+  if (idx === -1) collapsedBoxIds.push(id);
+  else collapsedBoxIds.splice(idx, 1);
+  renderSidebar();
+}
 
 function saveState() { localStorage.setItem('sortie_state', JSON.stringify(state)); }
 function loadState() {
   var raw = localStorage.getItem('sortie_state');
-  if (raw) { try { state = JSON.parse(raw); } catch(e) {} }
+  if (raw) { try {
+    state = JSON.parse(raw);
+    // Normalise parentId: undefined -> null for boxes saved before nesting was added
+    for (var i = 0; i < state.boxes.length; i++) {
+      if (state.boxes[i].parentId === undefined) state.boxes[i].parentId = null;
+    }
+  } catch(e) {} }
 }
 
 function uid() { return Math.random().toString(36).slice(2,9); }
@@ -46,25 +60,55 @@ function renderSidebar() {
     el.innerHTML = '<div class="empty-sidebar">No boxes yet.<br/>Start chatting to<br/>begin sorting.</div>';
     return;
   }
+  el.innerHTML = renderBoxTree(null, 0, collapsedBoxIds);
+}
+
+
+function renderBoxTree(boxId, depth, collapsedIds) {
   var html = '';
-  for (var i=0;i<state.boxes.length;i++) {
-    var box = state.boxes[i];
+  // Treat undefined parentId same as null — boxes created before parentId was added
+  var children = state.boxes.filter(function(b){
+    var pid = (b.parentId == null) ? null : b.parentId;
+    return pid === boxId;
+  });
+  for (var i = 0; i < children.length; i++) {
+    var box = children[i];
     var fates = countFates(box);
     var tags = '';
-    for (var j=0;j<FATES.length;j++) {
-      var f=FATES[j];
-      if (fates[f]>0) tags += '<span class="tag tag-'+f+'">'+f+' '+fates[f]+'</span>';
+    for (var j = 0; j < FATES.length; j++) {
+      var f = FATES[j];
+      if (fates[f] > 0) tags += '<span class="tag tag-' + f + '">' + f + ' ' + fates[f] + '</span>';
     }
     var total = box.items.length;
-    var ac = box.id===state.activeBoxId?' active':'';
-    html += '<div class="box-card'+ac+'" onclick="selectBox(\''+box.id+'\')">'
-      +'<div class="box-name">'+escHtml(box.name)+'</div>'
-      +'<div class="box-meta">'+escHtml(box.location||'location unknown')+' &middot; '+total+' item'+(total!==1?'s':'')+'</div>'
-      +(tags?'<div class="box-counts">'+tags+'</div>':'')
-      +'</div>';
+    var kidBoxes = state.boxes.filter(function(b){ return b.parentId === box.id; });
+    var hasKids = kidBoxes.length > 0;
+    var isCollapsed = collapsedIds && collapsedIds.indexOf(box.id) !== -1;
+    var ac = box.id === state.activeBoxId ? ' active' : '';
+    var indent = depth * 16;
+    var caret = hasKids
+      ? '<button class="sidebar-caret" onclick="event.stopPropagation();toggleCollapse(\'' + box.id + '\')">'
+        + (isCollapsed ? '&#9654;' : '&#9660;') + '</button>'
+      : '<span class="sidebar-caret-spacer"></span>';
+    // Meta line: show own items + child box count if any
+    var metaParts = [];
+    if (total > 0) metaParts.push(total + ' item' + (total !== 1 ? 's' : ''));
+    if (hasKids) metaParts.push(kidBoxes.length + ' box' + (kidBoxes.length !== 1 ? 'es' : ''));
+    if (metaParts.length === 0) metaParts.push('empty');
+    var metaStr = escHtml(box.location || 'location unknown') + ' &middot; ' + metaParts.join(', ');
+    html += '<div class="box-card' + ac + '" style="margin-left:' + indent + 'px" onclick="selectBox(\'' + box.id + '\')">'
+      + '<div class="box-card-header">' + caret
+      + '<div class="box-card-body">'
+      + '<div class="box-name">' + escHtml(box.name) + '</div>'
+      + '<div class="box-meta">' + metaStr + '</div>'
+      + (tags ? '<div class="box-counts">' + tags + '</div>' : '')
+      + '</div></div></div>';
+    if (!isCollapsed) {
+      html += renderBoxTree(box.id, depth + 1, collapsedIds);
+    }
   }
-  el.innerHTML = html;
+  return html;
 }
+
 
 function selectBox(id) {
   state.activeBoxId = id;
@@ -185,7 +229,16 @@ function processInput(text, photos) {
   if (t==='review items'&&activeBox()) { reviewBox(); return; }
   if (t==='new box') { startNewBox(); return; }
   if (t==='done with this box'||t==='done'||t==='skip to next box') { doneWithBox(); return; }
-  if (t==='add item') { state.conversationStage='BOX_OPEN'; addBotMessage('What\'s the item?'); return; }
+  if (t==='add item') {
+    if (!activeBox()) {
+      addBotMessage('No active box \u2014 open a box first, or start a new one.');
+      setChips(['New box', 'Continue last box', 'Review all boxes']);
+    } else {
+      state.conversationStage='BOX_OPEN';
+      addBotMessage('What\'s the item?');
+    }
+    return;
+  }
   if (t==='start sorting'||t==='start new box') { return; } // chips handled by init, ignore if replayed
   if (t==='continue last box') {
     if (state.activeBoxId && activeBox()) { selectBox(state.activeBoxId); }
@@ -194,6 +247,7 @@ function processInput(text, photos) {
     return;
   }
   if (t==='delete box') { handleDeleteBox(); return; }
+  if (t==='nest box' || t==='put inside') { handleNest(text); return; }
   if (t==='dump into...') { handleDump('dump'); return; }
   if (t==='done for now') { handleFinished('done'); return; }
   if (t==='review all boxes') { handleFinished('review all'); return; }
@@ -214,6 +268,16 @@ function processInput(text, photos) {
                   : '';
     handleRemove(removeArg); return;
   }
+
+  // Nest command: "nest", "put <box> inside <box>", "put inside"
+  if (t === 'nest' || t === 'put inside' || t === 'nest box') { handleNest(text); return; }
+  // "put X inside/in/on Y" or "nest X inside/in/on Y" — require a preposition
+  if ((t.startsWith('put ') || t.startsWith('nest ')) &&
+      (t.indexOf(' inside ') !== -1 || t.indexOf(' in ') !== -1 || t.indexOf(' on ') !== -1)) {
+    handleNest(text); return;
+  }
+  if (state.conversationStage === 'AWAITING_NEST_CHILD') { handleNestChild(text); return; }
+  if (state.conversationStage === 'AWAITING_NEST_PARENT') { handleNestParent(text); return; }
 
   // Move command: "move [location]" or "m [location]"
   if (t==='m'||t==='move'||t.startsWith('move ')||t.startsWith('m ')) {
@@ -240,6 +304,8 @@ function processInput(text, photos) {
     case 'AWAITING_ITEM_DESC':    handleItemDesc(text,photos); break;
     case 'AWAITING_FATE':         handleFate(text,photos); break;
     case 'AWAITING_ITEM_NOTES':   handleItemNotes(text); break;
+    case 'AWAITING_NEST_CHILD':    handleNestChild(text); break;
+    case 'AWAITING_NEST_PARENT':   handleNestParent(text); break;
     case 'FINISHED':              handleFinished(text); break;
     default: handleFreeform(text,photos);
   }
@@ -396,7 +462,7 @@ function handleBoxName(text) {
     setChips(['Yes, create ' + parsed.qty, 'No, just 1', 'Change quantity']);
     return;
   }
-  var box = {id:uid(),name:raw,location:'',notes:'',createdAt:new Date().toISOString(),items:[]};
+  var box = {id:uid(),name:raw,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
   state.boxes.push(box); state.activeBoxId=box.id;
   state.conversationStage='AWAITING_LOCATION';
   addBotMessage('Got it \u2014 **"'+raw+'"**.\n\nWhere is this box located? (e.g. "spare bedroom", "garage shelf 2", "storage unit A")');
@@ -409,7 +475,7 @@ function handleBoxBatchConfirm(text) {
 
   if (t.startsWith('no') || t.includes('just 1') || t === '1') {
     state.pendingBoxBatch = null;
-    var box = {id:uid(),name:batch.baseName,location:'',notes:'',createdAt:new Date().toISOString(),items:[]};
+    var box = {id:uid(),name:batch.baseName,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
     state.boxes.push(box); state.activeBoxId=box.id;
     state.conversationStage='AWAITING_LOCATION';
     addBotMessage('Just the one **"'+batch.baseName+'"** then.\n\nWhere is this box located?');
@@ -453,7 +519,7 @@ function handleBoxBatchLocation(text) {
     var name = batch.baseName + ' ' + LETTERS[i];
     var id = uid();
     if (i === 0) firstId = id;
-    state.boxes.push({id:id,name:name,location:location,notes:'',createdAt:now,items:[]});
+    state.boxes.push({id:id,name:name,location:location,notes:'',parentId:null,createdAt:now,items:[]});
   }
   state.activeBoxId = firstId;
   state.pendingBoxBatch = null;
@@ -677,6 +743,20 @@ function handleFinished(text) {
 }
 
 function handleFreeform(text, photos) {
+  var t = text.toLowerCase().trim();
+  var greetings = ['hi','hello','hey','help','?','list boxes','inventory','start'];
+  if (greetings.indexOf(t) !== -1 || !activeBox()) {
+    if (state.boxes.length === 0) {
+      addBotMessage('Hello! Ready to start sorting? Tell me what to call your first box.');
+      state.conversationStage = 'AWAITING_BOX_NAME';
+      setChips(['Start sorting']);
+    } else {
+      addBotMessage('Welcome back! You have **' + state.boxes.length + '** box(es). What would you like to do?');
+      state.conversationStage = 'FINISHED';
+      setChips(['New box', 'Continue last box', 'Review all boxes']);
+    }
+    return;
+  }
   addBotMessage('I\'m not sure what you mean \u2014 try: _"New box"_, _"Add item"_, _"Done with this box"_, or _"Review items"_.');
   setBoxOpenChips();
 }
@@ -728,7 +808,7 @@ function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createOb
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('sortie_state');
-  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,conversationStage:'WELCOME',conversationHistory:[]};
+  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,conversationStage:'WELCOME',conversationHistory:[]};
   pendingPhotos=[];
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
@@ -777,12 +857,19 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
 function setBoxOpenChips() {
   var box = activeBox();
   var extra = box && box.items.length > 0 ? 'Dump into...' : 'Delete box';
-  setChips(['Add item', 'Review items', 'Move box', extra, 'Done with this box']);
+  setChips(['Add item', 'Review items', 'Move box', 'Nest box', extra, 'Done with this box']);
 }
 
 function handleDeleteBox() {
   var box = activeBox();
   if (!box) { addBotMessage('No active box to delete. Open a box first.'); return; }
+  var kids = childBoxes(box.id);
+  if (kids.length > 0) {
+    var kidNames = kids.map(function(b){ return '"' + b.name + '"'; }).join(', ');
+    addBotMessage('**"' + box.name + '"** contains ' + kids.length + ' box(es): ' + kidNames + '. Move or delete those first.');
+    setBoxOpenChips();
+    return;
+  }
   if (box.items.length > 0) {
     addBotMessage('**"' + box.name + '"** still has ' + box.items.length + ' item(s). Empty the box first, or use _"dump into <box name>"_ to transfer all items to another box.');
     setChips(['Review items', 'Dump into...', 'Done with this box']); // box has items
@@ -825,10 +912,7 @@ function handleDeleteBoxConfirm(text) {
 }
 
 function dumpChipLabel(source, target) {
-  // Same location → just box name; different location → "location · box name"
-  var srcLoc = (source.location || '').toLowerCase().trim();
-  var tgtLoc = (target.location || '').toLowerCase().trim();
-  if (srcLoc && tgtLoc && srcLoc === tgtLoc) return target.name;
+  if (sameProximity(source.location, target.location)) return target.name;
   return target.location ? target.location + ' · ' + target.name : target.name;
 }
 
@@ -886,7 +970,7 @@ function handleDumpTarget(text) {
 
   // No match — create a new box with the typed name, then transfer
   if (!target) {
-    var newBox = { id: uid(), name: text.trim(), location: '', notes: '', createdAt: new Date().toISOString(), items: [] };
+    var newBox = { id: uid(), name: text.trim(), location: '', notes: '', parentId: null, createdAt: new Date().toISOString(), items: [] };
     state.boxes.push(newBox);
     target = newBox;
     // Transfer items to new box, then ask for its location
@@ -903,11 +987,175 @@ function handleDumpTarget(text) {
   var count = source.items.length;
   for (var i = 0; i < source.items.length; i++) { target.items.push(source.items[i]); }
   source.items = [];
+  // Re-parent direct children of source to target (preserving deeper ancestry)
+  var reparented = 0;
+  for (var i = 0; i < state.boxes.length; i++) {
+    if (state.boxes[i].parentId === source.id) {
+      state.boxes[i].parentId = target.id;
+      reparented++;
+    }
+  }
   state.conversationStage = 'BOX_OPEN';
-
-  addBotMessage('Dumped **' + count + '** item(s) from **"' + source.name + '"** into **"' + target.name + '"**. "' + source.name + '" is now empty.');
+  var msg = 'Dumped **' + count + '** item(s) from **"' + source.name + '"** into **"' + target.name + '"**.'
+    + (reparented ? ' Also moved ' + reparented + ' nested box(es).' : '')
+    + ' "' + source.name + '" is now empty.';
+  addBotMessage(msg);
   setChips(['Delete box', 'Add item', 'Done with this box']);
 }
+
+// ── NEST HELPERS ──────────────────────────────────────────────────────────────
+function getDescendantIds(boxId) {
+  // Return all descendant box IDs (children, grandchildren, etc.)
+  var result = [];
+  var queue = [boxId];
+  while (queue.length) {
+    var curr = queue.shift();
+    for (var i = 0; i < state.boxes.length; i++) {
+      if (state.boxes[i].parentId === curr) {
+        result.push(state.boxes[i].id);
+        queue.push(state.boxes[i].id);
+      }
+    }
+  }
+  return result;
+}
+
+function childBoxes(boxId) {
+  return state.boxes.filter(function(b){ return (b.parentId == null ? null : b.parentId) === boxId; });
+}
+
+function locSegments(loc) {
+  return (loc||'').toLowerCase().trim().split(/[\s,\-\/\|]+/).filter(Boolean);
+}
+function sameProximity(locA, locB) {
+  // True if either location is a prefix of the other by segment
+  var a = locSegments(locA), b = locSegments(locB);
+  if (!a.length || !b.length) return false;
+  var shorter = a.length <= b.length ? a : b;
+  var longer  = a.length <= b.length ? b : a;
+  for (var i = 0; i < shorter.length; i++) {
+    if (shorter[i] !== longer[i]) return false;
+  }
+  return true;
+}
+function nestChipLabel(source, candidate) {
+  // Same or proximate location → just name; different → location · name
+  if (sameProximity(source.location, candidate.location)) return candidate.name;
+  return candidate.location ? candidate.location + ' · ' + candidate.name : candidate.name;
+}
+
+function handleNest(text) {
+  var box = activeBox();
+
+  // Parse "put <child> inside/in/on <parent>" inline — works with or without active box
+  var t = text.toLowerCase().trim();
+  var insideIdx = t.indexOf(' inside ');
+  if (insideIdx === -1) insideIdx = t.indexOf(' in ');
+  if (insideIdx === -1) insideIdx = t.indexOf(' on ');
+  if (insideIdx !== -1 && (t.startsWith('put ') || t.startsWith('nest '))) {
+    var pfxLen = t.startsWith('put ') ? 4 : 5;
+    // find which preposition matched
+    var prep = ' inside ';
+    if (t.indexOf(' inside ') === -1) prep = t.indexOf(' in ') !== -1 ? ' in ' : ' on ';
+    var splitIdx = t.indexOf(prep);
+    var childName  = text.slice(pfxLen, splitIdx).trim();
+    var parentName = text.slice(splitIdx + prep.length).trim();
+    // Resolve child by name, fall back to active box
+    var child = null;
+    for (var i = 0; i < state.boxes.length; i++) {
+      if (state.boxes[i].name.toLowerCase() === childName.toLowerCase()) { child = state.boxes[i]; break; }
+    }
+    if (!child && childName) {
+      // partial match
+      for (var i = 0; i < state.boxes.length; i++) {
+        if (state.boxes[i].name.toLowerCase().indexOf(childName.toLowerCase()) !== -1) { child = state.boxes[i]; break; }
+      }
+    }
+    if (!child) child = box; // fall back to active box
+    if (!child) { addBotMessage('Could not find a box named **"' + childName + '"**.'); return; }
+    state.pendingNest = { childId: child.id };
+    handleNestParent(parentName);
+    return;
+  }
+
+  // Bare "nest" or "nest box" — needs an active box
+  if (!box) { addBotMessage('No active box. Open a box first, then use _"nest"_ to put it inside another.'); return; }
+
+  // "nest" or "nest box" — prompt for which child to nest (default active box)
+  state.pendingNest = { childId: box.id };
+  state.conversationStage = 'AWAITING_NEST_PARENT';
+  var others = state.boxes.filter(function(b){
+    return b.id !== box.id && getDescendantIds(box.id).indexOf(b.id) === -1;
+  });
+  if (others.length === 0) {
+    addBotMessage('No other boxes to nest **"' + box.name + '"** inside. Create one first.');
+    state.conversationStage = 'BOX_OPEN';
+    return;
+  }
+  var chips = others.map(function(b){ return nestChipLabel(box, b); });
+  addBotMessage('Put **"' + box.name + '"** inside which box?');
+  setChips(chips);
+}
+
+function handleNestChild(text) {
+  // Not currently reached via normal flow (nest always sets child first)
+  // Kept for future "put X inside Y" where X is asked first
+  state.conversationStage = 'AWAITING_NEST_PARENT';
+  handleNest('nest');
+}
+
+function handleNestParent(text) {
+  var nest = state.pendingNest;
+  if (!nest) { state.conversationStage = 'BOX_OPEN'; return; }
+
+  var t = text.toLowerCase().trim();
+  // Strip location prefix from chip labels
+  var namePart = t.indexOf(' · ') !== -1 ? t.slice(t.indexOf(' · ') + 3).trim() : t;
+
+  var parent = null;
+  // Search all boxes including the child itself so we can give a specific circular error
+  for (var i = 0; i < state.boxes.length; i++) {
+    var b = state.boxes[i];
+    if (b.name.toLowerCase() === t || b.name.toLowerCase() === namePart) { parent = b; break; }
+  }
+  if (!parent) {
+    for (var i = 0; i < state.boxes.length; i++) {
+      var b = state.boxes[i];
+      if (b.name.toLowerCase().indexOf(namePart) !== -1) { parent = b; break; }
+    }
+  }
+  if (!parent) {
+    addBotMessage('Could not find a box matching **"' + text + '"**. Try the full name.');
+    return;
+  }
+  // Prevent circular nesting
+  var descendants = getDescendantIds(nest.childId);
+  if (parent.id === nest.childId || descendants.indexOf(parent.id) !== -1) {
+    addBotMessage('Cannot nest a box inside itself or one of its children.');
+    return;
+  }
+
+  var child = null;
+  for (var i = 0; i < state.boxes.length; i++) {
+    if (state.boxes[i].id === nest.childId) { child = state.boxes[i]; break; }
+  }
+  if (!child) { state.pendingNest = null; state.conversationStage = 'BOX_OPEN'; return; }
+
+  child.parentId = parent.id;
+  state.pendingNest = null;
+  state.conversationStage = 'BOX_OPEN';
+  renderSidebar();
+  updateContextBar();
+  addBotMessage('**"' + child.name + '"** is now inside **"' + parent.name + '"**.');
+  setBoxOpenChips();
+}
+
+// ── UPDATED RENDERSIDEBAR (tree-aware) ────────────────────────────────────────
+// ── UPDATED DELETE GUARD ──────────────────────────────────────────────────────
+// (handleDeleteBox already exists — we patch it below via replace)
+
+// ── UPDATED DUMP WITH CHILDREN ────────────────────────────────────────────────
+// (handleDumpTarget patched below)
 
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
@@ -917,5 +1165,7 @@ if (typeof module !== 'undefined') {
     handleBoxName, handleBoxBatchConfirm, handleBoxBatchQty, handleBoxBatchLocation,
     singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox,
     handleDeleteBox, handleDeleteBoxConfirm, handleDump, handleDumpTarget,
-    groupItems, boxSummaryLine };
+    groupItems, boxSummaryLine,
+    handleNest, handleNestParent, getDescendantIds, childBoxes,
+    renderBoxTree, groupItems, sameProximity, locSegments };
 }

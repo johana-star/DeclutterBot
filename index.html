@@ -328,6 +328,17 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  .box-card-header { display: flex; align-items: flex-start; gap: 4px; }
+  .box-card-body { flex: 1; min-width: 0; }
+  .sidebar-caret {
+    background: none; border: none; cursor: pointer;
+    color: var(--brown-mid); font-size: 0.6rem;
+    padding: 2px 2px 0; line-height: 1; flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .sidebar-caret:hover { color: var(--rust); }
+  .sidebar-caret-spacer { display: inline-block; width: 14px; flex-shrink: 0; }
+
   .empty-sidebar {
     text-align: center;
     padding: 24px 16px;

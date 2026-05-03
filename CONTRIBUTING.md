@@ -154,6 +154,8 @@ All conversation flow is driven by `state.conversationStage`. Existing stages:
 | `AWAITING_BOX_BATCH_LOCATION` | Asked for shared location of a box batch |
 | `AWAITING_DELETE_BOX_CONFIRM` | Asked to confirm deletion of an empty box |
 | `AWAITING_DUMP_TARGET` | Asked which box to dump items into |
+| `AWAITING_NEST_CHILD` | Asked which box to nest (reserved for future two-step nest flow) |
+| `AWAITING_NEST_PARENT` | Asked which box to nest the active box inside |
 | `FINISHED` | No active box, session summary state |
 
 **When adding a new stage:** add a `case` to the `switch` in `processInput`, and if the feature can be invoked from any stage, also add an intercept above the switch.
@@ -220,6 +222,7 @@ All files exit with code `0` on success and `1` on any failure.
 | `test_remove.js` | Remove an item from a box (`remove`, `delete`) |
 | `test_box_batch.js` | Batch box creation with singularizer (`five wooden boxes`, `3 shelves`) |
 | `test_delete_dump.js` | Delete empty box; dump all items into another box |
+| `test_nest.js` | Nested boxes: nest command, circular prevention, delete guard, dump with children |
 
 ---
 
@@ -228,14 +231,8 @@ All files exit with code `0` on success and `1` on any failure.
 - Arrow up — recall previous user message (terminal-style history)
 - Context bar says "say hi to get started" but saying "hi" returns a freeform error — either make "hi" trigger the welcome flow when there is no active box, or update the context bar copy to give accurate guidance
 - Move any box by name (not just the active box)
-- Nested boxes (put a box inside another box)
-  - Data model: add `parentId: null` to each box; null = top level; unlimited depth via recursive relationships
-  - Nest command: `nest`, `put <box> inside <box>`, or `put inside` with chip selection; chips exclude the active box and its own descendants
-  - Sidebar: indent children under their parent; add a fold/unfold caret to any box that has children
-  - Delete guard: refuse `delete box` if the box has children; explain why
-  - Dump with children: dumping box A into box C moves box A's own items to box C and re-parents box A's direct children to box C; deeper descendants stay parented to their immediate parent (whole subtree moves intact)
-  - Export: nested structure should be reflected in the JSON output
-  - Tests required for: nest command, circular nesting prevention, delete guard, dump with children (flat items + child boxes), sidebar rendering logic, JSON export structure
+- Nested boxes ✅ implemented — nest command, parentId data model, sidebar indent/caret, delete guard, dump with child re-parenting
+  - TODO: reflect nested structure in JSON export (currently exports flat)
 - Location-as-box: treat a location as a named container so you can say "bedroom > Mac mini > screenshots" and have the hierarchy reflected as nested boxes (depends on: nested boxes feature)
   - A location string like "bedroom - Mac mini" should optionally be parsed as a path: bedroom (location) > Mac mini (parent box) > screenshots (this box)
   - Entering a sub-location that matches an existing box name should nest rather than duplicate
