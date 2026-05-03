@@ -156,6 +156,8 @@ All conversation flow is driven by `state.conversationStage`. Existing stages:
 | `AWAITING_DUMP_TARGET` | Asked which box to dump items into |
 | `AWAITING_NEST_CHILD` | Asked which box to nest (reserved for future two-step nest flow) |
 | `AWAITING_NEST_PARENT` | Asked which box to nest the active box inside |
+| `AWAITING_ITEM_VIEW` | Showing item detail, waiting for an action (change fate / edit notes / remove / back) |
+| `AWAITING_ITEM_VIEW_NOTES` | Waiting for new notes text for the viewed item |
 | `FINISHED` | No active box, session summary state |
 
 **When adding a new stage:** add a `case` to the `switch` in `processInput`, and if the feature can be invoked from any stage, also add an intercept above the switch.
@@ -212,7 +214,7 @@ node test_remove.js
 
 All files exit with code `0` on success and `1` on any failure.
 
-**When adding a new test file**, register it in `test.js` — there is a clearly marked list at the top of that file.
+**When adding a new test file**, name it `test_<feature>.js` — `test.js` auto-discovers all files matching that pattern. No registration required.
 
 ## Existing Tests
 
@@ -223,6 +225,7 @@ All files exit with code `0` on success and `1` on any failure.
 | `test_box_batch.js` | Batch box creation with singularizer (`five wooden boxes`, `3 shelves`) |
 | `test_delete_dump.js` | Delete empty box; dump all items into another box |
 | `test_nest.js` | Nested boxes: nest command, circular prevention, delete guard, dump with children |
+| `test_item_view.js` | Item detail view: number selection, actions, notes editing, photo count |
 
 ---
 
@@ -231,6 +234,14 @@ All files exit with code `0` on success and `1` on any failure.
 - Arrow up — recall previous user message (terminal-style history)
 - Context bar says "say hi to get started" but saying "hi" returns a freeform error — either make "hi" trigger the welcome flow when there is no active box, or update the context bar copy to give accurate guidance
 - Move any box by name (not just the active box)
+- Rename app from "Sortie" to "DeclutterBot" — update title tag, header logo, and any hardcoded references in app.js and README.md
+- `uid()` generates a random 7-char base-36 string (~78 billion possibilities) but does not verify uniqueness against existing IDs. A collision would silently corrupt parentId/activeBoxId foreign key relationships. Fix: collect all in-use IDs at generation time and retry on collision. Add a test that generates a large number of IDs and asserts no duplicates.
+- ZIP export does not include item photos — photos are stored as base64 dataUrls on items but not written into the ZIP's photos/ folder correctly; needs investigation and fix, with tests
+- Boxes should support attached photos (currently only items have photos)
+  - Add photo attachment UI at the box level (same camera button flow as items)
+  - Store photos array on the box object
+  - Include box photos in ZIP export under photos/<box name>/box/
+  - Display box photos in the sidebar card or on box selection
 - Nested boxes ✅ implemented — nest command, parentId data model, sidebar indent/caret, delete guard, dump with child re-parenting
   - TODO: reflect nested structure in JSON export (currently exports flat)
 - Location-as-box: treat a location as a named container so you can say "bedroom > Mac mini > screenshots" and have the hierarchy reflected as nested boxes (depends on: nested boxes feature)
@@ -256,7 +267,6 @@ When you make a code change, ask yourself:
 - [ ] Did I add a new global command (intercepted above the `switch`)? → Document it in the global command intercept section
 - [ ] Did I add a new chip label? → Also add it as a global intercept in `processInput`
 - [ ] Did I add a new single-character shorthand? → Document it in the input normalisation section
-- [ ] Did I add a new test file? → Add a row to the existing tests table and register it in the list at the top of `test.js`
 - [ ] Did I add tests to an existing file? → Inserted them **before** the summary block, not appended after `process.exit`
 - [ ] Did I move a function into or out of the DOM guard? → Update the DOM guard section
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
@@ -264,3 +274,9 @@ When you make a code change, ask yourself:
 - [ ] Did I complete a punchlist item? → Remove it from the punchlist
 - [ ] Did I change the app's conversation flow? → Update the Mermaid diagram in README.md and flowchart.html
 - [ ] Did I identify a new upcoming feature? → Add it to the punchlist
+
+### Automated tasks removed from the checklist
+
+The tasks below no longer need to be reviewed before commiting, as they are automatic.
+
+- Did I add a new test file? → `test.js` auto-discovers any file matching `test_*.js`, no registration needed

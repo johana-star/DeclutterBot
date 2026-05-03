@@ -1,20 +1,16 @@
 #!/usr/bin/env node
 // test.js — Sortie test runner
 // Run with: node test.js
+// Automatically discovers any file matching test_*.js in the same directory.
 
 var fs   = require('fs');
 var path = require('path');
 var dir  = __dirname;
 
-// ── Add new test files here when created ─────────────────────────────────────
-var testFiles = [
-  'test_move.js',
-  'test_remove.js',
-  'test_box_batch.js',
-  'test_delete_dump.js',
-  'test_nest.js',
-];
-// ─────────────────────────────────────────────────────────────────────────────
+// Auto-discover test files — no manual registration needed
+var testFiles = fs.readdirSync(dir)
+  .filter(function(f) { return /^test_.+\.js$/.test(f) && f !== 'test.js'; })
+  .sort();
 
 var totalPassed = 0;
 var totalFailed = 0;

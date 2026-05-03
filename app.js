@@ -10,6 +10,7 @@ var state = {
   pendingBoxBatch: null,
   pendingDeleteBoxId: null,
   pendingNest: null,
+  activeItemViewGroup: null,
   conversationStage: 'WELCOME',
   conversationHistory: []
 };
@@ -249,6 +250,7 @@ function processInput(text, photos) {
   if (t==='delete box') { handleDeleteBox(); return; }
   if (t==='nest box' || t==='put inside') { handleNest(text); return; }
   if (t==='dump into...') { handleDump('dump'); return; }
+  if (t==='back to list') { handleItemViewAction('back to list'); return; }
   if (t==='done for now') { handleFinished('done'); return; }
   if (t==='review all boxes') { handleFinished('review all'); return; }
 
@@ -296,7 +298,12 @@ function processInput(text, photos) {
     case 'AWAITING_BOX_BATCH_QTY':     handleBoxBatchQty(text); break;
     case 'AWAITING_BOX_BATCH_LOCATION': handleBoxBatchLocation(text); break;
     case 'AWAITING_LOCATION':           handleLocation(text); break;
-    case 'BOX_OPEN':              handleItemName(text,photos); break;
+    case 'BOX_OPEN':
+      // If input is a plain number and we just reviewed, show item detail
+      if (/^\d+$/.test(text.trim()) && activeBox()) {
+        handleItemViewByNumber(parseInt(text.trim(), 10)); break;
+      }
+      handleItemName(text,photos); break;
     case 'AWAITING_ITEM_NAME':    handleItemName(text,photos); break;
     case 'AWAITING_BATCH_CONFIRM':handleBatchConfirm(text,photos); break;
     case 'AWAITING_BATCH_QTY':    handleBatchQty(text); break;
@@ -304,6 +311,8 @@ function processInput(text, photos) {
     case 'AWAITING_ITEM_DESC':    handleItemDesc(text,photos); break;
     case 'AWAITING_FATE':         handleFate(text,photos); break;
     case 'AWAITING_ITEM_NOTES':   handleItemNotes(text); break;
+    case 'AWAITING_ITEM_VIEW':      handleItemViewAction(text); break;
+    case 'AWAITING_ITEM_VIEW_NOTES': handleItemViewNotes(text); break;
     case 'AWAITING_NEST_CHILD':    handleNestChild(text); break;
     case 'AWAITING_NEST_PARENT':   handleNestParent(text); break;
     case 'FINISHED':              handleFinished(text); break;
@@ -808,7 +817,7 @@ function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createOb
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('sortie_state');
-  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,conversationStage:'WELCOME',conversationHistory:[]};
+  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,conversationStage:'WELCOME',conversationHistory:[]};
   pendingPhotos=[];
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
@@ -1157,6 +1166,114 @@ function handleNestParent(text) {
 // ── UPDATED DUMP WITH CHILDREN ────────────────────────────────────────────────
 // (handleDumpTarget patched below)
 
+function showItemDetail(group, groupIndex) {
+  var box = activeBox();
+  var lines = [];
+  lines.push('**' + (group.count > 1 ? group.count + ' × ' : '') + group.name + '**');
+  lines.push('Fate: ' + group.fate);
+  if (group.notes) lines.push('Notes: ' + group.notes);
+  // Count photos across all items in the group
+  var photosCount = 0;
+  if (box) {
+    box.items.forEach(function(it){
+      if (it.name === group.name && it.fate === group.fate) photosCount += (it.photos||[]).length;
+    });
+  }
+  if (photosCount > 0) lines.push(photosCount + ' photo(s) attached');
+  else lines.push('No photos attached');
+  state.conversationStage = 'AWAITING_ITEM_VIEW';
+  state.activeItemViewGroup = groupIndex;
+  addBotMessage(lines.join('\n'));
+  setChips(['Change fate', 'Edit notes', 'Remove', 'Back to list']);
+}
+
+function handleItemViewByNumber(num) {
+  var box = activeBox();
+  if (!box) return;
+  var groups = groupItems(box.items);
+  if (num < 1 || num > groups.length) {
+    // Not a valid item number — treat as item name instead
+    handleItemName(String(num), []);
+    return;
+  }
+  showItemDetail(groups[num - 1], num - 1);
+}
+
+function handleItemViewAction(text) {
+  var box = activeBox();
+  var t = text.toLowerCase().trim();
+  var groups = box ? groupItems(box.items) : [];
+  var groupIdx = state.activeItemViewGroup || 0;
+  var group = groups[groupIdx];
+
+  if (t === 'back to list' || t === 'back') {
+    state.conversationStage = 'BOX_OPEN';
+    state.activeItemViewGroup = null;
+    reviewBox();
+    return;
+  }
+  if (t === 'remove') {
+    state.conversationStage = 'BOX_OPEN';
+    state.activeItemViewGroup = null;
+    handleRemove(String(groupIdx + 1));
+    return;
+  }
+  if (t === 'change fate') {
+    if (!group) { state.conversationStage = 'BOX_OPEN'; return; }
+    // Find first item in this group and set it as active
+    for (var i = 0; i < box.items.length; i++) {
+      if (box.items[i].name === group.name && box.items[i].fate === group.fate) {
+        state.activeItemId = box.items[i].id;
+        break;
+      }
+    }
+    state.conversationStage = 'AWAITING_FATE';
+    state.activeItemViewGroup = null;
+    addBotMessage('What should we do with **' + group.name + '**?');
+    setChips(['Keep', 'Donate', 'Trash', 'Sell', 'Unsure']);
+    return;
+  }
+  if (t === 'edit notes') {
+    if (!group) { state.conversationStage = 'BOX_OPEN'; return; }
+    state.conversationStage = 'AWAITING_ITEM_VIEW_NOTES';
+    addBotMessage('Current notes: ' + (group.notes || '_none_') + '\n\nEnter new notes for **' + group.name + '**:');
+    setChips(['Clear notes', 'Cancel']);
+    return;
+  }
+  // Fallback
+  state.conversationStage = 'BOX_OPEN';
+  state.activeItemViewGroup = null;
+  reviewBox();
+}
+
+function handleItemViewNotes(text) {
+  var box = activeBox();
+  var t = text.toLowerCase().trim();
+  var groups = box ? groupItems(box.items) : [];
+  var groupIdx = state.activeItemViewGroup || 0;
+  var group = groups[groupIdx];
+
+  if (t === 'cancel') {
+    state.conversationStage = 'AWAITING_ITEM_VIEW';
+    showItemDetail(group, groupIdx);
+    return;
+  }
+  if (group && box) {
+    var newNotes = t === 'clear notes' ? '' : text.trim();
+    box.items.forEach(function(it){
+      if (it.name === group.name && it.fate === group.fate) it.notes = newNotes;
+    });
+    addBotMessage('Notes ' + (newNotes ? 'updated to: "' + newNotes + '"' : 'cleared') + '.');
+    // Refresh group and show updated detail
+    var newGroups = groupItems(box.items);
+    state.conversationStage = 'AWAITING_ITEM_VIEW';
+    showItemDetail(newGroups[groupIdx] || newGroups[0], groupIdx);
+  } else {
+    state.conversationStage = 'BOX_OPEN';
+    state.activeItemViewGroup = null;
+  }
+}
+
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
   module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, countFates,
@@ -1167,5 +1284,6 @@ if (typeof module !== 'undefined') {
     handleDeleteBox, handleDeleteBoxConfirm, handleDump, handleDumpTarget,
     groupItems, boxSummaryLine,
     handleNest, handleNestParent, getDescendantIds, childBoxes,
-    renderBoxTree, groupItems, sameProximity, locSegments };
+    renderBoxTree, groupItems, sameProximity, locSegments,
+    handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail };
 }
