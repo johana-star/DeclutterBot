@@ -8,6 +8,7 @@ var state = {
   activeItemId: null,
   pendingBatch: null,
   pendingBoxBatch: null,
+  pendingDeleteBoxId: null,
   conversationStage: 'WELCOME',
   conversationHistory: []
 };
@@ -72,7 +73,7 @@ function selectBox(id) {
   saveState(); renderSidebar(); updateContextBar();
   var box = activeBox();
   addBotMessage('Switched to **'+box.name+'**. It has '+box.items.length+' item(s) logged.\n\nWhat would you like to do? Add a new item, review what\'s inside, or move on to another box?');
-  setChips(['Add item','Review items','Move box','New box','Done with this box']);
+  setBoxOpenChips();
 }
 
 function updateContextBar() {
@@ -191,8 +192,19 @@ function processInput(text, photos) {
     else { startNewBox(); }
     return;
   }
+  if (t==='delete box') { handleDeleteBox(); return; }
+  if (t==='dump into...') { handleDump('dump'); return; }
   if (t==='done for now') { handleFinished('done'); return; }
   if (t==='review all boxes') { handleFinished('review all'); return; }
+
+  // Delete box command: "delete box" or "delete this box"
+  if (t === 'delete box' || t === 'delete this box') { handleDeleteBox(); return; }
+  // Confirm delete box
+  if (state.conversationStage === 'AWAITING_DELETE_BOX_CONFIRM') { handleDeleteBoxConfirm(text); return; }
+
+  // Dump command: "dump into <box name>" or "dump"
+  if (t === 'dump' || t.startsWith('dump into ') || t.startsWith('dump ')) { handleDump(text); return; }
+  if (state.conversationStage === 'AWAITING_DUMP_TARGET') { handleDumpTarget(text); return; }
 
   // Remove command: "remove <name or number>" or "delete <name or number>"
   if (t === 'remove' || t === 'delete' || t.startsWith('remove ') || t.startsWith('delete ')) {
@@ -534,7 +546,7 @@ function handleBatchFate(text, photos) {
   var fm={keep:'\u2705 **Keep** \u2014 all going back home.',donate:'\uD83D\uDC99 **Donate** \u2014 great!',trash:'\uD83D\uDDD1 **Trash** \u2014 out they go.',sell:'\uD83D\uDCB0 **Sell** \u2014 nice haul!',unsure:'\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit.'};
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   addBotMessage(fm[matched]+'\n\n**'+box.items.length+'** item(s) logged in "'+box.name+'". What\'s next?');
-  setChips(['Add item','Review items','Move box','Done with this box']);
+  setBoxOpenChips();
 }
 
 function handleItemDesc(text, photos) {
@@ -565,7 +577,7 @@ function handleItemNotes(text) {
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   var box=activeBox();
   addBotMessage('Got it. **'+box.items.length+'** item(s) logged in "'+box.name+'".\n\nWhat\'s the next item?');
-  setChips(['Add item','Review items','Move box','Done with this box']);
+  setBoxOpenChips();
 }
 
 function doneWithBox() {
@@ -613,7 +625,7 @@ function handleFinished(text) {
 
 function handleFreeform(text, photos) {
   addBotMessage('I\'m not sure what you mean \u2014 try: _"New box"_, _"Add item"_, _"Done with this box"_, or _"Review items"_.');
-  setChips(['Add item','Review items','Move box','New box','Done with this box']);
+  setBoxOpenChips();
 }
 
 function exportJSON() {
@@ -663,7 +675,7 @@ function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createOb
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('sortie_state');
-  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,conversationStage:'WELCOME',conversationHistory:[]};
+  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,conversationStage:'WELCOME',conversationHistory:[]};
   pendingPhotos=[];
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
@@ -709,11 +721,147 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
 }
 
 
+function setBoxOpenChips() {
+  var box = activeBox();
+  var extra = box && box.items.length > 0 ? 'Dump into...' : 'Delete box';
+  setChips(['Add item', 'Review items', 'Move box', extra, 'Done with this box']);
+}
+
+function handleDeleteBox() {
+  var box = activeBox();
+  if (!box) { addBotMessage('No active box to delete. Open a box first.'); return; }
+  if (box.items.length > 0) {
+    addBotMessage('**"' + box.name + '"** still has ' + box.items.length + ' item(s). Empty the box first, or use _"dump into <box name>"_ to transfer all items to another box.');
+    setChips(['Review items', 'Dump into...', 'Done with this box']); // box has items
+    return;
+  }
+  var prev = state.conversationStage;
+  state.conversationStage = 'AWAITING_DELETE_BOX_CONFIRM';
+  state.pendingDeleteBoxId = box.id;
+  addBotMessage('Delete **"' + box.name + '"**? It is empty. This cannot be undone.');
+  setChips(['Yes, delete it', 'No, keep it']);
+}
+
+function handleDeleteBoxConfirm(text) {
+  var t = text.toLowerCase().trim();
+  var boxId = state.pendingDeleteBoxId;
+  state.pendingDeleteBoxId = null;
+  state.conversationStage = 'FINISHED';
+
+  if (t === 'no' || t === 'no, keep it' || t.startsWith('no')) {
+    addBotMessage('Kept. What would you like to do?');
+    state.conversationStage = 'BOX_OPEN';
+    setChips(['Add item', 'Review items', 'Move box', 'Done with this box']);
+    return;
+  }
+
+  var idx = -1;
+  for (var i = 0; i < state.boxes.length; i++) {
+    if (state.boxes[i].id === boxId) { idx = i; break; }
+  }
+  if (idx === -1) { addBotMessage('Could not find that box.'); return; }
+
+  var name = state.boxes[idx].name;
+  state.boxes.splice(idx, 1);
+  if (state.activeBoxId === boxId) {
+    state.activeBoxId = null;
+    state.activeItemId = null;
+  }
+  addBotMessage('Deleted **"' + name + '"**. ' + state.boxes.length + ' box(es) remaining.');
+  setChips(['New box', 'Review all boxes', 'Done for now']);
+}
+
+function dumpChipLabel(source, target) {
+  // Same location → just box name; different location → "location · box name"
+  var srcLoc = (source.location || '').toLowerCase().trim();
+  var tgtLoc = (target.location || '').toLowerCase().trim();
+  if (srcLoc && tgtLoc && srcLoc === tgtLoc) return target.name;
+  return target.location ? target.location + ' · ' + target.name : target.name;
+}
+
+function handleDump(text) {
+  var box = activeBox();
+  if (!box) { addBotMessage('No active box to dump. Open a box first.'); return; }
+  if (box.items.length === 0) { addBotMessage('"' + box.name + '" is already empty — nothing to dump.'); return; }
+
+  // Parse target from "dump into <name>" or "dump <name>"
+  var t = text.toLowerCase().trim();
+  var targetName = '';
+  if (t.startsWith('dump into ')) targetName = text.slice(10).trim();
+  else if (t.startsWith('dump ') && t !== 'dump') targetName = text.slice(5).trim();
+
+  if (targetName) {
+    handleDumpTarget(targetName);
+  } else {
+    state.conversationStage = 'AWAITING_DUMP_TARGET';
+    var others = state.boxes.filter(function(b){ return b.id !== box.id; });
+    if (others.length === 0) {
+      addBotMessage('There are no other boxes to dump into. You can type a new box name and I\'ll create it.');
+      state.conversationStage = 'AWAITING_DUMP_TARGET';
+      return;
+    }
+    var chips = others.map(function(b){ return dumpChipLabel(box, b); });
+    addBotMessage('Dump all ' + box.items.length + ' item(s) from **"' + box.name + '"** into which box? Type a new name to create one.');
+    setChips(chips);
+  }
+}
+
+function handleDumpTarget(text) {
+  var source = activeBox();
+  if (!source) { state.conversationStage = 'BOX_OPEN'; return; }
+
+  // Strip location prefix from chip labels: "dining room · top shelf" -> try "top shelf" too
+  var t = text.toLowerCase().trim();
+  var chipBoxName = t.indexOf(' · ') !== -1 ? t.slice(t.indexOf(' · ') + 3).trim() : t;
+
+  // Find target: exact name match first, then exact on stripped chip name,
+  // then partial on box name only (not location, to avoid the location-segment bug)
+  var target = null;
+  for (var i = 0; i < state.boxes.length; i++) {
+    var b = state.boxes[i];
+    if (b.id === source.id) continue;
+    if (b.name.toLowerCase() === t || b.name.toLowerCase() === chipBoxName) { target = b; break; }
+  }
+  if (!target) {
+    for (var i = 0; i < state.boxes.length; i++) {
+      var b = state.boxes[i];
+      if (b.id === source.id) continue;
+      // Partial match on box name only — NOT location
+      if (b.name.toLowerCase().indexOf(chipBoxName) !== -1) { target = b; break; }
+    }
+  }
+
+  // No match — create a new box with the typed name, then transfer
+  if (!target) {
+    var newBox = { id: uid(), name: text.trim(), location: '', notes: '', createdAt: new Date().toISOString(), items: [] };
+    state.boxes.push(newBox);
+    target = newBox;
+    // Transfer items to new box, then ask for its location
+    var count = source.items.length;
+    for (var i = 0; i < source.items.length; i++) { target.items.push(source.items[i]); }
+    source.items = [];
+    // Set new box as active and ask for location
+    state.activeBoxId = target.id;
+    state.conversationStage = 'AWAITING_LOCATION';
+    addBotMessage('Created **"' + target.name + '"** and dumped **' + count + '** item(s) into it. "' + source.name + '" is now empty.\n\nWhere is **"' + target.name + '"** located?');
+    return;
+  }
+
+  var count = source.items.length;
+  for (var i = 0; i < source.items.length; i++) { target.items.push(source.items[i]); }
+  source.items = [];
+  state.conversationStage = 'BOX_OPEN';
+
+  addBotMessage('Dumped **' + count + '** item(s) from **"' + source.name + '"** into **"' + target.name + '"**. "' + source.name + '" is now empty.');
+  setChips(['Delete box', 'Add item', 'Done with this box']);
+}
+
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
   module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, countFates,
     processInput, handleMove, handleRemove, handleBatchConfirm, handleBatchQty,
     commitBatch, handleFate, handleItemNotes, handleItemName,
     handleBoxName, handleBoxBatchConfirm, handleBoxBatchQty, handleBoxBatchLocation,
-    singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox };
+    singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox,
+    handleDeleteBox, handleDeleteBoxConfirm, handleDump, handleDumpTarget };
 }

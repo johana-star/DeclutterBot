@@ -140,6 +140,8 @@ All conversation flow is driven by `state.conversationStage`. Existing stages:
 | `AWAITING_BOX_BATCH_CONFIRM` | Asked to confirm N lettered boxes |
 | `AWAITING_BOX_BATCH_QTY` | Asked to correct the box batch quantity |
 | `AWAITING_BOX_BATCH_LOCATION` | Asked for shared location of a box batch |
+| `AWAITING_DELETE_BOX_CONFIRM` | Asked to confirm deletion of an empty box |
+| `AWAITING_DUMP_TARGET` | Asked which box to dump items into |
 | `FINISHED` | No active box, session summary state |
 
 **When adding a new stage:** add a `case` to the `switch` in `processInput`, and if the feature can be invoked from any stage, also add an intercept above the switch.
@@ -205,6 +207,7 @@ All files exit with code `0` on success and `1` on any failure.
 | `test_move.js` | Move box to a new location (`move`, `m`) |
 | `test_remove.js` | Remove an item from a box (`remove`, `delete`) |
 | `test_box_batch.js` | Batch box creation with singularizer (`five wooden boxes`, `3 shelves`) |
+| `test_delete_dump.js` | Delete empty box; dump all items into another box |
 
 ---
 
