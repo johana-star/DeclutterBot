@@ -247,6 +247,7 @@ All files exit with code `0` on success and `1` on any failure.
 | `tests/test_item_view.js` | Item detail view: number selection, actions, notes editing, photo count |
 | `tests/test_history.js` | Arrow up/down input history; sidebar click history |
 | `tests/test_import.js` | Import JSON: valid import, validation, normalisation, confirm/cancel |
+| `tests/test_help.js` | Help command: hi/hello/hey/help/? from any stage, context-aware chips |
 
 ---
 
@@ -261,9 +262,10 @@ All files exit with code `0` on success and `1` on any failure.
   - Items within a merged box should be deduplicated by name+fate where possible
 - Import JSON ✅ implemented — file input in header, validates structure, normalises legacy fields, confirms before overwrite, re-renders with summary
 - DRY common bot responses into a response dictionary — bot messages like fate confirmations, error strings, and stage transitions are currently hardcoded inline throughout the handlers. Extract them into a single `RESPONSES` object at the top of app.js so wording can be changed in one place. Needs tests to verify response keys exist and return strings.
+- Single letter command shortcuts — audit all commands and define a consistent set of single-letter shorthands. Currently: `y`/`n`, `m` (move), `h` (help). Candidates: `d` (done with this box), `r` (review items), `n` (new box — conflicts with no), `a` (add item). Each shorthand must be added to the global intercept block in `processInput` and documented in README.md commands table. Requires tests confirming shortcuts are not logged as item names.
 - Compound command history — multi-step exchanges (e.g. `move` then `bedroom`) should be stored as a single history entry (`move bedroom`) rather than two separate ones. Approach: when a command triggers an `AWAITING_*` stage, save the command as a pending prefix; when the next message is sent in that stage, combine prefix + answer into one history entry instead of storing them separately. Stages to consider: `AWAITING_MOVE_LOCATION`, `AWAITING_DUMP_TARGET`, `AWAITING_NEST_PARENT`, `AWAITING_BOX_NAME`, `AWAITING_LOCATION`, `AWAITING_BATCH_CONFIRM`, `AWAITING_DELETE_BOX_CONFIRM`
 - Arrow up/down ✅ implemented — cycles through sent message history; arrow down returns to draft
-- Context bar says "say hi to get started" but saying "hi" returns a freeform error — either make "hi" trigger the welcome flow when there is no active box, or update the context bar copy to give accurate guidance
+- Context bar + help command ✅ implemented — hi/hello/hey/help/? all trigger contextual help; context bar now reads "type \"help\" or \"?\" for commands"
 - Move any box by name (not just the active box)
 - Rename to DeclutterBot ✅ completed
 - `uid()` generates a random 7-char base-36 string (~78 billion possibilities) but does not verify uniqueness against existing IDs. A collision would silently corrupt parentId/activeBoxId foreign key relationships. Fix: collect all in-use IDs at generation time and retry on collision. Add a test that generates a large number of IDs and asserts no duplicates.

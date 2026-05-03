@@ -143,7 +143,9 @@ function updateContextBar() {
       : 'Active box: '+box.name+'  \u00b7  '+box.items.length+' items';
   } else {
     dot.style.background = '#c4a882';
-    label.textContent = 'No active box \u2014 say hi to get started';
+    label.textContent = state.boxes.length === 0
+      ? 'No active box \u2014 say hi to get started'
+      : 'No active box \u2014 type "help" or "?" for commands';
   }
 }
 
@@ -266,6 +268,7 @@ function processInput(text, photos) {
   if (t==='y') { t='yes'; text='yes'; }
   if (t==='n') { t='no';  text='no';  }
   if (t==='reset'||t==='start over') { clearAll(); return; }
+  if (t==='hi'||t==='hello'||t==='hey'||t==='help'||t==='h'||t==='?') { handleHelp(); return; }
   if (t==='review items'&&activeBox()) { reviewBox(); return; }
   if (t==='new box') { startNewBox(); return; }
   if (t==='done with this box'||t==='done'||t==='skip to next box') { doneWithBox(); return; }
@@ -792,6 +795,36 @@ function handleFinished(text) {
     }
     addBotMessage('**All boxes:**\n'+lines.trim()); setChips(['New box','Done for now']);
   } else { handleFreeform(text,[]); }
+}
+
+function handleHelp() {
+  if (state.boxes.length === 0) {
+    addBotMessage('Hello! I\'m **DeclutterBot**, your sorting companion.\n\nTell me what to call your first box to get started.');
+    state.conversationStage = 'AWAITING_BOX_NAME';
+    setChips(['Start sorting']);
+  } else {
+    var box = activeBox();
+    var lines = [
+      'Here\'s what you can do:',
+      '_"New box"_ — start a new box',
+      '_"Review items"_ — list items in the active box',
+      '_"Review all boxes"_ — summary of every box',
+      '_"Move <location>"_ — move the active box',
+      '_"Nest box"_ — put the active box inside another',
+      '_"Dump into..."_ — transfer all items to another box',
+      '_"Done with this box"_ — finish and summarise',
+      '_"Remove <name or number>"_ — remove an item',
+      '_"Import json"_ — load a saved inventory',
+      '↑ / ↓ arrow keys — recall previous commands'
+    ];
+    addBotMessage(lines.join('\n'));
+    if (box) {
+      setBoxOpenChips();
+    } else {
+      state.conversationStage = 'FINISHED';
+      setChips(['New box', 'Continue last box', 'Review all boxes']);
+    }
+  }
 }
 
 function handleFreeform(text, photos) {
@@ -1354,5 +1387,6 @@ if (typeof module !== 'undefined') {
     inputHistory, historyDraft, getHistoryIndex: function(){ return historyIndex; },
     setHistoryIndex: function(v){ historyIndex = v; },
     handleKey,
-    importJSON };
+    importJSON,
+    handleHelp };
 }
