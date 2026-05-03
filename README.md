@@ -114,6 +114,7 @@ DeclutterBot will detect the quantity, ask you to confirm, then log each as a se
 
 | Button | Output |
 |--------|--------|
+| **Import JSON** | Load a previously exported `inventory.json` — replaces current inventory |
 | **Export JSON** | Structured inventory — all boxes, items, fates, and notes |
 
 ---

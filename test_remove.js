@@ -171,7 +171,7 @@ reset();
 box = makeBox('Test Box', 'bedroom');
 var now = new Date().toISOString();
 for (var i = 0; i < 3; i++) {
-  box.items.push({ id: uid(), name: 'Paper towel roll', fate: 'keep', description: '', notes: '', photos: [], addedAt: now, batchSize: 3 });
+  box.items.push({ id: uid(), name: 'Paper towel roll', fate: 'keep', description: '', notes: '', photos: [], addedAt: now });
 }
 processInput('remove 1', []); // group 1 = all 3 Paper towel rolls
 assert('all items in group removed', box.items.length === 0);

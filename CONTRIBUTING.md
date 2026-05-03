@@ -250,7 +250,14 @@ All files exit with code `0` on success and `1` on any failure.
 
 ## Punchlist (upcoming features needing tests on implementation)
 
-- Import JSON — allow users to load a previously exported `inventory.json` back into the app, populating state from the file. This is the primary mechanism for restoring data across devices or after a reset. UI: a file input button in the header alongside Export JSON. Logic: parse the JSON, validate structure, merge or replace current state, re-render. Needs tests for valid import, malformed JSON, and partial/legacy data shapes.
+- Export CSV — export inventory as a flat CSV file with columns: box name, box location, item name, fate, notes. One row per item. Needs tests for correct column order, escaping of commas/quotes in values, and empty boxes handled gracefully.
+- Import accepts CSV or JSON — the import button and `import` command should accept either format. CSV import should reconstruct boxes and items from the flat structure. Needs tests for valid CSV, malformed CSV, mixed encoding edge cases, and round-trip fidelity (export then re-import produces equivalent state).
+- Merge on import JSON — when importing, instead of replacing, offer a merge strategy:
+  - Boxes only in the JSON file are added to the app
+  - Boxes only in the app are kept as-is
+  - Boxes present in both: surface a review prompt during import to choose the merge strategy (keep app version, keep JSON version, or merge items from both)
+  - Items within a merged box should be deduplicated by name+fate where possible
+- Import JSON ✅ implemented — file input in header, validates structure, normalises legacy fields, confirms before overwrite, re-renders with summary
 - DRY common bot responses into a response dictionary — bot messages like fate confirmations, error strings, and stage transitions are currently hardcoded inline throughout the handlers. Extract them into a single `RESPONSES` object at the top of app.js so wording can be changed in one place. Needs tests to verify response keys exist and return strings.
 - Compound command history — multi-step exchanges (e.g. `move` then `bedroom`) should be stored as a single history entry (`move bedroom`) rather than two separate ones. Approach: when a command triggers an `AWAITING_*` stage, save the command as a pending prefix; when the next message is sent in that stage, combine prefix + answer into one history entry instead of storing them separately. Stages to consider: `AWAITING_MOVE_LOCATION`, `AWAITING_DUMP_TARGET`, `AWAITING_NEST_PARENT`, `AWAITING_BOX_NAME`, `AWAITING_LOCATION`, `AWAITING_BATCH_CONFIRM`, `AWAITING_DELETE_BOX_CONFIRM`
 - Arrow up/down ✅ implemented — cycles through sent message history; arrow down returns to draft
@@ -261,7 +268,6 @@ All files exit with code `0` on success and `1` on any failure.
 - Photo support (currently deactivated) — camera button, ZIP export, and item photo display were removed due to reliability issues with base64 dataUrl persistence in localStorage. To re-enable: restore pendingPhotos flow in sendUserMessage, restore handlePhotoUpload, restore photo-btn and photo-input in index.html, restore exportZip, restore photo count in showItemDetail, restore photos array in exportJSON
 - Box photos (blocked on photo support reactivation above)
 - Nested boxes ✅ implemented — nest command, parentId data model, sidebar indent/caret, delete guard, dump with child re-parenting
-  - TODO: reflect nested structure in JSON export (currently exports flat)
 - Location-as-box: treat a location as a named container so you can say "bedroom > Mac mini > screenshots" and have the hierarchy reflected as nested boxes (depends on: nested boxes feature)
   - A location string like "bedroom - Mac mini" should optionally be parsed as a path: bedroom (location) > Mac mini (parent box) > screenshots (this box)
   - Entering a sub-location that matches an existing box name should nest rather than duplicate
@@ -295,6 +301,7 @@ When you make a code change, ask yourself:
 - [ ] Did I complete a punchlist item? → Remove it from the punchlist
 - [ ] Did I change the app's conversation flow? → Update the Mermaid diagram in README.md and flowchart.html
 - [ ] Did I identify a new upcoming feature? → Add it to the punchlist
+- [ ] Before adding a punchlist item, did I verify the current behaviour? → Check actual output/behaviour first; do not add tasks based on assumptions about what the code does. The task may already be done.
 
 ### Automated tasks removed from the checklist
 

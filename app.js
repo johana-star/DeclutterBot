@@ -290,6 +290,12 @@ function processInput(text, photos) {
   if (t==='nest box' || t==='put inside') { handleNest(text); return; }
   if (t==='dump into...') { handleDump('dump'); return; }
   if (t==='back to list') { handleItemViewAction('back to list'); return; }
+  if (t==='import json' || t==='import') {
+    var el = document.getElementById('import-input');
+    if (el) el.click();
+    else addBotMessage('Use the \u2191 Import JSON button in the header to import a file.');
+    return;
+  }
   if (t==='done for now') { handleFinished('done'); return; }
   if (t==='review all boxes') { handleFinished('review all'); return; }
 
@@ -661,7 +667,7 @@ function handleBatchQty(text) {
 function commitBatch(qty, itemName, photos) {
   var box=activeBox(); var now=new Date().toISOString(); var firstId=uid();
   for (var i=0;i<qty;i++) {
-    box.items.push({id:i===0?firstId:uid(),name:itemName,description:'',fate:'unsure',notes:'',photos:i===0?photos:[],addedAt:now,batchSize:qty});
+    box.items.push({id:i===0?firstId:uid(),name:itemName,description:'',fate:'unsure',notes:'',photos:i===0?photos:[],addedAt:now});
   }
   state.activeItemId=firstId; state.pendingBatch=null;
   state.conversationStage='AWAITING_BATCH_FATE';
@@ -826,6 +832,60 @@ function exportJSON() {
 
 
 function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);}
+
+function importJSON(data) {
+  // Validate structure
+  if (!data || !Array.isArray(data.boxes)) {
+    addBotMessage('Import failed \u2014 the file does not look like a valid DeclutterBot inventory. Expected a JSON object with a "boxes" array.');
+    return;
+  }
+  // Confirm if existing data would be overwritten
+  if (state.boxes.length > 0) {
+    if (!confirm('Import will replace your current inventory (' + state.boxes.length + ' box(es)). This cannot be undone. Continue?')) return;
+  }
+  // Normalise and load
+  var boxes = data.boxes;
+  for (var i = 0; i < boxes.length; i++) {
+    var box = boxes[i];
+    if (box.parentId === undefined) box.parentId = null;
+    if (!Array.isArray(box.items)) box.items = [];
+    for (var j = 0; j < box.items.length; j++) {
+      var it = box.items[j];
+      if (!it.photos) it.photos = [];
+      if (!it.notes)  it.notes  = '';
+      if (!it.fate)   it.fate   = 'unsure';
+    }
+  }
+  state.boxes           = boxes;
+  state.activeBoxId     = null;
+  state.activeItemId    = null;
+  state.conversationStage = 'FINISHED';
+  state.conversationHistory = [];
+  saveState();
+  renderSidebar();
+  updateContextBar();
+  document.getElementById('chat-messages').innerHTML = '';
+  document.getElementById('quick-replies').innerHTML = '';
+  var totalItems = boxes.reduce(function(acc, b) { return acc + b.items.length; }, 0);
+  addBotMessage('Imported **' + boxes.length + '** box(es) and **' + totalItems + '** item(s).' +
+    (data.exportedAt ? ' Exported ' + new Date(data.exportedAt).toLocaleDateString() + '.' : '') +
+    '\n\nWhat would you like to do?');
+  setChips(['Review all boxes', 'Continue last box', 'New box']);
+}
+
+function handleImportJSON(event) {
+  var file = event.target.files[0];
+  event.target.value = ''; // reset so same file can be re-imported
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var data;
+    try { data = JSON.parse(e.target.result); }
+    catch(err) { addBotMessage('Import failed \u2014 could not parse the file as JSON. Is it a valid inventory export?'); return; }
+    importJSON(data);
+  };
+  reader.readAsText(file);
+}
 
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
@@ -1293,5 +1353,6 @@ if (typeof module !== 'undefined') {
     selectBox, toggleCollapse,
     inputHistory, historyDraft, getHistoryIndex: function(){ return historyIndex; },
     setHistoryIndex: function(v){ historyIndex = v; },
-    handleKey };
+    handleKey,
+    importJSON };
 }
