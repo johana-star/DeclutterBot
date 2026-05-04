@@ -159,9 +159,16 @@ function renderMarkdown(s) {
   return s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>').replace(/\n/g,'<br/>');
 }
 
-if (typeof document !== 'undefined') {
+// ── INPUT HISTORY state vars ──────────────────────────────────────────────────
+var inputHistory = [];   // sent messages, oldest first
+var historyIndex = -1;   // -1 = not browsing; 0 = oldest
+var historyDraft = '';   // text in field before arrow-up was pressed
+
+// DOM functions defined at top level so Safari/iOS can find them as globals.
+// Each guards its document calls so they are safe to define in Node too.
 function addBotMessage(text, photos) {
-  var msgs = document.getElementById('chat-messages');
+  var msgs = typeof document !== 'undefined' && document.getElementById('chat-messages');
+  if (!msgs) { state.conversationHistory.push({role:'assistant',content:text}); return; }
   var div = document.createElement('div');
   div.className = 'msg bot';
   div.innerHTML = '<div class="msg-avatar">S</div><div class="msg-bubble"><p>'+renderMarkdown(text)+'</p></div>';
@@ -171,7 +178,8 @@ function addBotMessage(text, photos) {
 }
 
 function addUserMessage(text, photos) {
-  var msgs = document.getElementById('chat-messages');
+  var msgs = typeof document !== 'undefined' && document.getElementById('chat-messages');
+  if (!msgs) { state.conversationHistory.push({role:'user',content:text}); return; }
   var div = document.createElement('div');
   div.className = 'msg user';
   div.innerHTML = '<div class="msg-avatar">You</div><div class="msg-bubble"><p>'+escHtml(text)+'</p></div>';
@@ -180,27 +188,35 @@ function addUserMessage(text, photos) {
   state.conversationHistory.push({role:'user',content:text});
 }
 
-function setChips(chips) {
+function _setChipsImpl(chips) {
+  if (typeof document === 'undefined') return;
   var el = document.getElementById('quick-replies');
   var html = '';
   for (var i=0;i<chips.length;i++) {
     var c=chips[i];
     var fc = FATES.indexOf(c.toLowerCase())!==-1?' fate-'+c.toLowerCase():'';
-    html += '<button class="chip'+fc+'" onclick="chipClick(\''+escHtml(c)+'\')">'+escHtml(c)+'</button>';
+    html += '<button class="chip'+fc+'" onclick="chipClick(\'' + escHtml(c) + '\')">'+escHtml(c)+'</button>';
   }
   el.innerHTML = html;
 }
-function chipClick(t) {
-  if (t==='Move box') t='move';
-  document.getElementById('user-input').value=t; sendUserMessage();
-}
-function showTyping() { document.getElementById('typing').classList.add('visible'); document.getElementById('chat-messages').scrollTop=9999; }
-function hideTyping() { document.getElementById('typing').classList.remove('visible'); }
 
-// ── INPUT HISTORY (arrow up/down) ────────────────────────────────────────────
-var inputHistory = [];   // sent messages, oldest first
-var historyIndex = -1;   // -1 = not browsing; 0 = oldest
-var historyDraft = '';   // text in field before arrow-up was pressed
+function _chipClickImpl(t) {
+  if (t==='Move box') t='move';
+  document.getElementById('user-input').value=t;
+  sendUserMessage();
+  document.getElementById('user-input').focus();
+}
+
+function showTyping() {
+  if (typeof document === 'undefined') return;
+  document.getElementById('typing').classList.add('visible');
+  document.getElementById('chat-messages').scrollTop=9999;
+}
+
+function hideTyping() {
+  if (typeof document === 'undefined') return;
+  document.getElementById('typing').classList.remove('visible');
+}
 
 function handleKey(e) {
   var input = document.getElementById('user-input');
@@ -213,14 +229,13 @@ function handleKey(e) {
     if (inputHistory.length === 0) return;
     e.preventDefault();
     if (historyIndex === -1) {
-      historyDraft = input.value; // save current draft
+      historyDraft = input.value;
       historyIndex = inputHistory.length - 1;
     } else if (historyIndex > 0) {
       historyIndex--;
     }
     input.value = inputHistory[historyIndex];
     autoResize(input);
-    // Move cursor to end
     input.selectionStart = input.selectionEnd = input.value.length;
     return;
   }
@@ -239,18 +254,17 @@ function handleKey(e) {
     return;
   }
 }
+
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
 
-
-
 async function sendUserMessage() {
+  if (typeof document === 'undefined') return;
   var input = document.getElementById('user-input');
   var text = input.value.trim();
   if (!text) return;
-  // Add to history (avoid consecutive duplicates)
   if (inputHistory.length === 0 || inputHistory[inputHistory.length - 1] !== text) {
     inputHistory.push(text);
-    if (inputHistory.length > 100) inputHistory.shift(); // cap at 100
+    if (inputHistory.length > 100) inputHistory.shift();
   }
   historyIndex = -1;
   historyDraft = '';
@@ -264,7 +278,6 @@ async function sendUserMessage() {
   renderSidebar(); updateContextBar(); saveState();
 }
 
-}
 
 function processInput(text, photos) {
   var t = text.toLowerCase().trim();
@@ -494,7 +507,7 @@ function singularize(word) {
   if (w.match(/(s|sh|ch|x|z)es$/)) return w.slice(0,-2);  // boxes->box, dishes->dish
   if (w.match(/ses$/)) return w.slice(0,-2);               // buses->bus
   if (w.match(/[^s]s$/)) return w.slice(0,-1);             // rolls->roll, bags->bag
-  return w; // already singular or unrecognised
+  return w; // already singular or unrecognized
 }
 
 function singularizeLast(phrase) {
@@ -960,6 +973,36 @@ function clearAll() {
 if (typeof window !== 'undefined') {
 
 loadState(); renderSidebar(); updateContextBar();
+// Expose impl functions to global scope for onclick attributes
+var setChips  = _setChipsImpl;
+var chipClick = _chipClickImpl;
+
+// Redirect printable keypresses to the textarea if focus is elsewhere.
+// Captures the keystroke by appending it manually after focusing,
+// preventing it from being lost. Excludes modifier combos, Tab, Escape.
+document.addEventListener('keydown', function(e) {
+  var input = document.getElementById('user-input');
+  if (document.activeElement === input) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Tab' || e.key === 'Escape') return;
+  var isPrintable = e.key.length === 1;
+  var isNavKey = e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
+                 e.key === 'Enter' || e.key === 'Backspace';
+  if (!isPrintable && !isNavKey) return;
+  input.focus();
+  if (isPrintable) {
+    input.value += e.key;
+    autoResize(input);
+    e.preventDefault();
+  }
+});
+
+// Prevent send button click from blurring the textarea.
+// mousedown fires before blur, so preventDefault keeps focus in place.
+var sendBtn = document.querySelector('.send-btn');
+if (sendBtn) {
+  sendBtn.addEventListener('mousedown', function(e) { e.preventDefault(); });
+}
 
 if(state.boxes.length===0){
   setTimeout(function(){
@@ -976,6 +1019,10 @@ if(state.boxes.length===0){
   },200);
 }
 }
+
+// Capture real implementations before Node shim wrappers shadow the names
+var _addBotMessageImpl  = addBotMessage;
+var _addUserMessageImpl = addUserMessage;
 
 // In Node, alias global stubs via wrappers so tests can override globals at runtime
 if (typeof window === 'undefined' && typeof global !== 'undefined') {
@@ -1527,5 +1574,7 @@ if (typeof module !== 'undefined') {
     getSessionTrashPreference: function(){ return sessionTrashPreference; },
     setSessionTrashPreference: function(v){ sessionTrashPreference = v; },
     getSessionDeletedCount: function(){ return sessionDeletedCount; },
-    resetSessionCounts: function(){ sessionDeletedCount=0; sessionTrashPreference=null; } };
+    resetSessionCounts: function(){ sessionDeletedCount=0; sessionTrashPreference=null; },
+    _setChipsImpl: _setChipsImpl, _chipClickImpl: _chipClickImpl,
+    _addBotMessageImpl: _addBotMessageImpl, _addUserMessageImpl: _addUserMessageImpl };
 }

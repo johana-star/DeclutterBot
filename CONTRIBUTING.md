@@ -33,12 +33,12 @@ When fixing a bug, write a test that:
 3. **Is named after the bug** — e.g. `assert('selectBox echoes user message (regression)')` so it's clear why the test exists if it ever fails again
 
 This applies to:
-- Incorrect behaviour (wrong output, wrong state)
-- Missing behaviour (something that should happen but doesn't — like a UI action not echoing a command)
+- Incorrect behavior (wrong output, wrong state)
+- Missing behavior (something that should happen but doesn't — like a UI action not echoing a command)
 - Scoping / initialisation bugs (e.g. `renderBoxTree` not defined at call time)
 - Data migration bugs (e.g. `parentId` undefined vs null from localStorage)
 
-**Feature changes also require tests.** If you change how an existing feature behaves — not just add a new one — update or add tests to cover the new behaviour. The existing tests may still pass while the changed behaviour is untested.
+**Feature changes also require tests.** If you change how an existing feature behaves — not just add a new one — update or add tests to cover the new behavior. The existing tests may still pass while the changed behavior is untested.
 
 ---
 
@@ -115,6 +115,26 @@ function assertIncludes(desc, haystack, needle) { ... }
 ---
 
 ## Browser Compatibility (Safari / iOS)
+
+**Do not define functions inside `if` blocks that need to be globally accessible.** Safari/iOS does not hoist function declarations inside conditional blocks to global scope — they are block-scoped. This means functions like `sendUserMessage`, `chipClick`, `handleKey`, and `setChips` become invisible to `onclick` attributes in HTML if defined inside `if (typeof document !== 'undefined') { ... }`.
+
+The correct pattern is to define all functions at the top level of the script, and guard any `document`/`localStorage` calls inside the function body:
+
+```js
+// WRONG — Safari cannot find this from onclick attributes
+if (typeof document !== 'undefined') {
+  function sendUserMessage() { ... }
+}
+
+// CORRECT — top-level, guards document call internally
+function sendUserMessage() {
+  if (typeof document === 'undefined') return;
+  var input = document.getElementById('user-input');
+  ...
+}
+```
+
+## Browser Compatibility (Safari / iOS) — Template Literals
 
 **Do not use nested template literals.** Backticks inside `${}` expressions inside another template literal cause a silent script error on Safari/iOS that kills the entire app. This has already broken the app once.
 
@@ -205,7 +225,7 @@ function processInput(text, photos) {
 
 If a command only makes sense in a specific stage, handle it in the `switch`. If it should work from anywhere, intercept it above.
 
-**Any label used in `setChips()` must also be intercepted as a global command.** Chip labels can appear as user input at any stage, including `BOX_OPEN` where unrecognised text is treated as an item name. Failing to intercept a chip label will cause it to be logged as an item — this has already happened with "Skip to next box".
+**Any label used in `setChips()` must also be intercepted as a global command.** Chip labels can appear as user input at any stage, including `BOX_OPEN` where unrecognized text is treated as an item name. Failing to intercept a chip label will cause it to be logged as an item — this has already happened with "Skip to next box".
 
 Similarly, **natural language commands must be intercepted before they reach `handleItemName`**. Any phrase not caught by the global intercepts will be treated as an item name — this is how "Remove Skip to next box from Desktop" became a logged item.
 
@@ -266,9 +286,9 @@ All files exit with code `0` on success and `1` on any failure.
   - Boxes only in the app are kept as-is
   - Boxes present in both: surface a review prompt during import to choose the merge strategy (keep app version, keep JSON version, or merge items from both)
   - Items within a merged box should be deduplicated by name+fate where possible
-- Import JSON ✅ implemented — file input in header, validates structure, normalises legacy fields, confirms before overwrite, re-renders with summary
+- Import JSON ✅ implemented — file input in header, validates structure, normalizes legacy fields, confirms before overwrite, re-renders with summary
 - DRY common bot responses into a response dictionary — bot messages like fate confirmations, error strings, and stage transitions are currently hardcoded inline throughout the handlers. Extract them into a single `RESPONSES` object at the top of app.js so wording can be changed in one place. Needs tests to verify response keys exist and return strings.
-- Chip clicks steal focus from the text input — after clicking a chip, focus should be returned to the textarea so typing immediately goes to input. Fix: call `document.getElementById('user-input').focus()` after chip click and after any action that clears the input.
+- Chip click focus ✅ implemented — focus returned to textarea after chip click; global `keydown` listener redirects any keypress to the textarea if focus is elsewhere (excluding modifier keys, Tab, and Escape)
 - Fuzzy command matching — near-misses like "trasj" should match "trash". Highest priority: fate words (keep, donate, trash, sell, unsure) since they are typed frequently and the set is small. Approach: Levenshtein distance of 1 on fate words before falling through to item name; consider extending to other common commands. Needs tests for common typos and confirmation that valid item names are not accidentally matched.
 - Rename short/unclear variable names — one and two letter variables (e.g. `g`, `g2`) should be replaced with descriptive names. Audit all handlers added during the trash/delete implementation pass. Remaining candidates: `g`/`group` variables in reviewBox and groupItems loops. Note: well-known abbreviations like `pref`, `idx`, `btn` are acceptable as suffixes on descriptive names — e.g. `effectivePref` is preferred over `effPref` (too terse) or `effectivePreference` (unnecessarily verbose).
 - Document variable naming convention in CONTRIBUTING — add a section stating: avoid single and double letter variable names unless following a strong established convention (e.g. loop index `i`); avoid opaque abbreviations; prefer full descriptive names even if longer.
@@ -307,16 +327,17 @@ When you make a code change, ask yourself:
 - [ ] Did I add a new single-character shorthand? → Document it in the input normalisation section
 - [ ] Did I add tests to an existing file? → Inserted them **before** the summary block, not appended after `process.exit`
 - [ ] Did I move a function into or out of the DOM guard? → Update the DOM guard section
+- [ ] Did I move or restructure an existing function? → Diff the before and after line-by-line to confirm every property, class assignment, and side effect is preserved. A moved function that compiles and passes tests can still be missing lines.
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
 - [ ] Did I change how tests are structured or stubbed? → Update the How Tests Work section
 - [ ] After making a batch change to a structured section (table, list, code block), did I verify the entire section — not just that the operation reported success? A partial replacement can leave the rest unchanged without any error.
 - [ ] Did I share all modified files? → Every file changed in a session should be included in the final present_files call, including test files
 - [ ] Did I fix a bug? → Write a test that reproduces the original failure
-- [ ] Did I change existing behaviour? → Update or add tests covering the new behaviour
+- [ ] Did I change existing behavior? → Update or add tests covering the new behavior
 - [ ] Did I complete a punchlist item? → Remove it from the punchlist
 - [ ] Did I change the app's conversation flow? → Update the Mermaid diagram in README.md and flowchart.html
 - [ ] Did I identify a new upcoming feature? → Add it to the punchlist
-- [ ] Before adding a punchlist item, did I verify the current behaviour? → Check actual output/behaviour first; do not add tasks based on assumptions about what the code does. The task may already be done.
+- [ ] Before adding a punchlist item, did I verify the current behavior? → Check actual output/behavior first; do not add tasks based on assumptions about what the code does. The task may already be done.
 
 ### Automated tasks removed from the checklist
 
