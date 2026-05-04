@@ -16,6 +16,9 @@ var state = {
 };
 var FATES = ['keep','donate','trash','sell','unsure'];
 var collapsedBoxIds = [];
+var sessionDeletedCount = 0;
+var sessionTrashPreference = null; // null | 'always' | 'never'
+var boxTrashPreferences = {}; // boxId -> 'always' | 'never'
 function toggleCollapse(id) {
   var idx = collapsedBoxIds.indexOf(id);
   var collapsing = idx === -1;
@@ -293,6 +296,8 @@ function processInput(text, photos) {
   if (t==='nest box' || t==='put inside') { handleNest(text); return; }
   if (t==='dump into...') { handleDump('dump'); return; }
   if (t==='back to list') { handleItemViewAction('back to list'); return; }
+  if (state.conversationStage==='AWAITING_TRASH_DELETE') { handleTrashDelete(text); return; }
+  if (state.conversationStage==='AWAITING_DISPOSAL') { handleDisposal(text); return; }
   if (t==='import json' || t==='import') {
     var el = document.getElementById('import-input');
     if (el) el.click();
@@ -312,11 +317,14 @@ function processInput(text, photos) {
   if (state.conversationStage === 'AWAITING_DUMP_TARGET') { handleDumpTarget(text); return; }
 
   // Remove command: "remove <name or number>" or "delete <name or number>"
-  if (t === 'remove' || t === 'delete' || t.startsWith('remove ') || t.startsWith('delete ')) {
-    var removeArg = t.startsWith('remove ') ? text.slice(7).trim()
-                  : t.startsWith('delete ') ? text.slice(7).trim()
-                  : '';
-    handleRemove(removeArg); return;
+  // Trash N / Delete N chips from review screen
+  if (/^trash \d+$/.test(t)) { handleTrashByNumber(parseInt(t.slice(6), 10)); return; }
+  if (/^delete \d+$/.test(t)) { handleDeleteByNumber(parseInt(t.slice(7), 10)); return; }
+  // Delete N — immediate deletion for already-trashed items
+  if (/^delete \d+$/.test(t)) {
+    var dn = parseInt(t.slice(7), 10);
+    handleDeleteByNumber(dn);
+    return;
   }
 
   // Nest command: "nest", "put <box> inside <box>", "put inside"
@@ -359,6 +367,8 @@ function processInput(text, photos) {
     case 'AWAITING_ITEM_DESC':    handleItemDesc(text,photos); break;
     case 'AWAITING_FATE':         handleFate(text,photos); break;
     case 'AWAITING_ITEM_NOTES':   handleItemNotes(text); break;
+    case 'AWAITING_TRASH_DELETE':  handleTrashDelete(text); break;
+    case 'AWAITING_DISPOSAL':      handleDisposal(text); break;
     case 'AWAITING_ITEM_VIEW':      handleItemViewAction(text); break;
     case 'AWAITING_ITEM_VIEW_NOTES': handleItemViewNotes(text); break;
     case 'AWAITING_NEST_CHILD':    handleNestChild(text); break;
@@ -385,78 +395,73 @@ function handleMove(loc) {
   addBotMessage('Moved **"' + box.name + '"** from _' + prev + '_ to _' + box.location + '_.');
 }
 
-function handleRemove(arg) {
+function handleDeleteByNumber(num) {
+  // Immediate deletion for already-trashed items — no prompt
   var box = activeBox();
   if (!box) { addBotMessage('No active box. Open a box first.'); return; }
-  if (!arg || !arg.trim()) {
-    addBotMessage('What would you like to remove? Say _"remove <item name>"_ or _"remove <number>"_ (use "review items" to see the list).');
+  var groups = groupItems(box.items);
+  if (num < 1 || num > groups.length) {
+    addBotMessage('No item ' + num + ' in the list. Use _"review items"_ to see the current list.');
     return;
   }
-
-  // Build groups (same as reviewBox uses) so Remove N maps to group N
-  var groups = groupItems(box.items);
-  var num = parseInt(arg, 10);
-  var removedName = null;
-  var removedCount = 0;
-
-  if (!isNaN(num) && num >= 1 && num <= groups.length) {
-    // Remove by group number — remove ALL items in that group
-    var g = groups[num - 1];
-    removedName = g.name;
-    removedCount = g.count;
-    var key = g.name + '|' + g.fate;
-    box.items = box.items.filter(function(it) {
-      return !(it.name === g.name && it.fate === g.fate);
-    });
-    if (state.activeItemId) {
-      var still = box.items.some(function(it){ return it.id === state.activeItemId; });
-      if (!still) state.activeItemId = null;
-    }
-  } else {
-    // Remove by name — remove ALL items matching the name
-    var argLower = arg.toLowerCase();
-    var matchName = null;
-    for (var i = 0; i < box.items.length; i++) {
-      if (box.items[i].name.toLowerCase() === argLower) { matchName = box.items[i].name; break; }
-    }
-    if (!matchName) {
-      for (var i = 0; i < box.items.length; i++) {
-        if (box.items[i].name.toLowerCase().indexOf(argLower) !== -1) { matchName = box.items[i].name; break; }
-      }
-    }
-    if (!matchName) {
-      addBotMessage('Could not find **"' + arg + '"** in "' + box.name + '". Use _"review items"_ to see the list, then _"remove <number>"_ to delete one.');
-      return;
-    }
-    removedName = matchName;
-    removedCount = box.items.filter(function(it){ return it.name === matchName; }).length;
-    box.items = box.items.filter(function(it){ return it.name !== matchName; });
-    if (state.activeItemId) {
-      var still = box.items.some(function(it){ return it.id === state.activeItemId; });
-      if (!still) state.activeItemId = null;
-    }
+  var g = groups[num - 1];
+  var name = g.name;
+  var countLabel = g.count > 1 ? g.count + ' × ' : '';
+  box.items = box.items.filter(function(it){ return !(it.name === g.name && it.fate === g.fate); });
+  if (state.activeItemId) {
+    var still = box.items.some(function(it){ return it.id === state.activeItemId; });
+    if (!still) state.activeItemId = null;
   }
-
   state.conversationStage = 'BOX_OPEN';
-  var countLabel = removedCount > 1 ? removedCount + ' \u00d7 ' : '';
-
   if (box.items.length === 0) {
-    addBotMessage('Removed **"' + countLabel + removedName + '"** from "' + box.name + '". The box is now empty.');
+    addBotMessage(deletionLog(countLabel + name) + ' The box is now empty.');
     setChips(['Add item', 'Move box', 'Done with this box', 'Delete box']);
   } else {
-    // Re-show grouped list
     var newGroups = groupItems(box.items);
     var lines = '';
-    var removeChips = [];
+    var chips = [];
     for (var i = 0; i < newGroups.length; i++) {
-      var g = newGroups[i];
-      var prefix = g.count > 1 ? g.count + ' \u00d7 ' : '';
-      lines += (i+1) + '. **' + prefix + g.name + '** \u2192 ' + g.fate + '\n';
-      removeChips.push('Remove ' + (i+1));
+      var g2 = newGroups[i];
+      var prefix = g2.count > 1 ? g2.count + ' × ' : '';
+      lines += (i+1) + '. **' + prefix + g2.name + '** → ' + g2.fate + '\n';
+      chips.push((g2.fate === 'trash' ? 'Delete ' : 'Trash ') + (i+1));
     }
-    addBotMessage('Removed **"' + countLabel + removedName + '"**. Remaining in "' + box.name + '":\n' + lines.trim());
-    setChips(removeChips.concat(['Add item', 'Move box', 'Done with this box']));
+    addBotMessage(deletionLog(countLabel + name) + ' Remaining in "' + box.name + '":\n' + lines.trim());
+    setChips(chips.concat(['Add item', 'Move box', 'Done with this box']));
   }
+}
+
+function handleTrashByNumber(num) {
+  var box = activeBox();
+  if (!box) { addBotMessage('No active box. Open a box first.'); return; }
+  var groups = groupItems(box.items);
+  if (num < 1 || num > groups.length) {
+    addBotMessage('No item ' + num + ' in the list. Use _"review items"_ to see the current list.');
+    return;
+  }
+  var g = groups[num - 1];
+  // Mark ALL items in the group as trash, activate the first
+  var firstId = null;
+  for (var i = 0; i < box.items.length; i++) {
+    if (box.items[i].name === g.name && box.items[i].fate === g.fate) {
+      box.items[i].fate = 'trash';
+      if (!firstId) { firstId = box.items[i].id; }
+    }
+  }
+  state.activeItemId = firstId;
+  // Trigger the trash delete prompt
+  var boxPref = activeBox() ? boxTrashPreferences[activeBox().id] : null;
+  var effectivePref = boxPref || sessionTrashPreference;
+  if (effectivePref === 'always') { deleteActiveItem(); return; }
+  if (effectivePref === 'never') {
+    addBotMessage('\uD83D\uDDD1 **' + g.name + '** marked trash.\n\n' + disposalPrompt(g.name));
+    state.conversationStage = 'AWAITING_DISPOSAL';
+    setChips(['Skip disposal note', 'Done with this box']);
+    return;
+  }
+  addBotMessage('\uD83D\uDDD1 **' + g.name + '** \u2014 delete now?');
+  state.conversationStage = 'AWAITING_TRASH_DELETE';
+  setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
 }
 
 function handleWelcome(text, photos) {
@@ -709,6 +714,21 @@ function handleFate(text, photos) {
   if (!matched) { addBotMessage('I didn\'t catch that \u2014 what should we do with **'+item.name+'**?'); setChips(['Keep','Donate','Trash','Sell','Unsure']); return; }
   item.fate=matched;
   var fm={keep:'\u2705 **Keep** \u2014 going back home.',donate:'\uD83D\uDC99 **Donate** \u2014 someone will love this.',trash:'\uD83D\uDDD1 **Trash** \u2014 out it goes.',sell:'\uD83D\uDCB0 **Sell** \u2014 make some money!',unsure:'\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit it.'};
+  if (matched === 'trash') {
+    var boxPref = activeBox() ? boxTrashPreferences[activeBox().id] : null;
+    var effectivePref = boxPref || sessionTrashPreference;
+    if (effectivePref === 'always') { deleteActiveItem(); return; }
+    if (effectivePref === 'never') {
+      addBotMessage('\uD83D\uDDD1 **Trash** \u2014 noted.\n\n' + disposalPrompt(item.name));
+      state.conversationStage = 'AWAITING_DISPOSAL';
+      setChips(['Skip disposal note', 'Done with this box']);
+      return;
+    }
+    addBotMessage('\uD83D\uDDD1 **Trash** \u2014 delete this item now?');
+    state.conversationStage = 'AWAITING_TRASH_DELETE';
+    setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
+    return;
+  }
   state.conversationStage='AWAITING_ITEM_NOTES';
   addBotMessage(fm[matched]+'\n\nAny notes about this one? (condition, value, destination) \u2014 or say _"next"_ to move on.');
   setChips(['Next item','No notes','Done with this box']);
@@ -728,6 +748,7 @@ function doneWithBox() {
   var fates=countFates(box); var parts=[];
   for(var i=0;i<FATES.length;i++){if(fates[FATES[i]])parts.push(fates[FATES[i]]+' to '+FATES[i]);}
   var summary=parts.length?parts.join(', '):'nothing yet';
+  if (box) delete boxTrashPreferences[box.id];
   state.activeBoxId=null; state.activeItemId=null; state.conversationStage='FINISHED';
   addBotMessage('Nice work on **"'+box.name+'"**!\n\nSummary: '+summary+'.\n\nReady to tackle another box, or are you done for now?');
   setChips(['New box','Done for now','Review all boxes']);
@@ -769,7 +790,7 @@ function reviewBox() {
     var g=groups[i];
     var prefix = g.count > 1 ? g.count + ' \u00d7 ' : '';
     lines+=(i+1)+'. **'+prefix+g.name+'** \u2192 '+g.fate+(g.notes?' ('+g.notes+')':'')+'\n';
-    removeChips.push('Remove '+(i+1));
+    removeChips.push((g.fate === 'trash' ? 'Delete ' : 'Trash ') + (i+1));
   }
   var header = box.items.length !== groups.length
     ? '**Items in "'+box.name+'" ('+box.items.length+' items, '+groups.length+' unique):**'
@@ -924,6 +945,7 @@ function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('declutterbot_state');
   state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,conversationStage:'WELCOME',conversationHistory:[]};
+  sessionDeletedCount=0; sessionTrashPreference=null; boxTrashPreferences={};
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
   renderSidebar(); updateContextBar();
@@ -965,6 +987,7 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
   var showTyping       = function(){    return (global.showTyping       ||function(){})();    };
   var hideTyping       = function(){    return (global.hideTyping       ||function(){})();    };
   var saveState        = function(){    return (global.saveState        ||function(){})();    };
+  if (typeof localStorage === 'undefined') var localStorage = global.localStorage || { getItem: function(){ return null; }, setItem: function(){}, removeItem: function(){} };
 }
 
 
@@ -1281,7 +1304,8 @@ function showItemDetail(group, groupIndex) {
   state.conversationStage = 'AWAITING_ITEM_VIEW';
   state.activeItemViewGroup = groupIndex;
   addBotMessage(lines.join('\n'));
-  setChips(['Change fate', 'Edit notes', 'Remove', 'Back to list']);
+  var actionChip = (group && group.fate === 'trash') ? 'Delete' : 'Trash';
+  setChips(['Change fate', 'Edit notes', actionChip, 'Back to list']);
 }
 
 function handleItemViewByNumber(num) {
@@ -1309,10 +1333,14 @@ function handleItemViewAction(text) {
     reviewBox();
     return;
   }
-  if (t === 'remove') {
+  if (t === 'trash' || t === 'delete') {
     state.conversationStage = 'BOX_OPEN';
     state.activeItemViewGroup = null;
-    handleRemove(String(groupIdx + 1));
+    if (t === 'delete' || (group && group.fate === 'trash')) {
+      handleDeleteByNumber(groupIdx + 1);
+    } else {
+      handleTrashByNumber(groupIdx + 1);
+    }
     return;
   }
   if (t === 'change fate') {
@@ -1371,10 +1399,114 @@ function handleItemViewNotes(text) {
   }
 }
 
+// ── TRASH / DISPOSAL HELPERS ──────────────────────────────────────────────────
+
+function disposalPrompt(itemName) {
+  var n = (itemName||'').toLowerCase();
+  // Batteries — more accessible drop-offs than general e-waste
+  if (n.match(/batter|aa|aaa|9v|lithium/)) {
+    return 'Batteries can be dropped off at many libraries, hardware stores, or e-waste facilities \u2014 where will you take this?';
+  }
+  // E-waste
+  if (n.match(/laptop|phone|computer|monitor|printer|cable|charger|keyboard|mouse|\btv\b|tablet|speaker|headphone|camera|router|hard drive|ssd|ram|cpu|gpu/)) {
+    return 'E-waste needs a special drop-off \u2014 where will you take it?';
+  }
+  // Clothing / textiles
+  if (n.match(/shirt|dress|coat|shoe|jacket|jean|trouser|pant|sock|underwear|fabric|textile|cloth|scarf|hat|glove/)) {
+    return 'Clothing can be donated or textile-recycled \u2014 where will you drop this off?';
+  }
+  // Hazardous / chemicals
+  if (n.match(/paint|bleach|oil|chemical|pesticide|solvent|cleaner|acid|flammable|hazard/)) {
+    return 'Hazardous material \u2014 where can you safely dispose of this?';
+  }
+  // Generic fallback
+  return 'Where can this be safely disposed of?';
+}
+
+function deletionLog(itemName) {
+  // Track daily count
+  var today = new Date().toDateString();
+  var stored = null;
+  try { stored = JSON.parse(localStorage.getItem('declutterbot_daily_deleted')); } catch(e){}
+  if (!stored || stored.date !== today) { stored = { date: today, count: 0 }; }
+  stored.count++;
+  try { localStorage.setItem('declutterbot_daily_deleted', JSON.stringify(stored)); } catch(e){}
+  sessionDeletedCount++;
+  var todayCount = stored.count;
+  var parts = [todayCount + ' deleted today'];
+  if (sessionDeletedCount !== todayCount) parts.push(sessionDeletedCount + ' this session');
+  return '\uD83D\uDDD1 Deleted **' + itemName + '**. ' + parts.join(', ') + '.';
+}
+
+function deleteActiveItem() {
+  var box = activeBox();
+  var item = activeItem();
+  if (!box || !item) { state.conversationStage = 'BOX_OPEN'; return; }
+  var name = item.name;
+  box.items = box.items.filter(function(i){ return i.id !== item.id; });
+  state.activeItemId = null;
+  state.conversationStage = 'BOX_OPEN';
+  addBotMessage(deletionLog(name));
+  setBoxOpenChips();
+}
+
+function handleTrashDelete(text) {
+  var t = text.toLowerCase().trim();
+  var item = activeItem();
+  if (!item) { state.conversationStage = 'BOX_OPEN'; return; }
+
+  if (t === 'yes' || t === 'y') {
+    deleteActiveItem();
+    return;
+  }
+  if (t === 'always this session' || t === 'always') {
+    sessionTrashPreference = 'always';
+    deleteActiveItem();
+    return;
+  }
+  if (t === 'always for this box') {
+    if (activeBox()) boxTrashPreferences[activeBox().id] = 'always';
+    deleteActiveItem();
+    return;
+  }
+  if (t === 'never this session' || t === 'never') {
+    sessionTrashPreference = 'never';
+  }
+  if (t === 'never for this box') {
+    if (activeBox()) boxTrashPreferences[activeBox().id] = 'never';
+  }
+  // No or Never — ask for disposal note
+  addBotMessage(disposalPrompt(item.name));
+  state.conversationStage = 'AWAITING_DISPOSAL';
+  setChips(['Skip disposal note', 'Done with this box']);
+}
+
+function handleDisposal(text) {
+  var t = text.toLowerCase().trim();
+  var item = activeItem();
+  if (t === 'skip disposal note' || t === 'skip') {
+    state.activeItemId = null;
+    state.conversationStage = 'BOX_OPEN';
+    var box = activeBox();
+    addBotMessage('Kept **' + (item ? item.name : 'item') + '** in "' + (box ? box.name : 'box') + '".' +
+      '\n\nWhat\'s the next item?');
+    setBoxOpenChips();
+    return;
+  }
+  if (item && text.trim()) {
+    var note = 'Safely dispose at: ' + text.trim();
+    item.notes = item.notes ? item.notes + '. ' + note : note;
+  }
+  state.activeItemId = null;
+  state.conversationStage = 'BOX_OPEN';
+  addBotMessage('Noted. What\'s the next item?');
+  setBoxOpenChips();
+}
+
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
   module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, countFates,
-    processInput, handleMove, handleRemove, handleBatchConfirm, handleBatchQty,
+    processInput, handleMove, handleBatchConfirm, handleBatchQty,
     commitBatch, handleFate, handleItemNotes, handleItemName,
     handleBoxName, handleBoxBatchConfirm, handleBoxBatchQty, handleBoxBatchLocation,
     singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox,
@@ -1388,5 +1520,12 @@ if (typeof module !== 'undefined') {
     setHistoryIndex: function(v){ historyIndex = v; },
     handleKey,
     importJSON,
-    handleHelp };
+    handleHelp,
+    disposalPrompt, deletionLog, deleteActiveItem,
+    handleTrashDelete, handleDisposal, handleTrashByNumber, handleDeleteByNumber,
+    getBoxTrashPreferences: function(){ return boxTrashPreferences; },
+    getSessionTrashPreference: function(){ return sessionTrashPreference; },
+    setSessionTrashPreference: function(v){ sessionTrashPreference = v; },
+    getSessionDeletedCount: function(){ return sessionDeletedCount; },
+    resetSessionCounts: function(){ sessionDeletedCount=0; sessionTrashPreference=null; } };
 }

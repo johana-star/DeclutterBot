@@ -177,9 +177,15 @@ All conversation flow is driven by `state.conversationStage`. Existing stages:
 | `AWAITING_NEST_PARENT` | Asked which box to nest the active box inside |
 | `AWAITING_ITEM_VIEW` | Showing item detail, waiting for an action (change fate / edit notes / remove / back) |
 | `AWAITING_ITEM_VIEW_NOTES` | Waiting for new notes text for the viewed item |
+| `AWAITING_TRASH_DELETE` | Asked whether to delete a trashed item (yes/no/always/never) |
+| `AWAITING_DISPOSAL` | Asked where a kept-trash item can be safely disposed of |
 | `FINISHED` | No active box, session summary state |
 
 **When adding a new stage:** add a `case` to the `switch` in `processInput`, and if the feature can be invoked from any stage, also add an intercept above the switch.
+
+### Context-aware copy with generic fallback
+
+When bot copy depends on context (e.g. item name, location, fate), attempt a specific response first and fall back to a generic one. This pattern is used in `disposalPrompt()` — item name is matched against keyword categories (batteries, e-waste, clothing, hazardous) before falling back to a generic disposal question. Apply this pattern in future features rather than always using generic copy.
 
 ### Global command intercept
 
@@ -240,14 +246,14 @@ All files exit with code `0` on success and `1` on any failure.
 | File | Feature covered |
 |------|----------------|
 | `tests/test_move.js` | Move box to a new location (`move`, `m`) |
-| `tests/test_remove.js` | Remove an item from a box (`remove`, `delete`) |
 | `tests/test_box_batch.js` | Batch box creation with singularizer (`five wooden boxes`, `3 shelves`) |
 | `tests/test_delete_dump.js` | Delete empty box; dump all items into another box |
 | `tests/test_nest.js` | Nested boxes: nest command, circular prevention, delete guard, dump with children |
 | `tests/test_item_view.js` | Item detail view: number selection, actions, notes editing, photo count |
 | `tests/test_history.js` | Arrow up/down input history; sidebar click history |
 | `tests/test_import.js` | Import JSON: valid import, validation, normalisation, confirm/cancel |
-| `tests/test_help.js` | Help command: hi/hello/hey/help/? from any stage, context-aware chips |
+| `tests/test_help.js` | Help command: hi/hello/hey/help/? from any stage, context-aware chips; add item command |
+| `tests/test_trash.js` | Trash deletion: delete prompt, always/never preference, disposal notes, deletion count |
 
 ---
 
@@ -262,6 +268,10 @@ All files exit with code `0` on success and `1` on any failure.
   - Items within a merged box should be deduplicated by name+fate where possible
 - Import JSON ✅ implemented — file input in header, validates structure, normalises legacy fields, confirms before overwrite, re-renders with summary
 - DRY common bot responses into a response dictionary — bot messages like fate confirmations, error strings, and stage transitions are currently hardcoded inline throughout the handlers. Extract them into a single `RESPONSES` object at the top of app.js so wording can be changed in one place. Needs tests to verify response keys exist and return strings.
+- Chip clicks steal focus from the text input — after clicking a chip, focus should be returned to the textarea so typing immediately goes to input. Fix: call `document.getElementById('user-input').focus()` after chip click and after any action that clears the input.
+- Fuzzy command matching — near-misses like "trasj" should match "trash". Highest priority: fate words (keep, donate, trash, sell, unsure) since they are typed frequently and the set is small. Approach: Levenshtein distance of 1 on fate words before falling through to item name; consider extending to other common commands. Needs tests for common typos and confirmation that valid item names are not accidentally matched.
+- Rename short/unclear variable names — one and two letter variables (e.g. `g`, `g2`) should be replaced with descriptive names. Audit all handlers added during the trash/delete implementation pass. Remaining candidates: `g`/`group` variables in reviewBox and groupItems loops. Note: well-known abbreviations like `pref`, `idx`, `btn` are acceptable as suffixes on descriptive names — e.g. `effectivePref` is preferred over `effPref` (too terse) or `effectivePreference` (unnecessarily verbose).
+- Document variable naming convention in CONTRIBUTING — add a section stating: avoid single and double letter variable names unless following a strong established convention (e.g. loop index `i`); avoid opaque abbreviations; prefer full descriptive names even if longer.
 - Single letter command shortcuts — audit all commands and define a consistent set of single-letter shorthands. Currently: `y`/`n`, `m` (move), `h` (help). Candidates: `d` (done with this box), `r` (review items), `n` (new box — conflicts with no), `a` (add item). Each shorthand must be added to the global intercept block in `processInput` and documented in README.md commands table. Requires tests confirming shortcuts are not logged as item names.
 - Compound command history — multi-step exchanges (e.g. `move` then `bedroom`) should be stored as a single history entry (`move bedroom`) rather than two separate ones. Approach: when a command triggers an `AWAITING_*` stage, save the command as a pending prefix; when the next message is sent in that stage, combine prefix + answer into one history entry instead of storing them separately. Stages to consider: `AWAITING_MOVE_LOCATION`, `AWAITING_DUMP_TARGET`, `AWAITING_NEST_PARENT`, `AWAITING_BOX_NAME`, `AWAITING_LOCATION`, `AWAITING_BATCH_CONFIRM`, `AWAITING_DELETE_BOX_CONFIRM`
 - Arrow up/down ✅ implemented — cycles through sent message history; arrow down returns to draft

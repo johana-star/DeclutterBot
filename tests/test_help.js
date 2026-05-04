@@ -141,6 +141,21 @@ assert('h not logged as item', state.boxes[0].items.length === 0);
 assertIncludes('shows help message', lastBotMessage, 'New box');
 
 
+console.log('\n11. "add item" with no active box shows error, not item prompt');
+reset();
+state.conversationStage = 'FINISHED';
+processInput('add item', []);
+assertIncludes('explains no active box', lastBotMessage, 'No active box');
+assert('stage not set to BOX_OPEN', state.conversationStage !== 'BOX_OPEN');
+
+console.log('\n12. "add item" with active box prompts for item name');
+reset();
+makeBox('Test Box');
+processInput('add item', []);
+assert('stage set to BOX_OPEN', state.conversationStage === 'BOX_OPEN');
+assertIncludes('asks for item', lastBotMessage, 'item');
+
+
 // ── SUMMARY ───────────────────────────────────────────────────────────────────
 console.log('\n' + (failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed\n');
 process.exit(failed > 0 ? 1 : 0);

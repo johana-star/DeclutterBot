@@ -27,6 +27,7 @@ var handleItemViewByNumber = app.handleItemViewByNumber;
 var handleItemViewAction   = app.handleItemViewAction;
 var handleItemViewNotes    = app.handleItemViewNotes;
 var showItemDetail         = app.showItemDetail;
+handleTrashDelete          = app.handleTrashDelete;
 var groupItems             = app.groupItems;
 
 // ── HARNESS ───────────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ makeItem(box, 'Lamp', 'keep');
 handleItemViewByNumber(1);
 assert('Change fate chip', lastChips.indexOf('Change fate') !== -1);
 assert('Edit notes chip', lastChips.indexOf('Edit notes') !== -1);
-assert('Remove chip', lastChips.indexOf('Remove') !== -1);
+assert('Trash chip', lastChips.indexOf('Trash') !== -1);
 assert('Back to list chip', lastChips.indexOf('Back to list') !== -1);
 
 // 5. "Back to list" returns to review
@@ -117,14 +118,16 @@ handleItemViewAction('back to list');
 assert('stage back to BOX_OPEN', state.conversationStage === 'BOX_OPEN');
 assertIncludes('shows item list', lastBotMessage, 'Items in');
 
-// 6. "Remove" from item view removes the item
-console.log('\n6. Remove from item view removes the item');
+// 6. "Trash" from item view triggers trash flow, "Yes" deletes
+console.log('\n6. Trash from item view then Yes deletes the item');
 reset();
 box = makeBox('Test Box', 'bedroom');
 makeItem(box, 'Lamp', 'keep');
 makeItem(box, 'Chair', 'donate');
 handleItemViewByNumber(1);
-handleItemViewAction('remove');
+handleItemViewAction('trash');
+assert('stage set to AWAITING_TRASH_DELETE', state.conversationStage === 'AWAITING_TRASH_DELETE');
+app.handleTrashDelete('yes');
 assert('item removed', box.items.length === 1);
 assert('correct item removed', box.items[0].name === 'Chair');
 
