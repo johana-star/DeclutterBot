@@ -197,6 +197,9 @@ All conversation flow is driven by `state.conversationStage`. Existing stages:
 | `AWAITING_NEST_PARENT` | Asked which box to nest the active box inside |
 | `AWAITING_ITEM_VIEW` | Showing item detail, waiting for an action (change fate / edit notes / remove / back) |
 | `AWAITING_ITEM_VIEW_NOTES` | Waiting for new notes text for the viewed item |
+| `AWAITING_FATE_REVIEW_ACTION` | Fate review list shown, waiting for item-by-item / bulk / back |
+| `AWAITING_FATE_REVIEW_ITEM` | Mid item-by-item fate review walk |
+| `AWAITING_FATE_REVIEW_BULK` | Bulk action chosen, awaiting confirmation |
 | `AWAITING_TRASH_DELETE` | Asked whether to delete a trashed item (yes/no/always/never) |
 | `AWAITING_DISPOSAL` | Asked where a kept-trash item can be safely disposed of |
 | `FINISHED` | No active box, session summary state |
@@ -225,7 +228,11 @@ function processInput(text, photos) {
 
 If a command only makes sense in a specific stage, handle it in the `switch`. If it should work from anywhere, intercept it above.
 
-**Any label used in `setChips()` must also be intercepted as a global command.** Chip labels can appear as user input at any stage, including `BOX_OPEN` where unrecognized text is treated as an item name. Failing to intercept a chip label will cause it to be logged as an item — this has already happened with "Skip to next box".
+**Any label used in `setChips()` must also be intercepted as a global command.**
+
+**Sub-menus that show chips must set a stage.** If a function shows chips but does not change `conversationStage`, those chips have no safe landing zone — any chip that doesn't match an existing global intercept will fall through to `handleItemName` and be logged as an item. The rule is: if you call `setChips()`, you must also set `conversationStage` to a stage that handles those chips. `handleFateReviewMenu` was broken because it showed `Back` as a chip but left the stage as `BOX_OPEN`, so `Back` was logged as an item name.
+
+**Corollary: never show a chip you haven't also intercepted.** Before adding a chip to any `setChips()` call, verify there is either (a) a global intercept for that label, or (b) a stage set that handles it in the switch. Chip labels can appear as user input at any stage, including `BOX_OPEN` where unrecognized text is treated as an item name. Failing to intercept a chip label will cause it to be logged as an item — this has already happened with "Skip to next box".
 
 Similarly, **natural language commands must be intercepted before they reach `handleItemName`**. Any phrase not caught by the global intercepts will be treated as an item name — this is how "Remove Skip to next box from Desktop" became a logged item.
 
@@ -272,15 +279,23 @@ All files exit with code `0` on success and `1` on any failure.
 | `tests/test_item_view.js` | Item detail view: number selection, actions, notes editing, photo count |
 | `tests/test_history.js` | Arrow up/down input history; sidebar click history |
 | `tests/test_import.js` | Import JSON: valid import, validation, normalisation, confirm/cancel |
+| `tests/test_fate_review.js` | Cross-box fate review: collect, list, item-by-item, bulk actions, resume flows |
 | `tests/test_help.js` | Help command: hi/hello/hey/help/? from any stage, context-aware chips; add item command |
 | `tests/test_trash.js` | Trash deletion: delete prompt, always/never preference, disposal notes, deletion count |
 
 ---
 
-## Punchlist (upcoming features needing tests on implementation)
+## Punchlist
+
+> **Next session — start here (three small fixes, one at a time):**
+> 1. `fateReviewChips` sell and donate missing fate options — add Keep, Trash, Unsure to sell chips; add Keep, Sell, Trash to donate chips. Then refactor `fateReviewChips` to use a single `FATE_REVIEW_CHIPS` object per the scalpel/single-source-of-truth principles above.
+> 2. `handleDisposal` skip path doesn't check `_resumeAfterDisposal` or `_resumeAfterTrash` — copy the resume check from the note-written branch into the skip branch (lines ~1570-1577).
+> 3. "Stopped reviewing. N of M actioned" → "Stopped reviewing. N of M items have been changed."
+ (upcoming features needing tests on implementation)
 
 - Export CSV — export inventory as a flat CSV file with columns: box name, box location, item name, fate, notes. One row per item. Needs tests for correct column order, escaping of commas/quotes in values, and empty boxes handled gracefully.
 - Import accepts CSV or JSON — the import button and `import` command should accept either format. CSV import should reconstruct boxes and items from the flat structure. Needs tests for valid CSV, malformed CSV, mixed encoding edge cases, and round-trip fidelity (export then re-import produces equivalent state).
+- Split app.js into modules — at 1500+ LOC, natural split points are state/helpers, handlers, fate review, trash/disposal, UI/DOM functions, and processInput/init. Requires decision on bundler (esbuild/rollup), ES modules, or multiple script tags. Multiple script tags is lowest friction but requires load order management and test setup changes. Hold until a bundler is added or readability becomes a genuine pain point.
 - Test coverage with c8 — run `npx c8 node tests/test.js` to get line, branch, and function coverage reports with no architecture changes. Add a `coverage` script to a `package.json` if one doesn't exist. Use coverage reports to identify untested code paths and prioritize new tests.
 - localStorage quota handling — `saveState` currently has no error handling for `QuotaExceededError`. When storage is full, the app should catch the error, show a warning message with an Export JSON chip, and suppress repeated warnings using a `storageFull` flag. Import should still work when storage is full (state lives in memory; only the save-back fails). Tests: throwing `setItem` stub shows warning + chip; normal `setItem` saves silently; repeated saves after full don't repeat the warning; import works regardless of storage state.
 - Soft deletion — items (and optionally boxes) receive a `deleted_at` timestamp instead of being spliced from the array. Soft-deleted items are hidden from all UI views (review list, item count, sidebar tags) but included in JSON export.
@@ -303,9 +318,16 @@ All files exit with code `0` on success and `1` on any failure.
 - Rename short/unclear variable names — one and two letter variables (e.g. `g`, `g2`) should be replaced with descriptive names. Audit all handlers added during the trash/delete implementation pass. Remaining candidates: `g`/`group` variables in reviewBox and groupItems loops. Note: well-known abbreviations like `pref`, `idx`, `btn` are acceptable as suffixes on descriptive names — e.g. `effectivePref` is preferred over `effPref` (too terse) or `effectivePreference` (unnecessarily verbose).
 - Document variable naming convention in CONTRIBUTING — add a section stating: avoid single and double letter variable names unless following a strong established convention (e.g. loop index `i`); avoid opaque abbreviations; prefer full descriptive names even if longer.
 - Single letter command shortcuts — audit all commands and define a consistent set of single-letter shorthands. Currently: `y`/`n`, `m` (move), `h` (help). Candidates: `d` (done with this box), `r` (review items), `n` (new box — conflicts with no), `a` (add item). Each shorthand must be added to the global intercept block in `processInput` and documented in README.md commands table. Requires tests confirming shortcuts are not logged as item names.
+- Trash N from box review does not return to review list after completing the delete flow — after answering yes/no to the delete prompt, the user is left without review chips. Delete N returns to the review list correctly. Fix: after trash delete flow completes (handleTrashDelete), if the stage was previously BOX_OPEN/reviewing, re-show the review chips. The delete behavior is the correct model.
+- Move single item to another box — `move item <N> to <box name>` should move a specific numbered item from the active box to another named box. Currently there is no way to move individual items between boxes; `Dump into...` moves all items. This is a high-priority gap since users regularly sort items into wrong boxes and need to correct them without moving everything.
+- `whereami` debug command — typing `whereami` (or `?!`) should print the current `conversationStage`, active box name, and last chips shown. Useful for diagnosing silent failures where chips disappear and no response is rendered. Should be a global intercept that works from any stage.
+- Review all boxes uses an unordered list while review by fate uses a numbered list. Upgrade review all boxes to use a numbered list and allow box selection by number (type `3` to open box 3 directly).
+- Six-chip trash delete prompt is taller than the standard prompt and may obscure the last message. Consider a layout fix or reducing to four chips by moving always/never for this box to a secondary prompt.
+- Change fate from box review — when reviewing a box (`review items`), there is no way to change an item's fate to keep/donate/sell/unsure directly. Current chips offer `Trash N` or `Delete N` only. Options: add `Unsure N`, `Keep N`, `Donate N`, `Sell N` chips to the review screen, or make the item detail view (accessed by typing a number) the primary path for fate changes and ensure all fates are reachable from there.
 - Compound command history — multi-step exchanges (e.g. `move` then `bedroom`) should be stored as a single history entry (`move bedroom`) rather than two separate ones. Approach: when a command triggers an `AWAITING_*` stage, save the command as a pending prefix; when the next message is sent in that stage, combine prefix + answer into one history entry instead of storing them separately. Stages to consider: `AWAITING_MOVE_LOCATION`, `AWAITING_DUMP_TARGET`, `AWAITING_NEST_PARENT`, `AWAITING_BOX_NAME`, `AWAITING_LOCATION`, `AWAITING_BATCH_CONFIRM`, `AWAITING_DELETE_BOX_CONFIRM`
 - Arrow up/down ✅ implemented — cycles through sent message history; arrow down returns to draft
 - Context bar + help command ✅ implemented — hi/hello/hey/help/? all trigger contextual help; context bar now reads "type \"help\" or \"?\" for commands"
+- Natural language box commands — `trash box <name>` and `delete box <name>` should switch to the named box and trigger the delete flow. Currently these are logged as new item names. Similarly `move box <name>` could switch to a named box and trigger the move flow without requiring the user to first navigate to the box manually.
 - Move any box by name (not just the active box)
 - Rename to DeclutterBot ✅ completed
 - `uid()` generates a random 7-char base-36 string (~78 billion possibilities) but does not verify uniqueness against existing IDs. A collision would silently corrupt parentId/activeBoxId foreign key relationships. Fix: collect all in-use IDs at generation time and retry on collision. Add a test that generates a large number of IDs and asserts no duplicates.
@@ -323,6 +345,49 @@ All files exit with code `0` on success and `1` on any failure.
   - Location strings should be split on common separators (dash, comma, slash, colon) before matching, so individual segments are matched independently
 ---
 
+## Feature Scoping
+
+### Scalpel, not shotgun
+
+Features that touch many functions simultaneously are hard to test completely and prone to regressions. Before implementing a feature, identify the minimum slice that delivers value and can be tested end-to-end in isolation. Ship that slice, confirm it works, then extend it.
+
+A feature is too large if it:
+- Touches more than 4-5 functions
+- Requires changes to `processInput`, the switch statement, state initialization, AND handler functions simultaneously
+- Introduces new resume flows that thread through existing handlers (handleDisposal, handleFate, deleteActiveItem)
+
+When a feature feels large, ask: what is the smallest version of this that is useful? Build that first.
+
+### Single source of truth for repeated structures
+
+When the same invariant must hold across multiple parallel data structures (e.g. every fate must be reachable from every other fate in review chips), those structures should be derived from a single authoritative object rather than maintained in parallel. Parallel structures drift. A single object with one test is reliable.
+
+Example: fate review chips should be derived from a single `FATE_REVIEW_CHIPS` object where each fate's chips are defined once, omitting the current fate from the available options. One object to update, one assertion to verify the invariant.
+
+```js
+// Prefer this:
+var FATE_REVIEW_CHIPS = {
+  trash:  ['Keep', 'Donate', 'Sell', 'Move to unsure', 'Delete', 'Disposal note'],
+  sell:   ['Keep', 'Donate', 'Trash', 'Move to unsure', 'Add selling notes'],
+  donate: ['Keep', 'Sell', 'Trash', 'Move to unsure', 'Add donation destination'],
+  unsure: ['Keep', 'Donate', 'Trash', 'Sell'],
+  keep:   ['Change fate', 'Add to kit']
+};
+
+// Over this:
+function fateReviewChips(fate) {
+  switch (fate) {
+    case 'trash':  return ['Delete', 'Disposal note', ...]; // must be kept in sync manually
+    case 'sell':   return ['Add selling notes', ...];       // easy to miss a fate
+    ...
+  }
+}
+```
+
+### Every item in a fate review must be able to reach any other fate
+
+This is a hard rule, not a suggestion. When reviewing items of fate X, the chips must always include paths to all other fates. A sell item must be reclassifiable as keep, trash, donate, or unsure. A trash item must be reclassifiable as keep, donate, or sell. Omitting any fate from the chip set is a bug. Verify this with a single test against the `FATE_REVIEW_CHIPS` object rather than per-fate assertions.
+
 ## Working with Claude
 
 ### Style instructions
@@ -334,7 +399,13 @@ Current style rules:
 - Minimize em dashes. Use commas, colons, or parentheses instead in most cases.
 - Do not use bullet points or numbered lists in conversational responses unless the content is genuinely list-shaped.
 
-### On Claude's self-descriptions
+### On navigating vs. driving
+
+When Claude drives (writes code directly), it tends to produce working but not necessarily idiomatic code. The review loop to catch style and quality issues is slower than a human catching them in the moment. When Claude navigates (guides a human driver), the human catches improvements naturally — better variable names, cleaner test assertions, idiomatic patterns — because they can see the code clearly as they type it.
+
+For complex or high-surface-area changes, prefer Claude navigating and a human driving. Reserve Claude driving for mechanical or repetitive changes where speed matters more than elegance.
+
+## On Claude's self-descriptions
 
 Claude frequently describes its own processing using language borrowed from human cognition ("mental scan", "I noticed", "I feel") or from machine learning ("reinforcement", "learning"). Neither is accurate.
 
@@ -361,10 +432,12 @@ When you make a code change, ask yourself:
 - [ ] Did I add a new `AWAITING_*` stage? → Update the stage table
 - [ ] Did I add a new global command (intercepted above the `switch`)? → Document it in the global command intercept section
 - [ ] Did I add a new chip label? → Also add it as a global intercept in `processInput`
+- [ ] Did I call `setChips()` without changing `conversationStage`? → This is almost always a bug. Every chip display must be paired with a stage that handles those chips, otherwise they fall through to `handleItemName`.
 - [ ] Did I add a new single-character shorthand? → Document it in the input normalisation section
 - [ ] Did I add tests to an existing file? → Inserted them **before** the summary block, not appended after `process.exit`
 - [ ] Did I move a function into or out of the DOM guard? → Update the DOM guard section
 - [ ] Did I move or restructure an existing function? → Diff the before and after line-by-line to confirm every property, class assignment, and side effect is preserved. A moved function that compiles and passes tests can still be missing lines.
+- [ ] Am I about to write to a file? → Copy it first (`cp file.js file.js.bak`), write to a `.tmp` file, verify the result, then use `os.replace(tmp, original)` which is atomic. Never use `open(path, 'w')` directly on a source file — it truncates before writing and leaves an empty file if the write fails.
 - [ ] How large is the change surface area? → Count the number of functions modified, moved, or deleted. Larger surface area = higher risk of undetected regression, regardless of test passage. A try/catch wrapping one function is lower risk than a refactor touching ten. **Safety correlates inversely with change surface area** — this is the primary structural measure of risk, not intuition.
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
 - [ ] Did I change how tests are structured or stubbed? → Update the How Tests Work section

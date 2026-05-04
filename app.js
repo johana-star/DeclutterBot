@@ -11,10 +11,14 @@ var state = {
   pendingDeleteBoxId: null,
   pendingNest: null,
   activeItemViewGroup: null,
+  pendingFateReview: null,
   conversationStage: 'WELCOME',
   conversationHistory: []
 };
 var FATES = ['keep','donate','trash','sell','unsure'];
+var FATE_TITLES = FATES.map(function(fate) {
+  return fate.charAt(0).toUpperCase() + fate.slice(1);
+});
 var collapsedBoxIds = [];
 var sessionDeletedCount = 0;
 var sessionTrashPreference = null; // null | 'always' | 'never'
@@ -202,7 +206,9 @@ function _setChipsImpl(chips) {
 
 function _chipClickImpl(t) {
   if (t==='Move box') t='move';
-  document.getElementById('user-input').value=t;
+  // Strip count suffix from fate review menu chips e.g. "Review keep (11)" -> "Review keep"
+  var display = t.replace(/\s*\(\d+\)$/, '');
+  document.getElementById('user-input').value=display;
   sendUserMessage();
   document.getElementById('user-input').focus();
 }
@@ -280,80 +286,96 @@ async function sendUserMessage() {
 
 
 function processInput(text, photos) {
-  var t = text.toLowerCase().trim();
-  if (t==='y') { t='yes'; text='yes'; }
-  if (t==='n') { t='no';  text='no';  }
-  if (t==='reset'||t==='start over') { clearAll(); return; }
-  if (t==='hi'||t==='hello'||t==='hey'||t==='help'||t==='h'||t==='?') { handleHelp(); return; }
-  if (t==='review items'&&activeBox()) { reviewBox(); return; }
-  if (t==='new box') { startNewBox(); return; }
-  if (t==='done with this box'||t==='done'||t==='skip to next box') { doneWithBox(); return; }
-  if (t==='add item') {
+  var command = text.toLowerCase().trim();
+  if (command==='y') { command='yes'; text='yes'; }
+  if (command==='n') { command='no';  text='no';  }
+  if (command==='reset'||command==='start over') { clearAll(); return; }
+  if (command==='hi'||command==='hello'||command==='hey'||command==='help'||command==='h'||command==='?') { handleHelp(); return; }
+  if (command==='review items'&&activeBox()) { reviewBox(); return; }
+  if (command==='new box') { startNewBox(); return; }
+  if (command==='done with this box'||command==='done'||command==='skip to next box') { doneWithBox(); return; }
+  if (command==='add item') {
     if (!activeBox()) {
       addBotMessage('No active box \u2014 open a box first, or start a new one.');
-      setChips(['New box', 'Continue last box', 'Review all boxes']);
+      setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     } else {
       state.conversationStage='BOX_OPEN';
       addBotMessage('What\'s the item?');
     }
     return;
   }
-  if (t==='start sorting'||t==='start new box') { return; } // chips handled by init, ignore if replayed
-  if (t==='continue last box') {
+  if (command==='start sorting'||command==='start new box') { return; } // chips handled by init, ignore if replayed
+  if (command==='continue last box') {
     if (state.activeBoxId && activeBox()) { selectBox(state.activeBoxId); }
     else if (state.boxes.length > 0) { selectBox(state.boxes[state.boxes.length - 1].id); }
     else { startNewBox(); }
     return;
   }
-  if (t==='delete box') { handleDeleteBox(); return; }
-  if (t==='nest box' || t==='put inside') { handleNest(text); return; }
-  if (t==='dump into...') { handleDump('dump'); return; }
-  if (t==='back to list') { handleItemViewAction('back to list'); return; }
+  if (command==='delete box') { handleDeleteBox(); return; }
+  if (command==='nest box' || command==='put inside') { handleNest(text); return; }
+  if (command==='dump into...') { handleDump('dump'); return; }
+  if (command==='back to list') { handleItemViewAction('back to list'); return; }
+  if (command==='back' && (state.conversationStage==='AWAITING_FATE_REVIEW_ACTION' ||
+      state.conversationStage==='AWAITING_FATE_REVIEW_ITEM' ||
+      state.conversationStage==='AWAITING_FATE_REVIEW_BULK')) { handleFateReviewAction('back'); return; }
+  if (command==='back' && state.pendingFateReview) { handleFateReviewAction('back'); return; }
+  if (command==='review unsure'||command==='review trash'||command==='review sell'||command==='review donate'||command==='review keep') {
+    handleFateReview(command.slice(7)); return;
+  }
+  if (command==='review by fate') { handleFateReviewMenu(); return; }
+  // Handle 'Review keep (11)' style chips from the fate review menu
+  if (/^review (keep|donate|trash|sell|unsure)( \(\d+\))?$/.test(command)) {
+    handleFateReview(command.replace(/^review /, '').replace(/\s*\(\d+\)$/, '').trim());
+    return;
+  }
+  if (state.conversationStage==='AWAITING_FATE_REVIEW_ACTION') { handleFateReviewAction(text); return; }
+  if (state.conversationStage==='AWAITING_FATE_REVIEW_ITEM')   { handleFateReviewItem(text); return; }
+  if (state.conversationStage==='AWAITING_FATE_REVIEW_BULK')   { handleFateReviewBulk(text); return; }
   if (state.conversationStage==='AWAITING_TRASH_DELETE') { handleTrashDelete(text); return; }
   if (state.conversationStage==='AWAITING_DISPOSAL') { handleDisposal(text); return; }
-  if (t==='import json' || t==='import') {
+  if (command==='import json' || command==='import') {
     var el = document.getElementById('import-input');
     if (el) el.click();
     else addBotMessage('Use the \u2191 Import JSON button in the header to import a file.');
     return;
   }
-  if (t==='done for now') { handleFinished('done'); return; }
-  if (t==='review all boxes') { handleFinished('review all'); return; }
+  if (command==='done for now') { handleFinished('done'); return; }
+  if (command==='review all boxes') { handleFinished('review all'); return; }
 
   // Delete box command: "delete box" or "delete this box"
-  if (t === 'delete box' || t === 'delete this box') { handleDeleteBox(); return; }
+  if (command === 'delete box' || command === 'delete this box') { handleDeleteBox(); return; }
   // Confirm delete box
   if (state.conversationStage === 'AWAITING_DELETE_BOX_CONFIRM') { handleDeleteBoxConfirm(text); return; }
 
   // Dump command: "dump into <box name>" or "dump"
-  if (t === 'dump' || t.startsWith('dump into ') || t.startsWith('dump ')) { handleDump(text); return; }
+  if (command === 'dump' || command.startsWith('dump into ') || command.startsWith('dump ')) { handleDump(text); return; }
   if (state.conversationStage === 'AWAITING_DUMP_TARGET') { handleDumpTarget(text); return; }
 
   // Remove command: "remove <name or number>" or "delete <name or number>"
   // Trash N / Delete N chips from review screen
-  if (/^trash \d+$/.test(t)) { handleTrashByNumber(parseInt(t.slice(6), 10)); return; }
-  if (/^delete \d+$/.test(t)) { handleDeleteByNumber(parseInt(t.slice(7), 10)); return; }
+  if (/^trash \d+$/.test(command)) { handleTrashByNumber(parseInt(command.slice(6), 10)); return; }
+  if (/^delete \d+$/.test(command)) { handleDeleteByNumber(parseInt(command.slice(7), 10)); return; }
   // Delete N — immediate deletion for already-trashed items
-  if (/^delete \d+$/.test(t)) {
-    var dn = parseInt(t.slice(7), 10);
+  if (/^delete \d+$/.test(command)) {
+    var dn = parseInt(command.slice(7), 10);
     handleDeleteByNumber(dn);
     return;
   }
 
   // Nest command: "nest", "put <box> inside <box>", "put inside"
-  if (t === 'nest' || t === 'put inside' || t === 'nest box') { handleNest(text); return; }
+  if (command === 'nest' || command === 'put inside' || command === 'nest box') { handleNest(text); return; }
   // "put X inside/in/on Y" or "nest X inside/in/on Y" — require a preposition
-  if ((t.startsWith('put ') || t.startsWith('nest ')) &&
-      (t.indexOf(' inside ') !== -1 || t.indexOf(' in ') !== -1 || t.indexOf(' on ') !== -1)) {
+  if ((command.startsWith('put ') || command.startsWith('nest ')) &&
+      (command.indexOf(' inside ') !== -1 || command.indexOf(' in ') !== -1 || command.indexOf(' on ') !== -1)) {
     handleNest(text); return;
   }
   if (state.conversationStage === 'AWAITING_NEST_CHILD') { handleNestChild(text); return; }
   if (state.conversationStage === 'AWAITING_NEST_PARENT') { handleNestParent(text); return; }
 
   // Move command: "move [location]" or "m [location]"
-  if (t==='m'||t==='move'||t.startsWith('move ')||t.startsWith('m ')) {
-    var loc = t.startsWith('move ') ? text.slice(5).trim()
-            : t.startsWith('m ')    ? text.slice(2).trim()
+  if (command==='m'||command==='move'||command.startsWith('move ')||command.startsWith('m ')) {
+    var loc = command.startsWith('move ') ? text.slice(5).trim()
+            : command.startsWith('m ')    ? text.slice(2).trim()
             : '';
     handleMove(loc); return;
   }
@@ -384,6 +406,9 @@ function processInput(text, photos) {
     case 'AWAITING_DISPOSAL':      handleDisposal(text); break;
     case 'AWAITING_ITEM_VIEW':      handleItemViewAction(text); break;
     case 'AWAITING_ITEM_VIEW_NOTES': handleItemViewNotes(text); break;
+    case 'AWAITING_FATE_REVIEW_ACTION': handleFateReviewAction(text); break;
+    case 'AWAITING_FATE_REVIEW_ITEM':   handleFateReviewItem(text); break;
+    case 'AWAITING_FATE_REVIEW_BULK':   handleFateReviewBulk(text); break;
     case 'AWAITING_NEST_CHILD':    handleNestChild(text); break;
     case 'AWAITING_NEST_PARENT':   handleNestParent(text); break;
     case 'FINISHED':              handleFinished(text); break;
@@ -544,11 +569,11 @@ function handleBoxName(text) {
 }
 
 function handleBoxBatchConfirm(text) {
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   var batch = state.pendingBoxBatch;
   if (!batch) { state.conversationStage = 'AWAITING_BOX_NAME'; return; }
 
-  if (t.startsWith('no') || t.includes('just 1') || t === '1') {
+  if (command.startsWith('no') || command.includes('just 1') || command === '1') {
     state.pendingBoxBatch = null;
     var box = {id:uid(),name:batch.baseName,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
     state.boxes.push(box); state.activeBoxId=box.id;
@@ -556,13 +581,13 @@ function handleBoxBatchConfirm(text) {
     addBotMessage('Just the one **"'+batch.baseName+'"** then.\n\nWhere is this box located?');
     return;
   }
-  if (t.includes('change') || t.includes('quantity')) {
+  if (command.includes('change') || command.includes('quantity')) {
     addBotMessage('How many **' + batch.baseName + '** boxes are there?');
     state.conversationStage = 'AWAITING_BOX_BATCH_QTY';
     return;
   }
   // Affirmative
-  var numMatch = t.match(/\d+/);
+  var numMatch = command.match(/\d+/);
   var qty = numMatch ? parseInt(numMatch[0], 10) : batch.qty;
   batch.qty = qty;
   state.conversationStage = 'AWAITING_BOX_BATCH_LOCATION';
@@ -648,7 +673,7 @@ function handleItemName(text, photos) {
   box.items.push(item); state.activeItemId=item.id;
   state.conversationStage='AWAITING_FATE';
   addBotMessage('**'+name+'** \u2014 noted.\n\nWhat should we do with it?');
-  setChips(['Keep','Donate','Trash','Sell','Unsure']);
+  setChips(FATE_TITLES);
 }
 
 function handleBatchConfirm(text, photos) {
@@ -664,7 +689,8 @@ function handleBatchConfirm(text, photos) {
     box.items.push(item); state.activeItemId=item.id;
     state.conversationStage='AWAITING_FATE';
     addBotMessage('Just the one **'+batch.itemName+'** then. What should we do with it?');
-    setChips(['Keep','Donate','Trash','Sell','Unsure']); return;
+    setChips(FATE_TITLES);
+    return;
   }
   if (t.startsWith('yes')||t.indexOf('log')!==-1||t.indexOf('confirm')!==-1||t.match(/^\d+$/)) {
     var nm=t.match(/\d+/); var qty=nm?parseInt(nm[0],10):batch.qty;
@@ -693,17 +719,22 @@ function commitBatch(qty, itemName, photos) {
   state.activeItemId=firstId; state.pendingBatch=null;
   state.conversationStage='AWAITING_BATCH_FATE';
   addBotMessage('Logged **'+qty+' \u00d7 '+itemName+'**. What should we do with all of them?');
-  setChips(['Keep','Donate','Trash','Sell','Unsure','Mixed fates']);
+  setChips(FATE_TITLES.concat(['Mixed fates']));
 }
 
 function handleBatchFate(text, photos) {
   var box=activeBox(); var t=text.toLowerCase().trim();
   if (t.indexOf('mixed')!==-1) {
     addBotMessage('No problem \u2014 I\'ll ask about each one individually.');
-    state.conversationStage='AWAITING_FATE'; setChips(['Keep','Donate','Trash','Sell','Unsure']); return;
+    state.conversationStage='AWAITING_FATE'; setChips(FATE_TITLES);
+    return;
   }
   var matched=null; for(var i=0;i<FATES.length;i++){if(t.indexOf(FATES[i])!==-1){matched=FATES[i];break;}}
-  if (!matched) { addBotMessage('What should we do with all of them?'); setChips(['Keep','Donate','Trash','Sell','Unsure','Mixed fates']); return; }
+  if (!matched) {
+    addBotMessage('What should we do with all of them?');
+    setChips(FATE_TITLES.concat(['Mixed fates']));
+    return;
+  }
   var anchor=activeItem();
   if (anchor) { for(var i=0;i<box.items.length;i++){if(box.items[i].name===anchor.name&&box.items[i].addedAt===anchor.addedAt)box.items[i].fate=matched;} }
   var fm={keep:'\u2705 **Keep** \u2014 all going back home.',donate:'\uD83D\uDC99 **Donate** \u2014 great!',trash:'\uD83D\uDDD1 **Trash** \u2014 out they go.',sell:'\uD83D\uDCB0 **Sell** \u2014 nice haul!',unsure:'\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit.'};
@@ -717,14 +748,18 @@ function handleItemDesc(text, photos) {
   item.description=text.trim();
   state.conversationStage='AWAITING_FATE';
   addBotMessage('Got it. What should we do with **'+item.name+'**?');
-  setChips(['Keep','Donate','Trash','Sell','Unsure']);
+  setChips(FATE_TITLES);
 }
 
 function handleFate(text, photos) {
   var item=activeItem(); if(!item){state.conversationStage='BOX_OPEN';handleFreeform(text,photos);return;}
   var t=text.toLowerCase().trim();
   var matched=null; for(var i=0;i<FATES.length;i++){if(t.indexOf(FATES[i])!==-1){matched=FATES[i];break;}}
-  if (!matched) { addBotMessage('I didn\'t catch that \u2014 what should we do with **'+item.name+'**?'); setChips(['Keep','Donate','Trash','Sell','Unsure']); return; }
+  if (!matched) {
+    addBotMessage('I didn\'t catch that \u2014 what should we do with **'+item.name+'**?');
+    setChips(FATE_TITLES);
+    return;
+  }
   item.fate=matched;
   var fm={keep:'\u2705 **Keep** \u2014 going back home.',donate:'\uD83D\uDC99 **Donate** \u2014 someone will love this.',trash:'\uD83D\uDDD1 **Trash** \u2014 out it goes.',sell:'\uD83D\uDCB0 **Sell** \u2014 make some money!',unsure:'\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit it.'};
   if (matched === 'trash') {
@@ -740,6 +775,14 @@ function handleFate(text, photos) {
     addBotMessage('\uD83D\uDDD1 **Trash** \u2014 delete this item now?');
     state.conversationStage = 'AWAITING_TRASH_DELETE';
     setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
+    return;
+  }
+  if (state.pendingFateReview && state.pendingFateReview._resumeAfterFate) {
+    state.pendingFateReview._resumeAfterFate = false;
+    addBotMessage(fm[matched]);
+    state.pendingFateReview.index++;
+    state.pendingFateReview.reviewedCount = (state.pendingFateReview.reviewedCount || 0) + 1;
+    showFateReviewCurrentItem(state.pendingFateReview);
     return;
   }
   state.conversationStage='AWAITING_ITEM_NOTES';
@@ -764,7 +807,7 @@ function doneWithBox() {
   if (box) delete boxTrashPreferences[box.id];
   state.activeBoxId=null; state.activeItemId=null; state.conversationStage='FINISHED';
   addBotMessage('Nice work on **"'+box.name+'"**!\n\nSummary: '+summary+'.\n\nReady to tackle another box, or are you done for now?');
-  setChips(['New box','Done for now','Review all boxes']);
+  setChips(['New box','Done for now','Review all boxes','Review by fate']);
 }
 
 // Group items by name+fate, return array of {name, fate, count, notes}
@@ -819,7 +862,7 @@ function handleFinished(text) {
   else if(t.indexOf('done')!==-1||t.indexOf('stop')!==-1){
     var total=0; for(var i=0;i<state.boxes.length;i++) total+=state.boxes[i].items.length;
     addBotMessage('Great session! You\'ve sorted **'+state.boxes.length+'** box(es) with **'+total+'** items total.\n\nYou can download your data anytime with the buttons at the top. \uD83D\uDCE6');
-    setChips(['Start new box']);
+    setChips(['Start new box', 'Review by fate']);
   } else if(t.indexOf('review all')!==-1){
     var lines='';
     for(var i=0;i<state.boxes.length;i++){
@@ -827,7 +870,7 @@ function handleFinished(text) {
       var loc = b.location ? ' (' + b.location + ')' : '';
       lines+='**'+b.name+'**'+loc+' \u2014 '+boxSummaryLine(b)+'\n';
     }
-    addBotMessage('**All boxes:**\n'+lines.trim()); setChips(['New box','Done for now']);
+    addBotMessage('**All boxes:**\n'+lines.trim()); setChips(['New box','Done for now','Review by fate']);
   } else { handleFreeform(text,[]); }
 }
 
@@ -856,15 +899,15 @@ function handleHelp() {
       setBoxOpenChips();
     } else {
       state.conversationStage = 'FINISHED';
-      setChips(['New box', 'Continue last box', 'Review all boxes']);
+      setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     }
   }
 }
 
 function handleFreeform(text, photos) {
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   var greetings = ['hi','hello','hey','help','?','list boxes','inventory','start'];
-  if (greetings.indexOf(t) !== -1 || !activeBox()) {
+  if (greetings.indexOf(command) !== -1 || !activeBox()) {
     if (state.boxes.length === 0) {
       addBotMessage('Hello! Ready to start sorting? Tell me what to call your first box.');
       state.conversationStage = 'AWAITING_BOX_NAME';
@@ -872,7 +915,7 @@ function handleFreeform(text, photos) {
     } else {
       addBotMessage('Welcome back! You have **' + state.boxes.length + '** box(es). What would you like to do?');
       state.conversationStage = 'FINISHED';
-      setChips(['New box', 'Continue last box', 'Review all boxes']);
+      setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     }
     return;
   }
@@ -957,7 +1000,7 @@ function handleImportJSON(event) {
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('declutterbot_state');
-  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,conversationStage:'WELCOME',conversationHistory:[]};
+  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,pendingFateReview:null,conversationStage:'WELCOME',conversationHistory:[]};
   sessionDeletedCount=0; sessionTrashPreference=null; boxTrashPreferences={};
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
@@ -1041,7 +1084,7 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
 function setBoxOpenChips() {
   var box = activeBox();
   var extra = box && box.items.length > 0 ? 'Dump into...' : 'Delete box';
-  setChips(['Add item', 'Review items', 'Move box', 'Nest box', extra, 'Done with this box']);
+  setChips(['Add item', 'Review items', 'Move box', 'Nest box', extra, 'Review by fate', 'Done with this box']);
 }
 
 function handleDeleteBox() {
@@ -1067,12 +1110,12 @@ function handleDeleteBox() {
 }
 
 function handleDeleteBoxConfirm(text) {
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   var boxId = state.pendingDeleteBoxId;
   state.pendingDeleteBoxId = null;
   state.conversationStage = 'FINISHED';
 
-  if (t === 'no' || t === 'no, keep it' || t.startsWith('no')) {
+  if (command === 'no' || command === 'no, keep it' || command.startsWith('no')) {
     addBotMessage('Kept. What would you like to do?');
     state.conversationStage = 'BOX_OPEN';
     setChips(['Add item', 'Review items', 'Move box', 'Done with this box']);
@@ -1092,7 +1135,7 @@ function handleDeleteBoxConfirm(text) {
     state.activeItemId = null;
   }
   addBotMessage('Deleted **"' + name + '"**. ' + state.boxes.length + ' box(es) remaining.');
-  setChips(['New box', 'Review all boxes', 'Done for now']);
+  setChips(['New box', 'Review all boxes', 'Done for now', 'Review by fate']);
 }
 
 function dumpChipLabel(source, target) {
@@ -1106,10 +1149,10 @@ function handleDump(text) {
   if (box.items.length === 0) { addBotMessage('"' + box.name + '" is already empty — nothing to dump.'); return; }
 
   // Parse target from "dump into <name>" or "dump <name>"
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   var targetName = '';
-  if (t.startsWith('dump into ')) targetName = text.slice(10).trim();
-  else if (t.startsWith('dump ') && t !== 'dump') targetName = text.slice(5).trim();
+  if (command.startsWith('dump into ')) targetName = text.slice(10).trim();
+  else if (command.startsWith('dump ') && command !== 'dump') targetName = text.slice(5).trim();
 
   if (targetName) {
     handleDumpTarget(targetName);
@@ -1132,8 +1175,8 @@ function handleDumpTarget(text) {
   if (!source) { state.conversationStage = 'BOX_OPEN'; return; }
 
   // Strip location prefix from chip labels: "dining room · top shelf" -> try "top shelf" too
-  var t = text.toLowerCase().trim();
-  var chipBoxName = t.indexOf(' · ') !== -1 ? t.slice(t.indexOf(' · ') + 3).trim() : t;
+  var command = text.toLowerCase().trim();
+  var chipBoxName = command.indexOf(' · ') !== -1 ? command.slice(command.indexOf(' · ') + 3).trim() : command;
 
   // Find target: exact name match first, then exact on stripped chip name,
   // then partial on box name only (not location, to avoid the location-segment bug)
@@ -1141,7 +1184,7 @@ function handleDumpTarget(text) {
   for (var i = 0; i < state.boxes.length; i++) {
     var b = state.boxes[i];
     if (b.id === source.id) continue;
-    if (b.name.toLowerCase() === t || b.name.toLowerCase() === chipBoxName) { target = b; break; }
+    if (b.name.toLowerCase() === command || b.name.toLowerCase() === chipBoxName) { target = b; break; }
   }
   if (!target) {
     for (var i = 0; i < state.boxes.length; i++) {
@@ -1232,16 +1275,16 @@ function handleNest(text) {
   var box = activeBox();
 
   // Parse "put <child> inside/in/on <parent>" inline — works with or without active box
-  var t = text.toLowerCase().trim();
-  var insideIdx = t.indexOf(' inside ');
-  if (insideIdx === -1) insideIdx = t.indexOf(' in ');
-  if (insideIdx === -1) insideIdx = t.indexOf(' on ');
-  if (insideIdx !== -1 && (t.startsWith('put ') || t.startsWith('nest '))) {
-    var pfxLen = t.startsWith('put ') ? 4 : 5;
+  var command = text.toLowerCase().trim();
+  var insideIdx = command.indexOf(' inside ');
+  if (insideIdx === -1) insideIdx = command.indexOf(' in ');
+  if (insideIdx === -1) insideIdx = command.indexOf(' on ');
+  if (insideIdx !== -1 && (command.startsWith('put ') || command.startsWith('nest '))) {
+    var pfxLen = command.startsWith('put ') ? 4 : 5;
     // find which preposition matched
     var prep = ' inside ';
-    if (t.indexOf(' inside ') === -1) prep = t.indexOf(' in ') !== -1 ? ' in ' : ' on ';
-    var splitIdx = t.indexOf(prep);
+    if (command.indexOf(' inside ') === -1) prep = command.indexOf(' in ') !== -1 ? ' in ' : ' on ';
+    var splitIdx = command.indexOf(prep);
     var childName  = text.slice(pfxLen, splitIdx).trim();
     var parentName = text.slice(splitIdx + prep.length).trim();
     // Resolve child by name, fall back to active box
@@ -1292,15 +1335,15 @@ function handleNestParent(text) {
   var nest = state.pendingNest;
   if (!nest) { state.conversationStage = 'BOX_OPEN'; return; }
 
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   // Strip location prefix from chip labels
-  var namePart = t.indexOf(' · ') !== -1 ? t.slice(t.indexOf(' · ') + 3).trim() : t;
+  var namePart = command.indexOf(' · ') !== -1 ? command.slice(command.indexOf(' · ') + 3).trim() : command;
 
   var parent = null;
   // Search all boxes including the child itself so we can give a specific circular error
   for (var i = 0; i < state.boxes.length; i++) {
     var b = state.boxes[i];
-    if (b.name.toLowerCase() === t || b.name.toLowerCase() === namePart) { parent = b; break; }
+    if (b.name.toLowerCase() === command || b.name.toLowerCase() === namePart) { parent = b; break; }
   }
   if (!parent) {
     for (var i = 0; i < state.boxes.length; i++) {
@@ -1369,28 +1412,28 @@ function handleItemViewByNumber(num) {
 
 function handleItemViewAction(text) {
   var box = activeBox();
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   var groups = box ? groupItems(box.items) : [];
   var groupIdx = state.activeItemViewGroup || 0;
   var group = groups[groupIdx];
 
-  if (t === 'back to list' || t === 'back') {
+  if (command === 'back to list' || command === 'back') {
     state.conversationStage = 'BOX_OPEN';
     state.activeItemViewGroup = null;
     reviewBox();
     return;
   }
-  if (t === 'trash' || t === 'delete') {
+  if (command === 'trash' || command === 'delete') {
     state.conversationStage = 'BOX_OPEN';
     state.activeItemViewGroup = null;
-    if (t === 'delete' || (group && group.fate === 'trash')) {
+    if (command === 'delete' || (group && group.fate === 'trash')) {
       handleDeleteByNumber(groupIdx + 1);
     } else {
       handleTrashByNumber(groupIdx + 1);
     }
     return;
   }
-  if (t === 'change fate') {
+  if (command === 'change fate') {
     if (!group) { state.conversationStage = 'BOX_OPEN'; return; }
     // Find first item in this group and set it as active
     for (var i = 0; i < box.items.length; i++) {
@@ -1402,10 +1445,10 @@ function handleItemViewAction(text) {
     state.conversationStage = 'AWAITING_FATE';
     state.activeItemViewGroup = null;
     addBotMessage('What should we do with **' + group.name + '**?');
-    setChips(['Keep', 'Donate', 'Trash', 'Sell', 'Unsure']);
+    setChips(FATE_TITLES);
     return;
   }
-  if (t === 'edit notes') {
+  if (command === 'edit notes') {
     if (!group) { state.conversationStage = 'BOX_OPEN'; return; }
     state.conversationStage = 'AWAITING_ITEM_VIEW_NOTES';
     addBotMessage('Current notes: ' + (group.notes || '_none_') + '\n\nEnter new notes for **' + group.name + '**:');
@@ -1420,18 +1463,18 @@ function handleItemViewAction(text) {
 
 function handleItemViewNotes(text) {
   var box = activeBox();
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   var groups = box ? groupItems(box.items) : [];
   var groupIdx = state.activeItemViewGroup || 0;
   var group = groups[groupIdx];
 
-  if (t === 'cancel') {
+  if (command === 'cancel') {
     state.conversationStage = 'AWAITING_ITEM_VIEW';
     showItemDetail(group, groupIdx);
     return;
   }
   if (group && box) {
-    var newNotes = t === 'clear notes' ? '' : text.trim();
+    var newNotes = command === 'clear notes' ? '' : text.trim();
     box.items.forEach(function(it){
       if (it.name === group.name && it.fate === group.fate) it.notes = newNotes;
     });
@@ -1494,32 +1537,38 @@ function deleteActiveItem() {
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
   addBotMessage(deletionLog(name));
+  if (state.pendingFateReview && state.pendingFateReview._resumeAfterTrash) {
+    state.pendingFateReview._resumeAfterTrash = false;
+    state.pendingFateReview.index++;
+    showFateReviewCurrentItem(state.pendingFateReview);
+    return;
+  }
   setBoxOpenChips();
 }
 
 function handleTrashDelete(text) {
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   var item = activeItem();
   if (!item) { state.conversationStage = 'BOX_OPEN'; return; }
 
-  if (t === 'yes' || t === 'y') {
+  if (command === 'yes' || command === 'y') {
     deleteActiveItem();
     return;
   }
-  if (t === 'always this session' || t === 'always') {
+  if (command === 'always this session' || command === 'always') {
     sessionTrashPreference = 'always';
     deleteActiveItem();
     return;
   }
-  if (t === 'always for this box') {
+  if (command === 'always for this box') {
     if (activeBox()) boxTrashPreferences[activeBox().id] = 'always';
     deleteActiveItem();
     return;
   }
-  if (t === 'never this session' || t === 'never') {
+  if (command === 'never this session' || command === 'never') {
     sessionTrashPreference = 'never';
   }
-  if (t === 'never for this box') {
+  if (command === 'never for this box') {
     if (activeBox()) boxTrashPreferences[activeBox().id] = 'never';
   }
   // No or Never — ask for disposal note
@@ -1529,26 +1578,410 @@ function handleTrashDelete(text) {
 }
 
 function handleDisposal(text) {
-  var t = text.toLowerCase().trim();
+  var command = text.toLowerCase().trim();
   var item = activeItem();
-  if (t === 'skip disposal note' || t === 'skip') {
-    state.activeItemId = null;
-    state.conversationStage = 'BOX_OPEN';
-    var box = activeBox();
-    addBotMessage('Kept **' + (item ? item.name : 'item') + '** in "' + (box ? box.name : 'box') + '".' +
-      '\n\nWhat\'s the next item?');
-    setBoxOpenChips();
-    return;
-  }
-  if (item && text.trim()) {
+  var skipping = command === 'skip disposal note' || command === 'skip';
+  var box = activeBox();
+
+  state.activeItemId = null;
+  if (!skipping && item && text.trim()) {
     var note = 'Safely dispose at: ' + text.trim();
     item.notes = item.notes ? item.notes + '. ' + note : note;
   }
-  state.activeItemId = null;
+  if (state.pendingFateReview && (state.pendingFateReview._resumeAfterDisposal || state.pendingFateReview._resumeAfterTrash)) {
+    state.pendingFateReview._resumeAfterDisposal = false;
+    state.pendingFateReview._resumeAfterTrash = false;
+    state.pendingFateReview.index++;
+    showFateReviewCurrentItem(state.pendingFateReview);
+    return;
+  }
   state.conversationStage = 'BOX_OPEN';
-  addBotMessage('Noted. What\'s the next item?');
+  var botMsg = skipping ?
+    'Kept **' + (item ? item.name : 'item') + '** in "' + (box ? box.name : 'box') + '".' + '\n\nWhat\'s the next item?' :
+    'Noted. What\'s the next item?'
+  addBotMessage(botMsg);
   setBoxOpenChips();
 }
+
+// ── FATE REVIEW ───────────────────────────────────────────────────────────────
+
+function buildFateReviewPath(box) {
+  var path = [box.name];
+  var current = box;
+  var safety = 0;
+  while (current.parentId && safety < 10) {
+    var parent = null;
+    for (var i = 0; i < state.boxes.length; i++) {
+      if (state.boxes[i].id === current.parentId) { parent = state.boxes[i]; break; }
+    }
+    if (!parent) break;
+    path.unshift(parent.name);
+    current = parent;
+    safety++;
+  }
+  return path.join(' > ');
+}
+
+function collectFateItems(fate) {
+  var results = [];
+  for (var b = 0; b < state.boxes.length; b++) {
+    var box = state.boxes[b];
+    var boxPath = buildFateReviewPath(box);
+    for (var i = 0; i < box.items.length; i++) {
+      var item = box.items[i];
+      if (item.fate === fate) {
+        results.push({ itemId: item.id, boxId: box.id, itemName: item.name, boxPath: boxPath });
+      }
+    }
+  }
+  return results;
+}
+var FATE_REVIEW_CHIPS = {
+  keep:   ['Change fate', 'Add to kit', 'Skip'],
+  donate: ['Keep', 'Sell', 'Trash', 'Move to unsure', 'Add donation destination', 'Skip'],
+  sell:   ['Keep', 'Donate', 'Trash', 'Move to unsure', 'Add selling notes', 'Skip'],
+  trash:  ['Keep', 'Donate', 'Sell', 'Move to unsure', 'Delete', 'Disposal note', 'Skip'],
+  unsure: ['Keep', 'Donate', 'Trash', 'Sell', 'Skip']
+};
+
+function fateReviewChips(fate) {
+  return FATE_REVIEW_CHIPS[fate] || ['Skip'];
+}
+
+function fateReviewBulkChips(fate) {
+  switch (fate) {
+    case 'trash':  return ['Delete all', 'Move all to unsure', 'Cancel'];
+    case 'unsure': return ['Mark all keep', 'Mark all donate', 'Mark all trash', 'Mark all sell', 'Cancel'];
+    case 'sell':   return ['Mark all donate', 'Cancel'];
+    case 'donate': return ['Mark all sell', 'Cancel'];
+    case 'keep':   return ['Cancel'];
+    default:       return ['Cancel'];
+  }
+}
+
+function showFateReviewList(review) {
+  var lines = 'Items marked **' + review.fate + '** (' + review.items.length + '):\n';
+  for (var i = 0; i < review.items.length; i++) {
+    var entry = review.items[i];
+    lines += (i + 1) + '. **' + entry.itemName + '** (' + entry.boxPath + ')\n';
+  }
+  addBotMessage(lines.trim() + '\n\nWhat would you like to do?');
+  setChips(['Item by item', 'Bulk action', 'Back']);
+  state.conversationStage = 'AWAITING_FATE_REVIEW_ACTION';
+}
+
+function handleFateReviewMenu() {
+  var counts = {};
+  for (var b = 0; b < state.boxes.length; b++) {
+    for (var i = 0; i < state.boxes[b].items.length; i++) {
+      var fate = state.boxes[b].items[i].fate;
+      counts[fate] = (counts[fate] || 0) + 1;
+    }
+  }
+  var chips = [];
+  var fateOrder = ['unsure', 'trash', 'sell', 'donate', 'keep'];
+  for (var f = 0; f < fateOrder.length; f++) {
+    var fate = fateOrder[f];
+    if (counts[fate]) chips.push('Review ' + fate + ' (' + counts[fate] + ')');
+  }
+  if (chips.length === 0) {
+    addBotMessage('No items logged yet.');
+    return;
+  }
+  // Set stage so Back chip is handled correctly regardless of prior stage
+  state.conversationStage = 'AWAITING_FATE_REVIEW_ACTION';
+  addBotMessage('Which fate would you like to review?');
+  setChips(chips.concat(['Back']));
+}
+
+function handleFateReview(fate) {
+  var cleanFate = fate.replace(/\s*\(\d+\)$/, '').trim().toLowerCase();
+  if (cleanFate.startsWith('review ')) cleanFate = cleanFate.slice(7).trim();
+  var items = collectFateItems(cleanFate);
+  if (items.length === 0) {
+    addBotMessage('No items marked **' + cleanFate + '** in your inventory.');
+    return;
+  }
+  state.pendingFateReview = { fate: cleanFate, items: items, index: 0, reviewedCount: 0 };
+  if (items.length === 1) {
+    showFateReviewCurrentItem(state.pendingFateReview);
+    return;
+  }
+  showFateReviewList(state.pendingFateReview);
+}
+
+function handleFateReviewAction(text) {
+  var command = text.toLowerCase().trim();
+  var review = state.pendingFateReview;
+
+  // Handle back/cancel before null guard — menu shows Back without pendingFateReview set
+  if (command === 'back' || command === 'cancel') {
+    state.pendingFateReview = null;
+    state.conversationStage = 'FINISHED';
+    if (review) addBotMessage('Fate review cancelled.');
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+    return;
+  }
+
+  if (!review) { state.conversationStage = 'BOX_OPEN'; return; }
+  // Number input from list: jump directly to that item
+  if (/^\d+$/.test(command)) {
+    var jumpIdx = parseInt(command, 10) - 1;
+    if (jumpIdx >= 0 && jumpIdx < review.items.length) {
+      review.index = jumpIdx;
+      showFateReviewCurrentItem(review);
+    } else {
+      addBotMessage('No item ' + command + ' in the list.');
+      setChips(['Item by item', 'Bulk action', 'Back']);
+    }
+    return;
+  }
+  if (command === 'item by item') {
+    review.index = 0;
+    showFateReviewCurrentItem(review);
+    return;
+  }
+  if (command === 'bulk action') {
+    state.conversationStage = 'AWAITING_FATE_REVIEW_BULK';
+    addBotMessage('Apply a bulk action to all **' + review.fate + '** items (' + review.items.length + ')?');
+    setChips(fateReviewBulkChips(review.fate));
+    return;
+  }
+  if (command.startsWith('review ')) { handleFateReview(command.slice(7)); return; }
+  handleFreeform(text, []);
+}
+
+function showFateReviewCurrentItem(review) {
+  if (review.index >= review.items.length) {
+    state.pendingFateReview = null;
+    state.conversationStage = 'FINISHED';
+    addBotMessage('Done reviewing all **' + review.fate + '** items.');
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+    return;
+  }
+  var entry = review.items[review.index];
+  var item = null;
+  for (var b = 0; b < state.boxes.length; b++) {
+    if (state.boxes[b].id !== entry.boxId) continue;
+    for (var i = 0; i < state.boxes[b].items.length; i++) {
+      if (state.boxes[b].items[i].id === entry.itemId) { item = state.boxes[b].items[i]; break; }
+    }
+  }
+  if (!item) {
+    review.index++;
+    showFateReviewCurrentItem(review);
+    return;
+  }
+  var progress = (review.index + 1) + ' of ' + review.items.length;
+  var msg = '**' + item.name + '** (' + entry.boxPath + ') [' + progress + ']';
+  if (item.notes) msg += '\nNotes: ' + item.notes;
+  msg += '\n\nWhat would you like to do with this one?';
+  addBotMessage(msg);
+  setChips(fateReviewChips(review.fate).concat(['Done reviewing']));
+  state.conversationStage = 'AWAITING_FATE_REVIEW_ITEM';
+}
+
+function handleFateReviewItem(text) {
+  var command = text.toLowerCase().trim();
+  var review = state.pendingFateReview;
+  if (!review) { state.conversationStage = 'BOX_OPEN'; return; }
+
+  var entry = review.items[review.index];
+  var box = null, item = null;
+  for (var b = 0; b < state.boxes.length; b++) {
+    if (state.boxes[b].id === entry.boxId) {
+      box = state.boxes[b];
+      for (var i = 0; i < box.items.length; i++) {
+        if (box.items[i].id === entry.itemId) { item = box.items[i]; break; }
+      }
+      break;
+    }
+  }
+
+  if (command === 'done reviewing') {
+    var reviewed = review.reviewedCount || 0;
+    state.pendingFateReview = null;
+    state.conversationStage = 'FINISHED';
+    addBotMessage('Stopped reviewing. ' + reviewed + ' of ' + review.items.length + ' items have been changed.');
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+    return;
+  }
+
+  if (command === 'skip') { review.index++; showFateReviewCurrentItem(review); return; } // skip does not increment reviewedCount
+
+  // Fate changes
+  var newFate = null;
+  if (command === 'keep')                     newFate = 'keep';
+  if (command === 'donate' || command === 'mark as donate') newFate = 'donate';
+  if (command === 'sell'   || command === 'mark as sell')   newFate = 'sell';
+  if (command === 'move to unsure')           newFate = 'unsure';
+
+  if (newFate && item) {
+    item.fate = newFate;
+    addBotMessage('Updated **' + item.name + '** to **' + newFate + '**.');
+    review.index++;
+    review.reviewedCount = (review.reviewedCount || 0) + 1;
+    showFateReviewCurrentItem(review);
+    return;
+  }
+
+  if (command === 'trash' && item) {
+    item.fate = 'trash';
+    state.activeItemId = item.id;
+    state.activeBoxId = entry.boxId;
+    var effPref = (boxTrashPreferences[entry.boxId]) || sessionTrashPreference;
+    if (effPref === 'always') {
+      deleteActiveItem();
+      review.index++;
+      showFateReviewCurrentItem(review);
+      return;
+    }
+    if (effPref === 'never') {
+      addBotMessage(disposalPrompt(item.name));
+      state.conversationStage = 'AWAITING_DISPOSAL';
+      setChips(['Skip disposal note', 'Done reviewing']);
+      state.pendingFateReview._resumeAfterTrash = true;
+      return;
+    }
+    addBotMessage('\uD83D\uDDD1 **' + item.name + '** \u2014 delete now?');
+    state.conversationStage = 'AWAITING_TRASH_DELETE';
+    setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
+    state.pendingFateReview._resumeAfterTrash = true;
+    return;
+  }
+
+  if (command === 'delete' && item && box) {
+    box.items = box.items.filter(function(it){ return it.id !== item.id; });
+    addBotMessage(deletionLog(item.name));
+    review.index++;
+    review.reviewedCount = (review.reviewedCount || 0) + 1;
+    showFateReviewCurrentItem(review);
+    return;
+  }
+
+  if (command === 'disposal note' && item) {
+    addBotMessage(disposalPrompt(item.name));
+    state.activeItemId = item.id;
+    state.activeBoxId = entry.boxId;
+    state.conversationStage = 'AWAITING_DISPOSAL';
+    setChips(['Skip disposal note', 'Done reviewing']);
+    state.pendingFateReview._resumeAfterDisposal = true;
+    return;
+  }
+
+  if ((command === 'add selling notes' || command === 'add donation destination') && item) {
+    addBotMessage('Enter notes for **' + item.name + '**:');
+    state.pendingFateReview._awaitingNotes = true;
+    return;
+  }
+
+  if (review._awaitingNotes && item) {
+    item.notes = item.notes ? item.notes + '. ' + text.trim() : text.trim();
+    review._awaitingNotes = false;
+    addBotMessage('Notes updated.');
+    review.index++;
+    review.reviewedCount = (review.reviewedCount || 0) + 1;
+    showFateReviewCurrentItem(review);
+    return;
+  }
+
+  if (command === 'change fate') {
+    state.activeItemId = item.id;
+    state.activeBoxId = entry.boxId;
+    state.conversationStage = 'AWAITING_FATE';
+    addBotMessage('What should we do with **' + item.name + '**?');
+    setChips(['Keep', 'Donate', 'Trash', 'Sell', 'Unsure']);
+    state.pendingFateReview._resumeAfterFate = true;
+    return;
+  }
+
+  if (command === 'add to kit') {
+    addBotMessage('Kit assembly is on the punchlist \u2014 coming soon!');
+    review.index++;
+    showFateReviewCurrentItem(review);
+    return;
+  }
+
+  showFateReviewCurrentItem(review);
+}
+
+function handleFateReviewBulk(text) {
+  var command = text.toLowerCase().trim();
+  var review = state.pendingFateReview;
+  if (!review) { state.conversationStage = 'BOX_OPEN'; return; }
+
+  if (command === 'cancel') { showFateReviewList(review); return; }
+
+  var newFate = null;
+  if (command === 'mark all keep')   newFate = 'keep';
+  if (command === 'mark all donate') newFate = 'donate';
+  if (command === 'mark all trash')  newFate = 'trash';
+  if (command === 'mark all sell')   newFate = 'sell';
+
+  if (newFate) {
+    var updateCount = 0;
+    for (var i = 0; i < review.items.length; i++) {
+      var reviewEntry = review.items[i];
+      for (var b = 0; b < state.boxes.length; b++) {
+        if (state.boxes[b].id !== reviewEntry.boxId) continue;
+        for (var j = 0; j < state.boxes[b].items.length; j++) {
+          if (state.boxes[b].items[j].id === reviewEntry.itemId) {
+            state.boxes[b].items[j].fate = newFate;
+            updateCount++;
+          }
+        }
+      }
+    }
+    state.pendingFateReview = null;
+    state.conversationStage = 'FINISHED';
+    addBotMessage('Updated **' + updateCount + '** items to **' + newFate + '**.');
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+    return;
+  }
+
+  if (command === 'delete all') {
+    var deleteCount = 0;
+    for (var i = 0; i < review.items.length; i++) {
+      var reviewEntry = review.items[i];
+      for (var b = 0; b < state.boxes.length; b++) {
+        if (state.boxes[b].id !== reviewEntry.boxId) continue;
+        var before = state.boxes[b].items.length;
+        state.boxes[b].items = state.boxes[b].items.filter(function(it){ return it.id !== reviewEntry.itemId; });
+        deleteCount += before - state.boxes[b].items.length;
+      }
+    }
+    state.pendingFateReview = null;
+    state.conversationStage = 'FINISHED';
+    addBotMessage(deletionLog(deleteCount + ' items') + ' All **' + review.fate + '** items deleted.');
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+    return;
+  }
+
+  if (command === 'move all to unsure') {
+    var moveCount = 0;
+    for (var i = 0; i < review.items.length; i++) {
+      var reviewEntry = review.items[i];
+      for (var b = 0; b < state.boxes.length; b++) {
+        if (state.boxes[b].id !== reviewEntry.boxId) continue;
+        for (var j = 0; j < state.boxes[b].items.length; j++) {
+          if (state.boxes[b].items[j].id === reviewEntry.itemId) {
+            state.boxes[b].items[j].fate = 'unsure';
+            moveCount++;
+          }
+        }
+      }
+    }
+    state.pendingFateReview = null;
+    state.conversationStage = 'FINISHED';
+    addBotMessage('Moved **' + moveCount + '** items to unsure.');
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+    return;
+  }
+
+  addBotMessage('Apply a bulk action to all **' + review.fate + '** items (' + review.items.length + ')?');
+  setChips(fateReviewBulkChips(review.fate));
+}
+
 
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
@@ -1576,5 +2009,11 @@ if (typeof module !== 'undefined') {
     getSessionDeletedCount: function(){ return sessionDeletedCount; },
     resetSessionCounts: function(){ sessionDeletedCount=0; sessionTrashPreference=null; },
     _setChipsImpl: _setChipsImpl, _chipClickImpl: _chipClickImpl,
-    _addBotMessageImpl: _addBotMessageImpl, _addUserMessageImpl: _addUserMessageImpl };
+    _addBotMessageImpl: _addBotMessageImpl, _addUserMessageImpl: _addUserMessageImpl,
+    handleFateReview: handleFateReview, handleFateReviewAction: handleFateReviewAction,
+    handleFateReviewItem: handleFateReviewItem, handleFateReviewBulk: handleFateReviewBulk,
+    showFateReviewList: showFateReviewList, collectFateItems: collectFateItems,
+    buildFateReviewPath: buildFateReviewPath, handleFateReviewMenu: handleFateReviewMenu,
+    fateReviewChips: fateReviewChips,
+    showFateReviewCurrentItem: showFateReviewCurrentItem };
 }
