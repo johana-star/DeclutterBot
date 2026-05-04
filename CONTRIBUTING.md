@@ -281,6 +281,8 @@ All files exit with code `0` on success and `1` on any failure.
 
 - Export CSV — export inventory as a flat CSV file with columns: box name, box location, item name, fate, notes. One row per item. Needs tests for correct column order, escaping of commas/quotes in values, and empty boxes handled gracefully.
 - Import accepts CSV or JSON — the import button and `import` command should accept either format. CSV import should reconstruct boxes and items from the flat structure. Needs tests for valid CSV, malformed CSV, mixed encoding edge cases, and round-trip fidelity (export then re-import produces equivalent state).
+- Test coverage with c8 — run `npx c8 node tests/test.js` to get line, branch, and function coverage reports with no architecture changes. Add a `coverage` script to a `package.json` if one doesn't exist. Use coverage reports to identify untested code paths and prioritize new tests.
+- localStorage quota handling — `saveState` currently has no error handling for `QuotaExceededError`. When storage is full, the app should catch the error, show a warning message with an Export JSON chip, and suppress repeated warnings using a `storageFull` flag. Import should still work when storage is full (state lives in memory; only the save-back fails). Tests: throwing `setItem` stub shows warning + chip; normal `setItem` saves silently; repeated saves after full don't repeat the warning; import works regardless of storage state.
 - Soft deletion — items (and optionally boxes) receive a `deleted_at` timestamp instead of being spliced from the array. Soft-deleted items are hidden from all UI views (review list, item count, sidebar tags) but included in JSON export.
   - Open questions to resolve before implementing:
     - Scope: items only, or boxes too?
@@ -321,6 +323,33 @@ All files exit with code `0` on success and `1` on any failure.
   - Location strings should be split on common separators (dash, comma, slash, colon) before matching, so individual segments are matched independently
 ---
 
+## Working with Claude
+
+### Style instructions
+
+Conversational style instructions (punctuation preferences, tone, formatting) should be written into this document to be effective across sessions. Claude does not self-monitor style reliably. A rule stated once in conversation may not override trained patterns. If a style preference matters, write it here.
+
+Current style rules:
+- Use American spelling (behavior, not behaviour)
+- Minimize em dashes. Use commas, colons, or parentheses instead in most cases.
+- Do not use bullet points or numbered lists in conversational responses unless the content is genuinely list-shaped.
+
+### On Claude's self-descriptions
+
+Claude frequently describes its own processing using language borrowed from human cognition ("mental scan", "I noticed", "I feel") or from machine learning ("reinforcement", "learning"). Neither is accurate.
+
+Claude has little to no understanding of why or how it reaches conclusions. Any self-description is metaphorical at best, and at worst is pattern-matching to plausible-sounding answers from training data. When Claude explains its own behavior, it is not reporting introspective knowledge.
+
+**When Claude self-describes, treat the description skeptically.** Whenever a response includes a claim about how Claude works, why it made a choice, or what it is "doing" internally, that claim should be read as an approximation borrowed from human or ML vocabulary, not as a reliable account of the underlying process.
+
+**Claude must append a disclaimer whenever it uses self-describing language.** Trigger phrases include but are not limited to: "I notice", "I think", "I feel", "I scan", "I learned", "I recall", "I understand", "mentally", or any description of an internal process. The disclaimer to append is:
+
+> *Note: this is a metaphorical description. Claude does not have reliable introspective access to its own processing.*
+
+This rule is mechanical by design. The more specific the trigger, the more likely it is to be applied consistently.
+
+---
+
 ## Keeping CONTRIBUTING.md Up to Date
 
 **CONTRIBUTING.md must be updated in the same change as the code it describes.** It is not a document to update later — later never comes.
@@ -336,6 +365,7 @@ When you make a code change, ask yourself:
 - [ ] Did I add tests to an existing file? → Inserted them **before** the summary block, not appended after `process.exit`
 - [ ] Did I move a function into or out of the DOM guard? → Update the DOM guard section
 - [ ] Did I move or restructure an existing function? → Diff the before and after line-by-line to confirm every property, class assignment, and side effect is preserved. A moved function that compiles and passes tests can still be missing lines.
+- [ ] How large is the change surface area? → Count the number of functions modified, moved, or deleted. Larger surface area = higher risk of undetected regression, regardless of test passage. A try/catch wrapping one function is lower risk than a refactor touching ten. **Safety correlates inversely with change surface area** — this is the primary structural measure of risk, not intuition.
 - [ ] Did I discover a new browser compatibility issue? → Add it to the Safari / iOS section
 - [ ] Did I change how tests are structured or stubbed? → Update the How Tests Work section
 - [ ] After making a batch change to a structured section (table, list, code block), did I verify the entire section — not just that the operation reported success? A partial replacement can leave the rest unchanged without any error.
