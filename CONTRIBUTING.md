@@ -281,6 +281,14 @@ All files exit with code `0` on success and `1` on any failure.
 
 - Export CSV — export inventory as a flat CSV file with columns: box name, box location, item name, fate, notes. One row per item. Needs tests for correct column order, escaping of commas/quotes in values, and empty boxes handled gracefully.
 - Import accepts CSV or JSON — the import button and `import` command should accept either format. CSV import should reconstruct boxes and items from the flat structure. Needs tests for valid CSV, malformed CSV, mixed encoding edge cases, and round-trip fidelity (export then re-import produces equivalent state).
+- Soft deletion — items (and optionally boxes) receive a `deleted_at` timestamp instead of being spliced from the array. Soft-deleted items are hidden from all UI views (review list, item count, sidebar tags) but included in JSON export.
+  - Open questions to resolve before implementing:
+    - Scope: items only, or boxes too?
+    - Export format: top-level `deleted` array alongside `boxes`. Each deleted item retains a `boxId` field referencing its original box, preserving provenance without cluttering the active box's items array.
+    - Review command: a `review deleted` or `restore` command to list soft-deleted items, with options to restore or hard-delete permanently.
+    - Current `deleteActiveItem` and `handleDeleteByNumber` do hard deletion — both would need to be updated to set `deleted_at` instead of splicing.
+    - Session/daily deletion count still applies.
+    - Filtering: all existing functions that iterate `box.items` (groupItems, countFates, boxSummaryLine, reviewBox) must filter out soft-deleted items.
 - Merge on import JSON — when importing, instead of replacing, offer a merge strategy:
   - Boxes only in the JSON file are added to the app
   - Boxes only in the app are kept as-is
