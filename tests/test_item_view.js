@@ -27,6 +27,7 @@ var handleItemViewByNumber = app.handleItemViewByNumber;
 var handleItemViewAction   = app.handleItemViewAction;
 var handleItemViewNotes    = app.handleItemViewNotes;
 var showItemDetail         = app.showItemDetail;
+var handleItemMoveTarget   = app.handleItemMoveTarget;
 handleTrashDelete          = app.handleTrashDelete;
 var groupItems             = app.groupItems;
 
@@ -193,6 +194,69 @@ for (var i = 0; i < 5; i++) {
 }
 handleItemViewByNumber(1);
 assertIncludes('shows batch count', lastBotMessage, '5 \u00d7');
+
+// ── Move item to box ──────────────────────────────────────────────────────────
+
+console.log('\nMove item: Move to box chip appears in item detail');
+reset();
+var srcBox = makeBox('Kitchen', 'kitchen');
+makeItem(srcBox, 'Bowl', 'keep');
+state.activeBoxId = srcBox.id;
+showItemDetail(groupItems(srcBox.items)[0], 0);
+assert('Move to box chip shown', lastChips.indexOf('Move to box') !== -1);
+
+console.log('\nMove item: moves item to target box');
+reset();
+var src = makeBox('Kitchen', 'kitchen');
+var dst = makeBox('Car', 'garage');
+makeItem(src, 'Bowl', 'keep');
+state.activeBoxId = src.id;
+showItemDetail(groupItems(src.items)[0], 0);
+handleItemViewAction('move to box');
+handleItemMoveTarget('Car');
+assert('item removed from source', src.items.length === 0);
+assert('item added to target', dst.items.length === 1);
+assert('item name preserved', dst.items[0].name === 'Bowl');
+
+console.log('\nMove item: moves all items in a group');
+reset();
+var src2 = makeBox('Shelf', 'dining room');
+var dst2 = makeBox('Car', 'garage');
+makeItem(src2, 'Towel', 'keep');
+makeItem(src2, 'Towel', 'keep');
+makeItem(src2, 'Towel', 'keep');
+makeItem(src2, 'Other', 'keep');
+state.activeBoxId = src2.id;
+showItemDetail(groupItems(src2.items)[0], 0);
+handleItemViewAction('move to box');
+handleItemMoveTarget('Car');
+assert('all group items moved', dst2.items.length === 3);
+assert('non-group item stays', src2.items.length === 1);
+assert('remaining item is Other', src2.items[0].name === 'Other');
+
+console.log('\nMove item: unknown box name shows error and re-offers chips');
+reset();
+var src3 = makeBox('Kitchen', 'kitchen');
+makeBox('Car', 'garage');
+makeItem(src3, 'Bowl', 'keep');
+state.activeBoxId = src3.id;
+showItemDetail(groupItems(src3.items)[0], 0);
+handleItemViewAction('move to box');
+handleItemMoveTarget('Nonexistent Box');
+assert('error message shown', lastBotMessage.indexOf('Couldn\'t find') !== -1);
+assert('chips re-offered', lastChips.indexOf('Car') !== -1);
+
+console.log('\nMove item: cancel returns to item detail');
+reset();
+var src4 = makeBox('Kitchen', 'kitchen');
+makeBox('Car', 'garage');
+makeItem(src4, 'Bowl', 'keep');
+state.activeBoxId = src4.id;
+showItemDetail(groupItems(src4.items)[0], 0);
+handleItemViewAction('move to box');
+handleItemMoveTarget('cancel');
+assert('stage back to item view', state.conversationStage === 'AWAITING_ITEM_VIEW');
+
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────
 console.log('\n' + (failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed\n');

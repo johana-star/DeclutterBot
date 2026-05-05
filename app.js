@@ -373,7 +373,8 @@ function processInput(text, photos) {
   if (state.conversationStage === 'AWAITING_NEST_PARENT') { handleNestParent(text); return; }
 
   // Move command: "move [location]" or "m [location]"
-  if (command==='m'||command==='move'||command.startsWith('move ')||command.startsWith('m ')) {
+  // Exclude 'move to box' which is handled by the item view stage
+  if (command !== 'move to box' && (command==='m'||command==='move'||command.startsWith('move ')||command.startsWith('m '))) {
     var loc = command.startsWith('move ') ? text.slice(5).trim()
             : command.startsWith('m ')    ? text.slice(2).trim()
             : '';
@@ -405,7 +406,8 @@ function processInput(text, photos) {
     case 'AWAITING_TRASH_DELETE':  handleTrashDelete(text); break;
     case 'AWAITING_DISPOSAL':      handleDisposal(text); break;
     case 'AWAITING_ITEM_VIEW':      handleItemViewAction(text); break;
-    case 'AWAITING_ITEM_VIEW_NOTES': handleItemViewNotes(text); break;
+    case 'AWAITING_ITEM_VIEW_NOTES':   handleItemViewNotes(text); break;
+    case 'AWAITING_ITEM_MOVE_TARGET':  handleItemMoveTarget(text); break;
     case 'AWAITING_FATE_REVIEW_ACTION': handleFateReviewAction(text); break;
     case 'AWAITING_FATE_REVIEW_ITEM':   handleFateReviewItem(text); break;
     case 'AWAITING_FATE_REVIEW_BULK':   handleFateReviewBulk(text); break;
@@ -1395,7 +1397,7 @@ function showItemDetail(group, groupIndex) {
   state.activeItemViewGroup = groupIndex;
   addBotMessage(lines.join('\n'));
   var actionChip = (group && group.fate === 'trash') ? 'Delete' : 'Trash';
-  setChips(['Change fate', 'Edit notes', actionChip, 'Back to list']);
+  setChips(['Change fate', 'Edit notes', actionChip, 'Move to box', 'Back to list']);
 }
 
 function handleItemViewByNumber(num) {
@@ -1448,6 +1450,16 @@ function handleItemViewAction(text) {
     setChips(FATE_TITLES);
     return;
   }
+  if (command === 'move to box') {
+    if (!group) { state.conversationStage = 'BOX_OPEN'; return; }
+    state.conversationStage = 'AWAITING_ITEM_MOVE_TARGET';
+    var boxNames = state.boxes
+      .filter(function(b){ return b.id !== (box ? box.id : null); })
+      .map(function(b){ return b.name; });
+    addBotMessage('Move **' + group.name + '** to which box?');
+    setChips(boxNames.concat(['Cancel']));
+    return;
+  }
   if (command === 'edit notes') {
     if (!group) { state.conversationStage = 'BOX_OPEN'; return; }
     state.conversationStage = 'AWAITING_ITEM_VIEW_NOTES';
@@ -1487,6 +1499,62 @@ function handleItemViewNotes(text) {
     state.conversationStage = 'BOX_OPEN';
     state.activeItemViewGroup = null;
   }
+}
+
+
+function handleItemMoveTarget(text) {
+  var command = text.toLowerCase().trim();
+  var box = activeBox();
+  var groups = box ? groupItems(box.items) : [];
+  var groupIdx = state.activeItemViewGroup || 0;
+  var group = groups[groupIdx];
+
+  if (command === 'cancel') {
+    if (group) { showItemDetail(group, groupIdx); }
+    else { state.conversationStage = 'BOX_OPEN'; reviewBox(); }
+    return;
+  }
+
+  // Find target box by name (case-insensitive)
+  var target = null;
+  for (var i = 0; i < state.boxes.length; i++) {
+    if (state.boxes[i].name.toLowerCase() === command &&
+        state.boxes[i].id !== (box ? box.id : null)) {
+      target = state.boxes[i];
+      break;
+    }
+  }
+
+  if (!target) {
+    addBotMessage('Couldn\'t find a box named "' + text.trim() + '". Which box?');
+    var boxNames = state.boxes
+      .filter(function(b){ return b.id !== (box ? box.id : null); })
+      .map(function(b){ return b.name; });
+    setChips(boxNames.concat(['Cancel']));
+    return;
+  }
+
+  if (!box || !group) { state.conversationStage = 'BOX_OPEN'; return; }
+
+  // Move all items in the group from active box to target box
+  var moved = [];
+  var remaining = [];
+  box.items.forEach(function(it) {
+    if (it.name === group.name && it.fate === group.fate) {
+      moved.push(it);
+    } else {
+      remaining.push(it);
+    }
+  });
+  box.items = remaining;
+  moved.forEach(function(it){ target.items.push(it); });
+
+  var count = moved.length;
+  var label = count > 1 ? count + ' × ' + group.name : '**' + group.name + '**';
+  addBotMessage('Moved ' + label + ' to **' + target.name + '**.');
+  state.activeItemViewGroup = null;
+  state.conversationStage = 'BOX_OPEN';
+  reviewBox();
 }
 
 // ── TRASH / DISPOSAL HELPERS ──────────────────────────────────────────────────
@@ -1995,6 +2063,7 @@ if (typeof module !== 'undefined') {
     handleNest, handleNestParent, getDescendantIds, childBoxes,
     renderBoxTree, groupItems, sameProximity, locSegments,
     handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail,
+    handleItemMoveTarget,
     selectBox, toggleCollapse,
     inputHistory, historyDraft, getHistoryIndex: function(){ return historyIndex; },
     setHistoryIndex: function(v){ historyIndex = v; },
