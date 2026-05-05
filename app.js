@@ -34,7 +34,8 @@ function toggleCollapse(id) {
   renderSidebar();
 }
 
-function saveState() { localStorage.setItem('declutterbot_state', JSON.stringify(state)); }
+function saveState() {
+  _budgetDirty = true; localStorage.setItem('declutterbot_state', JSON.stringify(state)); }
 function loadState() {
   var raw = localStorage.getItem('declutterbot_state');
   if (raw) { try {
@@ -156,6 +157,15 @@ function updateContextBar() {
   }
 }
 
+function updateBudgetDisplay() {
+  if (typeof document === 'undefined') return;
+  var el = document.getElementById('storage-budget');
+  if (!el) return;
+  el.textContent = 'capacity: ' + _budgetItems.toLocaleString() + ' items';
+  el.style.opacity = _budgetItems < 1000 ? '1' : '0.6';
+  el.style.color = _budgetItems < 500 ? 'var(--rust)' : '';
+}
+
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -165,6 +175,7 @@ function renderMarkdown(s) {
 
 // ── INPUT HISTORY state vars ──────────────────────────────────────────────────
 var inputHistory = [];   // sent messages, oldest first
+var _budgetItems = 14397; // v1: simple counter, starts at 14397
 var historyIndex = -1;   // -1 = not browsing; 0 = oldest
 var historyDraft = '';   // text in field before arrow-up was pressed
 
@@ -1019,7 +1030,15 @@ function clearAll() {
 // Init — only runs in browser, not in Node test environment
 if (typeof window !== 'undefined') {
 
-loadState(); renderSidebar(); updateContextBar();
+loadState(); renderSidebar();
+updateContextBar();
+// Two ticks after load: set budget to 14397 minus items already in state
+setTimeout(function() { setTimeout(function() {
+  var totalItems = 0;
+  for (var i = 0; i < state.boxes.length; i++) totalItems += state.boxes[i].items.length;
+  _budgetItems = Math.max(0, 14397 - totalItems);
+  updateBudgetDisplay();
+}, 0); }, 0);
 initSidebarDrag();
 // Expose impl functions to global scope for onclick attributes
 var setChips  = _setChipsImpl;
@@ -1607,6 +1626,7 @@ function deleteActiveItem() {
   box.items = box.items.filter(function(i){ return i.id !== item.id; });
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
+  _budgetItems = _budgetItems + 1; updateBudgetDisplay();
   addBotMessage(deletionLog(name));
   if (state.pendingFateReview && state.pendingFateReview._resumeAfterTrash) {
     state.pendingFateReview._resumeAfterTrash = false;

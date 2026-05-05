@@ -120,6 +120,13 @@
   }
   .box-card:hover { border-color: var(--brown-mid); }
   .box-card[draggable=true] { cursor: grab; }
+  @keyframes budget-pulse {
+    0%   { opacity: 0.6; }
+    50%  { opacity: 1; }
+    100% { opacity: 0.6; }
+  }
+  .budget-recalculating { animation: budget-pulse 1s ease-in-out infinite; }
+
   .box-card[draggable=true]:active { cursor: grabbing; }
   .box-card.drag-over { border-color: var(--rust); border-style: dashed; }
   .box-card.active {
@@ -385,6 +392,7 @@
     <div class="chat-context-bar">
       <div class="context-dot" id="context-dot"></div>
       <span id="context-label">No active box &#8212; say hi to get started</span>
+      <span id="storage-budget" style="margin-left:auto; opacity:0.6;"></span>
     </div>
     <div class="chat-messages" id="chat-messages"></div>
     <div class="typing-indicator" id="typing" style="padding:0 20px 8px;">
