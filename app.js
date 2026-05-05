@@ -106,7 +106,7 @@ function renderBoxTree(boxId, depth, collapsedIds) {
     if (hasKids) metaParts.push(kidBoxes.length + ' box' + (kidBoxes.length !== 1 ? 'es' : ''));
     if (metaParts.length === 0) metaParts.push('empty');
     var metaStr = escHtml(box.location || 'location unknown') + ' &middot; ' + metaParts.join(', ');
-    html += '<div class="box-card' + ac + '" style="margin-left:' + indent + 'px" onclick="selectBox(\'' + box.id + '\')">'
+    html += '<div class="box-card' + ac + '" draggable="true" data-box-id="' + box.id + '" style="margin-left:' + indent + 'px" onclick="selectBox(\'' + box.id + '\')">'
       + '<div class="box-card-header">' + caret
       + '<div class="box-card-body">'
       + '<div class="box-name">' + escHtml(box.name) + '</div>'
@@ -886,14 +886,16 @@ function handleHelp() {
     var lines = [
       'Here\'s what you can do:',
       '_"New box"_ — start a new box',
-      '_"Review items"_ — list items in the active box',
+      '_"Review items"_ — list items in the active box, then type a number to view item detail',
       '_"Review all boxes"_ — summary of every box',
-      '_"Move <location>"_ — move the active box',
+      '_"Review by fate"_ — review all items of a given fate across every box',
+      '_"Move <location>"_ — move the active box to a new location',
       '_"Nest box"_ — put the active box inside another',
       '_"Dump into..."_ — transfer all items to another box',
       '_"Done with this box"_ — finish and summarise',
       '_"Remove <name or number>"_ — remove an item',
       '_"Import json"_ — load a saved inventory',
+      '_"Move to box"_ — from item detail view, move an item to another box',
       '↑ / ↓ arrow keys — recall previous commands'
     ];
     addBotMessage(lines.join('\n'));
@@ -1018,6 +1020,7 @@ function clearAll() {
 if (typeof window !== 'undefined') {
 
 loadState(); renderSidebar(); updateContextBar();
+initSidebarDrag();
 // Expose impl functions to global scope for onclick attributes
 var setChips  = _setChipsImpl;
 var chipClick = _chipClickImpl;
@@ -2048,6 +2051,76 @@ function handleFateReviewBulk(text) {
 
   addBotMessage('Apply a bulk action to all **' + review.fate + '** items (' + review.items.length + ')?');
   setChips(fateReviewBulkChips(review.fate));
+}
+
+
+// ── SIDEBAR DRAG TO REORDER ───────────────────────────────────────────────────
+// Order is session-only — not persisted. When the location model lands,
+// this will be replaced with within-room drag ordering backed by state.
+// The app does not promise to remember everything, just what matters.
+var _dragSrcId = null;
+
+function initSidebarDrag() {
+  if (typeof document === 'undefined') return;
+  var sidebar = document.getElementById('sidebar-content');
+  if (!sidebar) return;
+
+  sidebar.addEventListener('dragstart', function(e) {
+    var card = e.target.closest ? e.target.closest('[data-box-id]') : null;
+    if (!card) return;
+    _dragSrcId = card.getAttribute('data-box-id');
+    card.style.opacity = '0.5';
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  sidebar.addEventListener('dragend', function(e) {
+    var card = e.target.closest ? e.target.closest('[data-box-id]') : null;
+    if (card) card.style.opacity = '';
+    // Remove all drag-over highlights
+    var cards = sidebar.querySelectorAll('[data-box-id]');
+    for (var i = 0; i < cards.length; i++) cards[i].classList.remove('drag-over');
+  });
+
+  sidebar.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    var card = e.target.closest ? e.target.closest('[data-box-id]') : null;
+    if (!card || card.getAttribute('data-box-id') === _dragSrcId) return;
+    var cards = sidebar.querySelectorAll('[data-box-id]');
+    for (var i = 0; i < cards.length; i++) cards[i].classList.remove('drag-over');
+    card.classList.add('drag-over');
+  });
+
+  sidebar.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var card = e.target.closest ? e.target.closest('[data-box-id]') : null;
+    if (!card) return;
+    var targetId = card.getAttribute('data-box-id');
+    if (!targetId || targetId === _dragSrcId) return;
+
+    // Find source and target in state.boxes and reorder
+    var srcIdx = -1, tgtIdx = -1;
+    for (var i = 0; i < state.boxes.length; i++) {
+      if (state.boxes[i].id === _dragSrcId) srcIdx = i;
+      if (state.boxes[i].id === targetId)   tgtIdx = i;
+    }
+    if (srcIdx === -1 || tgtIdx === -1) return;
+
+    // Only reorder within the same parent level
+    var srcParent = state.boxes[srcIdx].parentId || null;
+    var tgtParent = state.boxes[tgtIdx].parentId || null;
+    if (srcParent !== tgtParent) return;
+
+    var moved = state.boxes.splice(srcIdx, 1)[0];
+    // Recalculate tgtIdx after splice
+    tgtIdx = -1;
+    for (var i = 0; i < state.boxes.length; i++) {
+      if (state.boxes[i].id === targetId) { tgtIdx = i; break; }
+    }
+    state.boxes.splice(tgtIdx, 0, moved);
+    renderSidebar();
+    _dragSrcId = null;
+  });
 }
 
 

@@ -318,6 +318,8 @@ All files exit with code `0` on success and `1` on any failure.
 - Rename short/unclear variable names — one and two letter variables (e.g. `g`, `g2`) should be replaced with descriptive names. Audit all handlers added during the trash/delete implementation pass. Remaining candidates: `g`/`group` variables in reviewBox and groupItems loops. Note: well-known abbreviations like `pref`, `idx`, `btn` are acceptable as suffixes on descriptive names — e.g. `effectivePref` is preferred over `effPref` (too terse) or `effectivePreference` (unnecessarily verbose).
 - Document variable naming convention in CONTRIBUTING — add a section stating: avoid single and double letter variable names unless following a strong established convention (e.g. loop index `i`); avoid opaque abbreviations; prefer full descriptive names even if longer.
 - Single letter command shortcuts — audit all commands and define a consistent set of single-letter shorthands. Currently: `y`/`n`, `m` (move), `h` (help). Candidates: `d` (done with this box), `r` (review items), `n` (new box — conflicts with no), `a` (add item). Each shorthand must be added to the global intercept block in `processInput` and documented in README.md commands table. Requires tests confirming shortcuts are not logged as item names.
+- Location input UX — the location prompt ("Where is this box located?") is easy to confuse with the first item prompt ("What's the first item?"), especially early in a session. Consider offering previously-used locations as chips rather than free-text, which would also reduce typos and inconsistent naming (e.g. "dining room" vs "Dining Room"). This aligns naturally with the location model refactor where location would be selected from a list rather than typed freehand.
+- Nesting a box should inherit parent's location — when a box is nested inside another via the Nest box flow, the child box's location should be updated to match the parent's location. Currently the child retains its original location, which can be misleading (e.g. a box nested inside "top shelf" in Dining Room still shows its old location). The fix is in `handleNestConfirm` after setting `parentId`: also set `child.location = parent.location`.
 - Trash N from box review does not return to review list after completing the delete flow — after answering yes/no to the delete prompt, the user is left without review chips. Delete N returns to the review list correctly. Fix: after trash delete flow completes (handleTrashDelete), if the stage was previously BOX_OPEN/reviewing, re-show the review chips. The delete behavior is the correct model.
 - Move single item to another box — `move item <N> to <box name>` should move a specific numbered item from the active box to another named box. Currently there is no way to move individual items between boxes; `Dump into...` moves all items. This is a high-priority gap since users regularly sort items into wrong boxes and need to correct them without moving everything.
 - `whereami` debug command — typing `whereami` (or `?!`) should print the current `conversationStage`, active box name, and last chips shown. Useful for diagnosing silent failures where chips disappear and no response is rendered. Should be a global intercept that works from any stage.
@@ -345,6 +347,16 @@ All files exit with code `0` on success and `1` on any failure.
   - Partial matching: "bedroom" should match "bedroom - east wall" and "bedroom - west wall"
   - Location strings should be split on common separators (dash, comma, slash, colon) before matching, so individual segments are matched independently
 ---
+
+## Design Philosophy
+
+DeclutterBot is intentionally unserious. It does not promise to remember everything, just what matters. Some features are session-only by design — they provide immediate value without the complexity of persistence, migration, or state management. When a persisted version of the feature lands later, the session-only implementation is replaced, not extended.
+
+Examples of this principle in practice:
+- **Sidebar drag to reorder** — boxes can be dragged to reorder within the sidebar for the current session. Order is not saved. When the location model lands, this will be replaced with within-room drag ordering backed by state.
+- **Photos** — 12 photos app-wide, one per room, session-deletable. Quality target is "recognize the room", not "read the label". More dedicated photo management belongs in the user's camera app.
+
+When evaluating whether a feature needs persistence, ask: does losing this on page refresh meaningfully harm the user's ability to accomplish their goal? If no, session-only is the right default.
 
 ## Feature Scoping
 

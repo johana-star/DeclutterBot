@@ -119,6 +119,9 @@
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   .box-card:hover { border-color: var(--brown-mid); }
+  .box-card[draggable=true] { cursor: grab; }
+  .box-card[draggable=true]:active { cursor: grabbing; }
+  .box-card.drag-over { border-color: var(--rust); border-style: dashed; }
   .box-card.active {
     border-color: var(--rust);
     box-shadow: 2px 2px 0 var(--rust);
