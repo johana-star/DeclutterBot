@@ -35,6 +35,17 @@ function toggleCollapse(id) {
 }
 
 function saveState() {
+  _budgetSaveCount++;
+  if (_budgetSaveCount >= 10) {
+    _budgetSaveCount = 0;
+    updateBudgetDisplay(true); // show recalculating pulse
+    setTimeout(function() {
+      var STORAGE_MAX = 5 * 1024 * 1024;
+      var used = JSON.stringify(state).length;
+      _budgetItems = Math.max(0, Math.floor((STORAGE_MAX - used) / 347));
+      updateBudgetDisplay();
+    }, 1500);
+  }
   _budgetDirty = true; localStorage.setItem('declutterbot_state', JSON.stringify(state)); }
 function loadState() {
   var raw = localStorage.getItem('declutterbot_state');
@@ -157,10 +168,17 @@ function updateContextBar() {
   }
 }
 
-function updateBudgetDisplay() {
+function updateBudgetDisplay(recalculating) {
   if (typeof document === 'undefined') return;
   var el = document.getElementById('storage-budget');
   if (!el) return;
+  if (recalculating) {
+    el.textContent = 'recalculating...';
+    if (el.classList) el.classList.add('budget-recalculating');
+    el.style.color = '';
+    return;
+  }
+  if (el.classList) el.classList.remove('budget-recalculating');
   el.textContent = 'capacity: ' + _budgetItems.toLocaleString() + ' items';
   el.style.opacity = _budgetItems < 1000 ? '1' : '0.6';
   el.style.color = _budgetItems < 500 ? 'var(--rust)' : '';
@@ -175,7 +193,8 @@ function renderMarkdown(s) {
 
 // ── INPUT HISTORY state vars ──────────────────────────────────────────────────
 var inputHistory = [];   // sent messages, oldest first
-var _budgetItems = 14397; // v1: simple counter, starts at 14397
+var _budgetItems = 14397; // counter, updated per-item and recalibrated every 10 saves
+var _budgetSaveCount = 0;  // counts saveState calls, triggers recalibration at 10
 var historyIndex = -1;   // -1 = not browsing; 0 = oldest
 var historyDraft = '';   // text in field before arrow-up was pressed
 
@@ -672,45 +691,67 @@ function parseQuantity(text) {
 }
 
 function handleItemName(text, photos) {
-  var box=activeBox(); if(!box){startNewBox();return;}
-  var parsed=parseQuantity(text);
-  if (parsed) {
-    state.pendingBatch={qty:parsed.qty,itemName:parsed.itemName,photos:photos||[]};
-    state.conversationStage='AWAITING_BATCH_CONFIRM';
-    addBotMessage('I see **'+parsed.qty+' \u00d7 '+parsed.itemName+'**. Should I log '+parsed.qty+' separate entries for these, all with the same fate?');
-    setChips(['Yes, log '+parsed.qty,'No, just 1','Change quantity']);
+  var box = activeBox();
+  if(!box){
+    startNewBox();
     return;
   }
-  var name=text.trim()||'Unknown item';
-  var item={id:uid(),name:name,description:'',fate:'unsure',notes:'',photos:photos||[],addedAt:new Date().toISOString()};
-  box.items.push(item); state.activeItemId=item.id;
-  state.conversationStage='AWAITING_FATE';
-  addBotMessage('**'+name+'** \u2014 noted.\n\nWhat should we do with it?');
+  var parsed=parseQuantity(text);
+  if (parsed) {
+    state.pendingBatch= {
+      qty: parsed.qty,
+      itemName: parsed.itemName,
+      photos: photos || []
+    };
+    state.conversationStage = 'AWAITING_BATCH_CONFIRM';
+    addBotMessage('I see **' + parsed.qty + ' \u00d7 ' + parsed.itemName + '**. Should I log ' + parsed.qty +
+      ' separate entries for these, all with the same fate?');
+    setChips(['Yes, log ' + parsed.qty, 'No, just 1', 'Change quantity']);
+    return;
+  }
+  var name = text.trim() || 'Unknown item';
+  var item = {
+    id: uid(),
+    name: name,
+    description: '',
+    fate: 'unsure',
+    notes: '',
+    photos: photos || [],
+    addedAt: new Date().toISOString()
+  };
+  addItem(box, item);
+  state.activeItemId = item.id;
+  state.conversationStage = 'AWAITING_FATE';
+  addBotMessage('**' + name + '** \u2014 noted.\n\nWhat should we do with it?');
   setChips(FATE_TITLES);
 }
 
 function handleBatchConfirm(text, photos) {
-  var t=text.toLowerCase().trim(); var batch=state.pendingBatch;
-  if (t.indexOf('change')!==-1||t.indexOf('quantity')!==-1) {
-    addBotMessage('How many **'+batch.itemName+'** are there?');
-    state.conversationStage='AWAITING_BATCH_QTY'; setChips([]); return;
+  var command = text.toLowerCase().trim();
+  var batch = state.pendingBatch;
+  if (command.indexOf('change') !== -1 || command.indexOf('quantity') !== -1) {
+    addBotMessage('How many **' + batch.itemName + '** are there?');
+    state.conversationStage = 'AWAITING_BATCH_QTY';
+    setChips([]);
+    return;
   }
-  if (t.startsWith('no')||t.indexOf('just 1')!==-1||t==='1') {
-    state.pendingBatch=null;
-    var box=activeBox();
-    var item={id:uid(),name:batch.itemName,description:'',fate:'unsure',notes:'',photos:batch.photos,addedAt:new Date().toISOString()};
-    box.items.push(item); state.activeItemId=item.id;
-    state.conversationStage='AWAITING_FATE';
-    addBotMessage('Just the one **'+batch.itemName+'** then. What should we do with it?');
+  if (command.startsWith('no') || command.indexOf('just 1') !== -1 || command === '1') {
+    state.pendingBatch = null;
+    var box = activeBox();
+    var item = {id:uid(),name:batch.itemName,description:'',fate:'unsure',notes:'',photos:batch.photos,addedAt:new Date().toISOString()};
+    addItem(box, item); state.activeItemId = item.id;
+    state.conversationStage = 'AWAITING_FATE';
+    addBotMessage('Just the one **' + batch.itemName + '** then. What should we do with it?');
     setChips(FATE_TITLES);
     return;
   }
-  if (t.startsWith('yes')||t.indexOf('log')!==-1||t.indexOf('confirm')!==-1||t.match(/^\d+$/)) {
-    var nm=t.match(/\d+/); var qty=nm?parseInt(nm[0],10):batch.qty;
-    commitBatch(qty,batch.itemName,batch.photos); return;
+  if (command.startsWith('yes')||command.indexOf('log')!==-1||command.indexOf('confirm')!==-1||command.match(/^\d+$/)) {
+    var nm = command.match(/\d+/);
+    var qty = nm ? parseInt(nm[0],10) : batch.qty;
+    commitBatch(qty, batch.itemName, batch.photos); return;
   }
-  addBotMessage('Log **'+batch.qty+' \u00d7 '+batch.itemName+'** as separate entries?');
-  setChips(['Yes, log '+batch.qty,'No, just 1','Change quantity']);
+  addBotMessage('Log **' + batch.qty + ' \u00d7 ' + batch.itemName + '** as separate entries?');
+  setChips(['Yes, log ' + batch.qty,'No, just 1','Change quantity']);
 }
 
 function handleBatchQty(text) {
@@ -725,13 +766,24 @@ function handleBatchQty(text) {
 }
 
 function commitBatch(qty, itemName, photos) {
-  var box=activeBox(); var now=new Date().toISOString(); var firstId=uid();
-  for (var i=0;i<qty;i++) {
-    box.items.push({id:i===0?firstId:uid(),name:itemName,description:'',fate:'unsure',notes:'',photos:i===0?photos:[],addedAt:now});
+  var box = activeBox();
+  var now = new Date().toISOString();
+  var firstId = uid();
+  for (var i = 0; i < qty; i++) {
+    addItem(box, {
+      id: i === 0 ? firstId : uid(),
+      name: itemName,
+      description: '',
+      fate: 'unsure',
+      notes: '',
+      photos: i === 0 ? photos : [],
+      addedAt: now
+    });
   }
-  state.activeItemId=firstId; state.pendingBatch=null;
-  state.conversationStage='AWAITING_BATCH_FATE';
-  addBotMessage('Logged **'+qty+' \u00d7 '+itemName+'**. What should we do with all of them?');
+  state.activeItemId = firstId;
+  state.pendingBatch = null;
+  state.conversationStage = 'AWAITING_BATCH_FATE';
+  addBotMessage('Logged **' + qty + ' \u00d7 ' + itemName + '**. What should we do with all of them?');
   setChips(FATE_TITLES.concat(['Mixed fates']));
 }
 
@@ -1579,6 +1631,30 @@ function handleItemMoveTarget(text) {
   reviewBox();
 }
 
+
+// ── ITEM HELPERS ──────────────────────────────────────────────────────────────
+// Single point of truth for item creation and deletion.
+// Any behavior that should happen on every add or remove (budget, logging,
+// soft deletion hooks) belongs here rather than at each call site.
+
+function addItem(box, item) {
+  box.items.push(item);
+  _budgetItems = Math.max(0, _budgetItems - 1);
+  updateBudgetDisplay();
+  return item;
+}
+
+function removeItem(box, itemId) {
+  var before = box.items.length;
+  box.items = box.items.filter(function(it){ return it.id !== itemId; });
+  var removed = before - box.items.length;
+  if (removed > 0) {
+    _budgetItems = _budgetItems + removed;
+    updateBudgetDisplay();
+  }
+  return removed;
+}
+
 // ── TRASH / DISPOSAL HELPERS ──────────────────────────────────────────────────
 
 function disposalPrompt(itemName) {
@@ -1942,7 +2018,7 @@ function handleFateReviewItem(text) {
   }
 
   if (command === 'delete' && item && box) {
-    box.items = box.items.filter(function(it){ return it.id !== item.id; });
+    removeItem(box, item.id);
     addBotMessage(deletionLog(item.name));
     review.index++;
     review.reviewedCount = (review.reviewedCount || 0) + 1;
@@ -2037,8 +2113,7 @@ function handleFateReviewBulk(text) {
       for (var b = 0; b < state.boxes.length; b++) {
         if (state.boxes[b].id !== reviewEntry.boxId) continue;
         var before = state.boxes[b].items.length;
-        state.boxes[b].items = state.boxes[b].items.filter(function(it){ return it.id !== reviewEntry.itemId; });
-        deleteCount += before - state.boxes[b].items.length;
+        deleteCount += removeItem(state.boxes[b], reviewEntry.itemId);
       }
     }
     state.pendingFateReview = null;
@@ -2157,6 +2232,8 @@ if (typeof module !== 'undefined') {
     renderBoxTree, groupItems, sameProximity, locSegments,
     handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail,
     handleItemMoveTarget,
+    addItem, removeItem,
+    getBudgetItems: function(){ return _budgetItems; },
     selectBox, toggleCollapse,
     inputHistory, historyDraft, getHistoryIndex: function(){ return historyIndex; },
     setHistoryIndex: function(v){ historyIndex = v; },

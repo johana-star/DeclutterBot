@@ -28,6 +28,9 @@ var handleItemViewAction   = app.handleItemViewAction;
 var handleItemViewNotes    = app.handleItemViewNotes;
 var showItemDetail         = app.showItemDetail;
 var handleItemMoveTarget   = app.handleItemMoveTarget;
+var addItem                = app.addItem;
+var removeItem             = app.removeItem;
+var getBudgetItems         = app.getBudgetItems;
 handleTrashDelete          = app.handleTrashDelete;
 var groupItems             = app.groupItems;
 
@@ -256,6 +259,48 @@ showItemDetail(groupItems(src4.items)[0], 0);
 handleItemViewAction('move to box');
 handleItemMoveTarget('cancel');
 assert('stage back to item view', state.conversationStage === 'AWAITING_ITEM_VIEW');
+
+
+// ── addItem / removeItem helpers ──────────────────────────────────────────────
+
+console.log('\naddItem: pushes item to box and decrements budget');
+reset();
+var box = makeBox('Box', 'room');
+var before = getBudgetItems();
+var item = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], addedAt: '' };
+addItem(box, item);
+assert('item pushed to box', box.items.length === 1);
+assert('item is correct', box.items[0].name === 'Lamp');
+assert('budget decremented', getBudgetItems() === before - 1);
+
+console.log('\naddItem: returns the item');
+reset();
+var box2 = makeBox('Box', 'room');
+var item2 = { id: uid(), name: 'Chair', fate: 'keep', description: '', notes: '', photos: [], addedAt: '' };
+var returned = addItem(box2, item2);
+assert('returns item', returned === item2);
+
+console.log('\nremoveItem: removes item by id and increments budget');
+reset();
+var box3 = makeBox('Box', 'room');
+var item3 = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], addedAt: '' };
+addItem(box3, item3);
+var afterAdd = getBudgetItems();
+var removed = removeItem(box3, item3.id);
+assert('item removed', box3.items.length === 0);
+assert('returns count removed', removed === 1);
+assert('budget incremented', getBudgetItems() === afterAdd + 1);
+
+console.log('\nremoveItem: returns 0 and leaves budget unchanged for unknown id');
+reset();
+var box4 = makeBox('Box', 'room');
+var item4 = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], addedAt: '' };
+addItem(box4, item4);
+var beforeRemove = getBudgetItems();
+var removedCount = removeItem(box4, 'nonexistent-id');
+assert('returns 0', removedCount === 0);
+assert('item still in box', box4.items.length === 1);
+assert('budget unchanged', getBudgetItems() === beforeRemove);
 
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────
