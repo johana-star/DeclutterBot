@@ -13,7 +13,6 @@ var state = {
   activeItemViewGroup: null,
   pendingFateReview: null,
   conversationStage: 'WELCOME',
-  conversationHistory: []
 };
 var FATES = ['keep','donate','trash','sell','unsure'];
 var FATE_TITLES = FATES.map(function(fate) {
@@ -40,13 +39,22 @@ function saveState() {
     _budgetSaveCount = 0;
     updateBudgetDisplay(true); // show recalculating pulse
     setTimeout(function() {
-      var STORAGE_MAX = 5 * 1024 * 1024;
-      var used = JSON.stringify(state).length;
-      _budgetItems = Math.max(0, Math.floor((STORAGE_MAX - used) / 347));
+      const STORAGE_MAX = 5 * 1024 * 1024;
+      const stateData = state;
+      const used = JSON.stringify(stateData).length;
+      const totalItems = state.boxes.reduce((sum, b) => sum + b.items.length, 0);
+      const totalObjects = totalItems + state.boxes.length;
+      const divisor = totalObjects >= 10
+        ? Math.round(used / totalObjects)
+        : 347; // fall back to default until sample is large enough
+      const remaining = Math.max(0, STORAGE_MAX - used);
+      _budgetItems = Math.floor(remaining / divisor);
       updateBudgetDisplay();
     }, 1500);
   }
-  _budgetDirty = true; localStorage.setItem('declutterbot_state', JSON.stringify(state)); }
+  _budgetDirty = true;
+  localStorage.setItem('declutterbot_state', JSON.stringify(state));
+}
 function loadState() {
   var raw = localStorage.getItem('declutterbot_state');
   if (raw) { try {
@@ -202,24 +210,22 @@ var historyDraft = '';   // text in field before arrow-up was pressed
 // Each guards its document calls so they are safe to define in Node too.
 function addBotMessage(text, photos) {
   var msgs = typeof document !== 'undefined' && document.getElementById('chat-messages');
-  if (!msgs) { state.conversationHistory.push({role:'assistant',content:text}); return; }
+  if (!msgs) return;
   var div = document.createElement('div');
   div.className = 'msg bot';
   div.innerHTML = '<div class="msg-avatar">S</div><div class="msg-bubble"><p>'+renderMarkdown(text)+'</p></div>';
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
-  state.conversationHistory.push({role:'assistant',content:text});
 }
 
 function addUserMessage(text, photos) {
   var msgs = typeof document !== 'undefined' && document.getElementById('chat-messages');
-  if (!msgs) { state.conversationHistory.push({role:'user',content:text}); return; }
+  if (!msgs) return;
   var div = document.createElement('div');
   div.className = 'msg user';
   div.innerHTML = '<div class="msg-avatar">You</div><div class="msg-bubble"><p>'+escHtml(text)+'</p></div>';
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
-  state.conversationHistory.push({role:'user',content:text});
 }
 
 function _setChipsImpl(chips) {
@@ -531,6 +537,7 @@ function handleTrashByNumber(num) {
   }
   addBotMessage('\uD83D\uDDD1 **' + g.name + '** \u2014 delete now?');
   state.conversationStage = 'AWAITING_TRASH_DELETE';
+  state._reviewingBox = true; // flag to restore review list after delete
   setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
 }
 
@@ -777,7 +784,7 @@ function commitBatch(qty, itemName, photos) {
       fate: 'unsure',
       notes: '',
       photos: i === 0 ? photos : [],
-      addedAt: now
+      addedAt:now
     });
   }
   state.activeItemId = firstId;
@@ -903,7 +910,11 @@ function boxSummaryLine(box) {
 
 function reviewBox() {
   var box=activeBox();
-  if(!box||box.items.length===0){addBotMessage('This box has no items logged yet. Add some!');return;}
+  if (!box || box.items.length === 0) {
+    addBotMessage('This box has no items logged yet. Add some!');
+    setBoxOpenChips();
+    return;
+  }
   var groups = groupItems(box.items);
   var lines='';
   var removeChips=[];
@@ -1037,7 +1048,6 @@ function importJSON(data) {
   state.activeBoxId     = null;
   state.activeItemId    = null;
   state.conversationStage = 'FINISHED';
-  state.conversationHistory = [];
   saveState();
   renderSidebar();
   updateContextBar();
@@ -1067,7 +1077,7 @@ function handleImportJSON(event) {
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('declutterbot_state');
-  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,pendingFateReview:null,conversationStage:'WELCOME',conversationHistory:[]};
+  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,pendingFateReview:null,conversationStage:'WELCOME'};
   sessionDeletedCount=0; sessionTrashPreference=null; boxTrashPreferences={};
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
@@ -1086,9 +1096,16 @@ loadState(); renderSidebar();
 updateContextBar();
 // Two ticks after load: set budget to 14397 minus items already in state
 setTimeout(function() { setTimeout(function() {
-  var totalItems = 0;
-  for (var i = 0; i < state.boxes.length; i++) totalItems += state.boxes[i].items.length;
-  _budgetItems = Math.max(0, 14397 - totalItems);
+  mantra('load');
+  // Run v2 recalibration immediately on load for an accurate starting count
+  const STORAGE_MAX = 5 * 1024 * 1024;
+  const stateData = state;
+  const used = JSON.stringify(stateData).length;
+  const totalItems = state.boxes.reduce((sum, b) => sum + b.items.length, 0);
+  const totalObjects = totalItems + state.boxes.length;
+  const divisor = totalObjects >= 10 ? Math.round(used / totalObjects) : 347;
+  const remaining = Math.max(0, STORAGE_MAX - used);
+  _budgetItems = Math.floor(remaining / divisor);
   updateBudgetDisplay();
 }, 0); }, 0);
 initSidebarDrag();
@@ -1445,6 +1462,7 @@ function handleNestParent(text) {
   if (!child) { state.pendingNest = null; state.conversationStage = 'BOX_OPEN'; return; }
 
   child.parentId = parent.id;
+  child.location = parent.location; // inherit parent's location on nest
   state.pendingNest = null;
   state.conversationStage = 'BOX_OPEN';
   renderSidebar();
@@ -1641,6 +1659,7 @@ function addItem(box, item) {
   box.items.push(item);
   _budgetItems = Math.max(0, _budgetItems - 1);
   updateBudgetDisplay();
+  maybeMantraOnItem();
   return item;
 }
 
@@ -1653,6 +1672,69 @@ function removeItem(box, itemId) {
     updateBudgetDisplay();
   }
   return removed;
+}
+
+
+// ── MANTRAS ───────────────────────────────────────────────────────────────────
+// Shown on load (always), and occasionally at specific meaningful moments.
+// Tone: west coast, burnout, hippie, vegan, American Buddhist.
+
+var MANTRAS = {
+  // ✅ copy approved
+  load: [
+    'Be here now.',
+    'You have enough. You are enough.',
+    'Make your future self thankful for the journey you started today.',
+    'The present is a gift.',
+    'Begin at the beginning.',
+  ],
+  // ✅ copy approved
+  trashed: [
+    'Everything has its moment. You have your lifetime.',
+    'Less is more.',
+    'Wherever you go, there you are.',
+    'Go slow, but go.',
+    'All that there is is this moment.',
+  ],
+  // 🔄 copy pending approval
+  itemAdded: [
+    'One thing. Then the next thing.',
+    'You named it. That\'s already something.',
+    'Presence is just paying attention to what\'s actually here.',
+    'This is the practice.',
+  ],
+  // 🔄 copy pending approval
+  boxDone: [
+    'Done is a complete sentence.',
+    'You showed up. That\'s most of it.',
+    'Rest is part of the work.',
+    'The whole is made of these small completions.',
+    'Your past self left you this. Your future self will thank you.',
+  ],
+  // 🔄 copy pending approval
+  sessionDone: [
+    'Enough for today.',
+    'The work will be here. So will you.',
+    'Come back when you\'re ready.',
+    'Good session. Seriously.',
+    'Go slow, but go.',
+  ],
+};
+
+var _mantraItemCount = 0; // increments on item add, triggers mantra every ~7
+var _mantrasEnabled = (typeof window !== 'undefined'); // true in browser, false in Node
+
+function mantra(context) {
+  if (!_mantrasEnabled || typeof addBotMessage === 'undefined') return;
+  var pool = MANTRAS[context] || MANTRAS.load;
+  var text = pool[Math.floor(Math.random() * pool.length)];
+  addBotMessage('_' + text + '_');
+}
+
+function maybeMantraOnItem() {
+  return; // no-op until copy is approved.
+  _mantraItemCount++;
+  if (_mantraItemCount % 7 === 0) mantra('itemAdded');
 }
 
 // ── TRASH / DISPOSAL HELPERS ──────────────────────────────────────────────────
@@ -1704,10 +1786,16 @@ function deleteActiveItem() {
   state.conversationStage = 'BOX_OPEN';
   _budgetItems = _budgetItems + 1; updateBudgetDisplay();
   addBotMessage(deletionLog(name));
+  if (Math.random() < 0.25) mantra('trashed');
   if (state.pendingFateReview && state.pendingFateReview._resumeAfterTrash) {
     state.pendingFateReview._resumeAfterTrash = false;
     state.pendingFateReview.index++;
     showFateReviewCurrentItem(state.pendingFateReview);
+    return;
+  }
+  if (state._reviewingBox) {
+    state._reviewingBox = false;
+    reviewBox();
     return;
   }
   setBoxOpenChips();
@@ -1763,6 +1851,11 @@ function handleDisposal(text) {
     return;
   }
   state.conversationStage = 'BOX_OPEN';
+  if (state._reviewingBox) {
+    state._reviewingBox = false;
+    reviewBox();
+    return;
+  }
   var botMsg = skipping ?
     'Kept **' + (item ? item.name : 'item') + '** in "' + (box ? box.name : 'box') + '".' + '\n\nWhat\'s the next item?' :
     'Noted. What\'s the next item?'
@@ -2234,6 +2327,11 @@ if (typeof module !== 'undefined') {
     handleItemMoveTarget,
     addItem, removeItem,
     getBudgetItems: function(){ return _budgetItems; },
+    mantra,
+    MANTRAS,
+    maybeMantraOnItem,
+    setMantrasEnabled: function(v){ _mantrasEnabled = v; },
+    getMantrasEnabled: function(){ return _mantrasEnabled; },
     selectBox, toggleCollapse,
     inputHistory, historyDraft, getHistoryIndex: function(){ return historyIndex; },
     setHistoryIndex: function(v){ historyIndex = v; },

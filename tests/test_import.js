@@ -49,7 +49,6 @@ function reset() {
   state.pendingNest = null;
   state.activeItemViewGroup = null;
   state.conversationStage = 'BOX_OPEN';
-  state.conversationHistory = [];
   lastBotMessage = null;
   lastChips = [];
   confirmResponse = true;

@@ -63,7 +63,6 @@ function reset() {
   state.pendingNest = null;
   state.activeItemViewGroup = null;
   state.conversationStage = 'BOX_OPEN';
-  state.conversationHistory = [];
   localStorageData = {};
   resetSessionCounts();
   lastBotMessage = null;
@@ -275,6 +274,35 @@ processInput('review items', []);
 assert('Trash 1 chip shown', lastChips.indexOf('Trash 1') !== -1);
 assert('Trash 2 chip shown', lastChips.indexOf('Trash 2') !== -1);
 assert('no Remove chips', !lastChips.some(function(c){ return c.startsWith('Remove'); }));
+
+
+console.log('\nTrash N from box review: returns to review list after yes');
+reset();
+var box = makeBox('Box', 'room');
+makeItem(box, 'Lamp', 'keep');
+makeItem(box, 'Chair', 'trash');
+state.activeBoxId = box.id;
+processInput('review items', []);
+handleTrashByNumber(2); // trash Chair
+handleTrashDelete('yes');
+// Should show review list, not generic BOX_OPEN chips
+assert('review list chips shown', lastChips.some(c => c.startsWith('Trash') || c.startsWith('Delete')));
+assert('Add item chip shown', lastChips.indexOf('Add item') !== -1);
+assert('_reviewingBox flag cleared', !state._reviewingBox);
+
+console.log('\nTrash N from box review: returns to review list after no + skip disposal');
+reset();
+var box2 = makeBox('Box', 'room');
+makeItem(box2, 'Lamp', 'keep');
+makeItem(box2, 'Chair', 'trash');
+state.activeBoxId = box2.id;
+processInput('review items', []);
+handleTrashByNumber(2);
+handleTrashDelete('no');
+processInput('skip disposal note', []);
+// Item kept — should still return to review list
+assert('review list shown after no+skip', lastChips.some(c => c.startsWith('Trash') || c.startsWith('Delete') || c === 'Add item'));
+assert('_reviewingBox flag cleared', !state._reviewingBox);
 
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────

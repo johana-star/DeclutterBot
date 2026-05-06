@@ -52,7 +52,6 @@ function reset() {
   state.pendingDeleteBoxId = null;
   state.pendingNest = null;
   state.conversationStage = 'BOX_OPEN';
-  state.conversationHistory = [];
   lastBotMessage = null;
   lastChips = [];
 }
@@ -383,6 +382,18 @@ app.toggleCollapse(parent30.id); // collapse
 app.toggleCollapse(parent30.id); // expand
 global.addUserMessage = _origAddUser;
 assert('second toggle echoes expand', echoedExpand[1] === 'expand Desktop');
+
+
+console.log('\nNest: child inherits parent location on nest');
+reset();
+var parent = makeBox('Shelf', 'Dining Room');
+var child  = makeBox('Small box', 'Garage'); // different location initially
+state.activeBoxId = child.id;
+state.pendingNest = { childId: child.id };
+state.conversationStage = 'AWAITING_NEST_PARENT';
+processInput('Shelf', []);
+assert('child location updated to parent location', child.location === 'Dining Room');
+assert('parentId set correctly', child.parentId === parent.id);
 
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ var handleItemViewNotes    = app.handleItemViewNotes;
 var showItemDetail         = app.showItemDetail;
 var handleItemMoveTarget   = app.handleItemMoveTarget;
 var addItem                = app.addItem;
+var reviewBox              = app.reviewBox;
 var removeItem             = app.removeItem;
 var getBudgetItems         = app.getBudgetItems;
 handleTrashDelete          = app.handleTrashDelete;
@@ -53,7 +54,6 @@ function reset() {
   state.pendingNest = null;
   state.activeItemViewGroup = null;
   state.conversationStage = 'BOX_OPEN';
-  state.conversationHistory = [];
   lastBotMessage = null;
   lastChips = [];
 }
@@ -301,6 +301,17 @@ var removedCount = removeItem(box4, 'nonexistent-id');
 assert('returns 0', removedCount === 0);
 assert('item still in box', box4.items.length === 1);
 assert('budget unchanged', getBudgetItems() === beforeRemove);
+
+
+console.log('\nreviewBox: shows chips when box is empty');
+reset();
+var emptyBox = makeBox('Empty box', 'room');
+state.activeBoxId = emptyBox.id;
+lastChips = [];
+reviewBox();
+assert('shows empty message', lastBotMessage.indexOf('no items') !== -1);
+assert('chips shown after empty message', lastChips.length > 0);
+assert('Add item chip present', lastChips.indexOf('Add item') !== -1);
 
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────

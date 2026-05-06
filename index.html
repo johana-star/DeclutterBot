@@ -292,7 +292,13 @@
   }
   .send-btn:hover { background: var(--rust-light); }
   .send-btn svg { width: 18px; height: 18px; }
-  .rotate-hint { font-size: 16px; display: inline-block; margin-left: 6px; vertical-align: middle; }
+  .rotate-hint { display: none; } /* hidden on desktop, shown only on mobile */
+  /* pointer: coarse + hover: none targets touch-only devices (phones).
+     This combination excludes desktop users (mouse) and iPads in portrait
+     that happen to be narrower than the width breakpoint. */
+  @media (max-width: 1024px) and (pointer: coarse) and (hover: none) {
+    .rotate-hint { font-size: 16px; display: inline-block; margin-left: 6px; vertical-align: middle; }
+  }
   .rotate-hint .hint-phone { display: inline-block; }
   .rotate-hint .hint-thumb { display: none; }
   @keyframes hint-rotate {
@@ -411,6 +417,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

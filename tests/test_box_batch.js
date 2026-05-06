@@ -45,7 +45,6 @@ function reset() {
   state.pendingBatch = null;
   state.pendingBoxBatch = null;
   state.conversationStage = 'AWAITING_BOX_NAME';
-  state.conversationHistory = [];
   lastBotMessage = null;
   lastChips = [];
 }

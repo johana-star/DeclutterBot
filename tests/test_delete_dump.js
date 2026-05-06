@@ -45,7 +45,6 @@ function reset() {
   state.pendingBoxBatch = null;
   state.pendingDeleteBoxId = null;
   state.conversationStage = 'BOX_OPEN';
-  state.conversationHistory = [];
   lastBotMessage = null;
   lastChips = [];
 }

@@ -62,7 +62,6 @@ function reset() {
   state.pendingNest = null;
   state.activeItemViewGroup = null;
   state.conversationStage = 'BOX_OPEN';
-  state.conversationHistory = [];
   lastBotMessage = null;
   lastChips = [];
 }
@@ -251,13 +250,12 @@ var escapedDiv = createdDivs.find(function(d){ return d.className === 'msg user'
 assert('script tag escaped', escapedDiv && escapedDiv.innerHTML.indexOf('<script>') === -1);
 assert('escaped form present', escapedDiv && escapedDiv.innerHTML.indexOf('&lt;script&gt;') !== -1);
 
-console.log('\n20. addBotMessage and addUserMessage push to conversationHistory');
+
+console.log('\n20. conversationHistory removed — addBotMessage and addUserMessage no longer push to it');
 reset();
-state.conversationHistory = [];
 addBotMessage('Bot says hi');
 addUserMessage('User says hi');
-assert('bot message in history', state.conversationHistory.some(function(m){ return m.role === 'assistant' && m.content === 'Bot says hi'; }));
-assert('user message in history', state.conversationHistory.some(function(m){ return m.role === 'user' && m.content === 'User says hi'; }));
+assert('conversationHistory not on state', !('conversationHistory' in state));
 
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────

@@ -63,7 +63,6 @@ function reset() {
   state.activeItemId = null;
   state.pendingBatch = null;
   state.conversationStage = 'BOX_OPEN';
-  state.conversationHistory = [];
   lastBotMessage = null;
   lastChips = [];
 }

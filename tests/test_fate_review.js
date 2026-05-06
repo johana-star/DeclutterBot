@@ -65,7 +65,6 @@ function reset() {
   state.activeItemViewGroup = null;
   state.pendingFateReview = null;
   state.conversationStage = 'BOX_OPEN';
-  state.conversationHistory = [];
   localStorageData = {};
   resetSessionCounts();
   lastBotMessage = null;
