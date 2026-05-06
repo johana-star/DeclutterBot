@@ -187,6 +187,7 @@
   }
   .chat-messages {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 24px 20px;
     display: flex;
@@ -230,9 +231,13 @@
   .msg.user .msg-bubble em { color: var(--cream); }
 
   .quick-replies {
-    display: flex; flex-wrap: wrap; gap: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     padding: 0 20px 12px;
     flex-shrink: 0;
+    max-height: 115px;
+    overflow-y: auto;
   }
   .chip {
     font-family: 'IBM Plex Mono', monospace;

@@ -376,6 +376,16 @@ function processInput(text, photos) {
     return;
   }
   if (command==='done for now') { handleFinished('done'); return; }
+  // Number input in FINISHED stage selects a box from the review all list
+  if (state.conversationStage === 'FINISHED' && /^\d+$/.test(command)) {
+    var boxIdx = parseInt(command, 10) - 1;
+    if (boxIdx >= 0 && boxIdx < state.boxes.length) {
+      selectBox(state.boxes[boxIdx].id);
+    } else {
+      addBotMessage('No box ' + command + ' in the list.');
+    }
+    return;
+  }
   if (command==='review all boxes') { handleFinished('review all'); return; }
 
   // Delete box command: "delete box" or "delete this box"
@@ -933,21 +943,29 @@ function reviewBox() {
 }
 
 function handleFinished(text) {
-  var t=text.toLowerCase();
-  if(t.indexOf('new box')!==-1||t.indexOf('another')!==-1){startNewBox();}
-  else if(t.indexOf('done')!==-1||t.indexOf('stop')!==-1){
-    var total=0; for(var i=0;i<state.boxes.length;i++) total+=state.boxes[i].items.length;
-    addBotMessage('Great session! You\'ve sorted **'+state.boxes.length+'** box(es) with **'+total+'** items total.\n\nYou can download your data anytime with the buttons at the top. \uD83D\uDCE6');
+  var command = text.toLowerCase();
+  if (command.indexOf('new box') !== -1 || command.indexOf('another') !== -1) {
+    startNewBox();
+  } else if (command.indexOf('done') !== -1 || command.indexOf('stop') !== -1) {
+    var total = 0;
+    for (var i = 0; i < state.boxes.length; i++) {
+      total += state.boxes[i].items.length;
+    };
+    addBotMessage('Great session! You\'ve sorted **' + state.boxes.length + '** box(es) with **' + total +
+      '** items total.\n\nYou can download your data anytime with the buttons at the top. \uD83D\uDCE6');
     setChips(['Start new box', 'Review by fate']);
-  } else if(t.indexOf('review all')!==-1){
-    var lines='';
-    for(var i=0;i<state.boxes.length;i++){
-      var b=state.boxes[i];
-      var loc = b.location ? ' (' + b.location + ')' : '';
-      lines+='**'+b.name+'**'+loc+' \u2014 '+boxSummaryLine(b)+'\n';
+  } else if(command.indexOf('review all') !==- 1) {
+    var lines = '';
+    for(var i = 0; i < state.boxes.length; i++) {
+      var box = state.boxes[i];
+      var loc = box.location ? ' (' + box.location + ')' : '';
+      lines += (i+1) + '. **' + box.name + '**' + loc + ' — ' + boxSummaryLine(box) + '\n';
     }
-    addBotMessage('**All boxes:**\n'+lines.trim()); setChips(['New box','Done for now','Review by fate']);
-  } else { handleFreeform(text,[]); }
+    addBotMessage('**All boxes:**\n' + lines.trim());
+    setChips(['New box','Done for now','Review by fate']);
+  } else {
+    handleFreeform(text,[]);
+  }
 }
 
 function handleHelp() {
@@ -2329,6 +2347,7 @@ if (typeof module !== 'undefined') {
     getBudgetItems: function(){ return _budgetItems; },
     mantra,
     MANTRAS,
+    handleFinished,
     maybeMantraOnItem,
     setMantrasEnabled: function(v){ _mantrasEnabled = v; },
     getMantrasEnabled: function(){ return _mantrasEnabled; },

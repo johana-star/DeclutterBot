@@ -38,6 +38,7 @@ var uid         = app.uid;
 var processInput = app.processInput;
 var handleHelp  = app.handleHelp;
 var setChips       = app._setChipsImpl;
+var handleFinished = app.handleFinished;
 var chipClick      = app._chipClickImpl;
 var addBotMessage  = app._addBotMessageImpl;
 var addUserMessage = app._addUserMessageImpl;
@@ -256,6 +257,33 @@ reset();
 addBotMessage('Bot says hi');
 addUserMessage('User says hi');
 assert('conversationHistory not on state', !('conversationHistory' in state));
+
+
+console.log('\n21. Review all boxes shows numbered list');
+reset();
+makeBox('Box A', 'Garage');
+makeBox('Box B', 'Kitchen');
+state.conversationStage = 'FINISHED';
+handleFinished('review all boxes');
+assert('first box numbered', lastBotMessage.indexOf('1. **Box A**') !== -1);
+assert('second box numbered', lastBotMessage.indexOf('2. **Box B**') !== -1);
+
+console.log('\n22. Number input in FINISHED stage opens that box');
+reset();
+var boxA = makeBox('Box A', 'Garage');
+makeBox('Box B', 'Kitchen');
+state.conversationStage = 'FINISHED';
+processInput('1', []);
+assert('switched to box A', state.activeBoxId === boxA.id);
+assert('stage is BOX_OPEN', state.conversationStage === 'BOX_OPEN');
+
+console.log('\n23. Out of range number in FINISHED stage shows error');
+reset();
+makeBox('Box A', 'Garage');
+state.conversationStage = 'FINISHED';
+processInput('99', []);
+assertIncludes('error message', lastBotMessage, 'No box 99');
+assert('stage still FINISHED', state.conversationStage === 'FINISHED');
 
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────
