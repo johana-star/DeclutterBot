@@ -14,7 +14,7 @@ var state = {
   pendingFateReview: null,
   conversationStage: 'WELCOME',
 };
-var FATES = ['keep','donate','trash','sell','unsure'];
+var FATES = ['keep','donate','sell','unsure','trash'];
 var FATE_TITLES = FATES.map(function(fate) {
   return fate.charAt(0).toUpperCase() + fate.slice(1);
 });
@@ -400,13 +400,15 @@ function processInput(text, photos) {
   // Remove command: "remove <name or number>" or "delete <name or number>"
   // Trash N / Delete N chips from review screen
   if (/^trash \d+$/.test(command)) { handleTrashByNumber(parseInt(command.slice(6), 10)); return; }
+
+  // Elliptical chip intercepts — prepopulate input and send reminder
+  if (command === 'trash...')  { handleEllipticalAction('Trash',  function(group) { return group.fate !== 'trash'; });  return; }
   if (/^delete \d+$/.test(command)) { handleDeleteByNumber(parseInt(command.slice(7), 10)); return; }
-  // Delete N — immediate deletion for already-trashed items
-  if (/^delete \d+$/.test(command)) {
-    var dn = parseInt(command.slice(7), 10);
-    handleDeleteByNumber(dn);
-    return;
-  }
+  if (command === 'delete...') { handleEllipticalAction('Delete', function(group) { return group.fate === 'trash'; });  return; }
+  if (command === 'keep...')   { handleEllipticalAction('Keep',   function(group) { return group.fate !== 'keep'; });   return; }
+  if (command === 'donate...') { handleEllipticalAction('Donate', function(group) { return group.fate !== 'donate'; }); return; }
+  if (command === 'sell...')   { handleEllipticalAction('Sell',   function(group) { return group.fate !== 'sell'; });   return; }
+  if (command === 'unsure...') { handleEllipticalAction('Unsure', function(group) { return group.fate !== 'unsure'; }); return; }
 
   // Nest command: "nest", "put <box> inside <box>", "put inside"
   if (command === 'nest' || command === 'put inside' || command === 'nest box') { handleNest(text); return; }
@@ -918,6 +920,42 @@ function boxSummaryLine(box) {
   }).join(', ');
 }
 
+
+// ── ELLIPTICAL CHIP HELPERS ───────────────────────────────────────────────────
+// Shared logic for building action chips and handling elliptical chip intercepts.
+// Each fate action (Trash, Delete, Keep, Donate, Sell, Unsure) uses the same
+// pattern: filter eligible groups, apply threshold, build chips or intercept.
+
+// Returns item numbers (1-based) from groups that match the filter function.
+function eligibleGroupNumbers(groups, filterFn) {
+  return groups
+    .map(function(group, groupIndex) { return filterFn(group) ? groupIndex + 1 : null; })
+    .filter(function(itemNumber) { return itemNumber !== null; });
+}
+
+// Builds chips for a fate action. ≤2 eligible → numbered chips. 3+ → elliptical.
+function buildActionChips(groups, label, filterFn) {
+  var eligible = eligibleGroupNumbers(groups, filterFn);
+  if (eligible.length === 0) return [];
+  if (eligible.length > 2) return [label + '...'];
+  return eligible.map(function(itemNumber) { return label + ' ' + itemNumber; });
+}
+
+// Handles an elliptical chip click: sends reminder and prepopulates the input.
+function handleEllipticalAction(label, filterFn) {
+  var box = activeBox();
+  if (!box) return;
+  var groups = groupItems(box.items);
+  var eligible = eligibleGroupNumbers(groups, filterFn);
+  var verb = label.toLowerCase();
+  addBotMessage('Which item? Type _' + verb + '_ followed by the number. Applies to: ' + eligible.join(', ') + '.');
+  var input = document.getElementById('user-input');
+  if (input) {
+    input.value = verb + ' ';
+    if (input.focus) input.focus();
+  }
+}
+
 function reviewBox() {
   var box=activeBox();
   if (!box || box.items.length === 0) {
@@ -926,20 +964,27 @@ function reviewBox() {
     return;
   }
   var groups = groupItems(box.items);
-  var lines='';
-  var removeChips=[];
-  for(var i=0;i<groups.length;i++){
-    var g=groups[i];
+  var lines = '';
+  var actionChips = [];
+
+  for (var i = 0; i < groups.length; i++) {
+    var g = groups[i];
     var prefix = g.count > 1 ? g.count + ' \u00d7 ' : '';
-    lines+=(i+1)+'. **'+prefix+g.name+'** \u2192 '+g.fate+(g.notes?' ('+g.notes+')':'')+'\n';
-    removeChips.push((g.fate === 'trash' ? 'Delete ' : 'Trash ') + (i+1));
+    lines += (i+1) + '. **' + prefix + g.name + '** \u2192 ' + g.fate + (g.notes ? ' (' + g.notes + ')' : '') + '\n';
   }
+
+  // Action chips — elliptical when 3+ eligible groups, numbered when 1-2.
+  // Order driven by FATES constant: Keep, Donate, Sell, Unsure, Trash, then Delete.
+  const chips = FATES
+    .flatMap(fate => buildActionChips(groups, fate[0].toUpperCase() + fate.slice(1), group => group.fate !== fate))
+    .concat(buildActionChips(groups, 'Delete', group => group.fate === 'trash'));
+
   var header = box.items.length !== groups.length
-    ? '**Items in "'+box.name+'" ('+box.items.length+' items, '+groups.length+' unique):**'
-    : '**Items in "'+box.name+'":**';
-  addBotMessage(header+'\n'+lines.trim());
-  setChips(removeChips.concat(['Add item','Move box','Done with this box']));
-  state.conversationStage='BOX_OPEN';
+    ? '**Items in "' + box.name + '" (' + box.items.length + ' items, ' + groups.length + ' unique):**'
+    : '**Items in "' + box.name + '":**';
+  addBotMessage(header + '\n' + lines.trim());
+  setChips(chips.concat(['Add item', 'Move box', 'Done with this box']));
+  state.conversationStage = 'BOX_OPEN';
 }
 
 function handleFinished(text) {

@@ -270,9 +270,11 @@ reset();
 box = makeBox('Test Box');
 makeItem(box, 'Lamp', 'keep');
 makeItem(box, 'Chair', 'donate');
+makeItem(box, 'Rug', 'unsure'); // third trashable item triggers Trash... elliptical
 processInput('review items', []);
-assert('Trash 1 chip shown', lastChips.indexOf('Trash 1') !== -1);
-assert('Trash 2 chip shown', lastChips.indexOf('Trash 2') !== -1);
+assert('Trash... chip shown', lastChips.indexOf('Trash...') !== -1);
+assert('no numbered Trash chips', !lastChips.some(c => /^Trash \d+$/.test(c)));
+assert('no Delete chips when no trash-fated items', !lastChips.some(c => c.startsWith('Delete ')));
 assert('no Remove chips', !lastChips.some(function(c){ return c.startsWith('Remove'); }));
 
 
