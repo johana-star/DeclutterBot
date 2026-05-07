@@ -150,6 +150,24 @@ As a general rule, prefer ES5-compatible syntax (`var`, plain functions, string 
 
 ---
 
+## Known Issues
+
+### Silent freeze when reviewing items with very large data
+
+**Symptom:** When reviewing items with exceptionally large names or contents (e.g., multiple kilobytes per item), the app stops responding silently with no console errors. The only recovery is a browser tab refresh.
+
+**Root cause:** Unknown — likely a rendering bottleneck in `reviewBox()` or `showFateReviewCurrentItem()` when processing large item data.
+
+**Trigger:** Only occurs when items are intentionally overloaded far beyond normal use (e.g., pasting code snippets as item names).
+
+**Priority:** Low — the design assumes reasonably-sized item names and descriptions. This is an edge case that requires deliberate abuse of the app's input constraints.
+
+**Workaround:** If this occurs, refresh the tab. Data is persisted in localStorage, so no work is lost.
+
+**TODO:** Profile `reviewBox()` and `showFateReviewCurrentItem()` with large datasets to identify and eliminate the bottleneck. Consider adding a check to warn users if item size exceeds a threshold.
+
+---
+
 ## app.js Architecture
 
 ### DOM guard pattern
@@ -285,37 +303,52 @@ All files exit with code `0` on success and `1` on any failure.
 
 ---
 
+## Work Estimation & Point Sizing
+
+When planning work sessions, use **story points** (relative effort) rather than clock time estimates. Guidelines:
+
+- **1-2 points:** Trivial changes (copy updates, single-line fixes, obvious renames)
+- **3-4 points:** Small refactors or feature additions (extract a helper, add error handling, UI tweak)
+- **5 points:** Medium task (feature + tests, complex refactor, multiple call sites)
+  - **Must decompose if any uncertainty** — if you're unsure whether it's 5 or 8, break it down
+- **8 points:** Large task (new subsystem, major refactor, multiple features)
+  - **Mandatory decomposition** — never pull an 8-pointer in one go; break into 3-5 and handle serially
+- **13+ points:** Epic, needs design phase and breakdown before work begins
+
+**Rationale:** Point estimates are relative and more stable than time estimates. A 5-pointer always means "similar scope to past 5-pointers" regardless of your environment or expertise. Time estimates drift with learning, debugging, and unknowns. Points account for uncertainty naturally: a 5-pointer that takes 3 hours is still a 5-pointer; padding for unknowns inflates the points, which naturally cascade to breaking down larger work.
+
+---
+
+## Completed Tasks
+
+- 120-char line length refactoring — all lines now at or under 120 characters by code point count. Expanded dense object literals, long `addBotMessage` strings, and extracted long regex patterns to variables. Added documentation to CONTRIBUTING on line length rules and how to measure correctly (character count, not bytes).
+- Add Lodash via CDN — Lodash 4.17.21 added to index.html via cdnjs. Test setup: (1) `npm init -y && npm install lodash`, (2) add `global._ = require('lodash')` to test stubs before `require('../app.js')`. All calls guarded with `typeof _ !== 'undefined'` for graceful degradation in Node tests.
+- commitState() helper — centralized `saveState(); renderSidebar(); updateContextBar();` into a single helper with canonical ordering (saveState first for persistence, then UI updates). Reduces boilerplate and ensures consistent call order throughout app.js. Replaced at call sites: selectBox (line 162), execute (line 335), importJSON (lines 1238-1240), clearAll (line 1284).
+- localStorage quota handling — added `QuotaExceededError` handling in `saveState()`. When storage is full, shows warning "Storage full. Delete items marked trash to continue, or export your inventory." with "Export JSON" and "Always ignore" chips. User can select "Always ignore" to suppress warnings and continue with in-memory state (persists until refresh). State persists normally once items are deleted and storage is available again. Added `storageFull` flag to state to track warning state. All 563 tests pass.
+- fateReviewChips refactored to use filter pattern — extracted `addInformationChips(fate)` helper that returns fate-specific action chips (e.g., 'Add to kit' for keep, 'Delete' for trash). `fateReviewChips()` now computes chips dynamically as `FATES.filter(f => f !== fate).capitalize() + addInformationChips(fate) + ['Skip']`. Removes hardcoded arrays and makes it easy to modify fate transitions. Chips now display consistently: other fates (capitalized) → action chips → Skip.
+- Storage budget counter — live countdown of remaining item capacity displayed in context bar, right-aligned as "capacity: N items". Calculates as `(5MB - JSON.stringify(state)) / divisor` where divisor is learned from actual data when 10+ items exist, otherwise defaults to 14,397 items on empty state. Recalculates every ~10 items (~30 saveState calls, accounting for 3-4 saves per item from name + fate + notes interactions). Budget decrements immediately on item add, increments on item delete. Recalculation pulse animation shows when recalibration runs. Initial display shows exactly 14,397 items; after adding items, number becomes more accurate based on actual average bytes per item.
+- Soft deletion data model + hiding — items now have `deleted_at` timestamp field (null by default). `deleteActiveItem()` sets `deleted_at` instead of splicing from array. Filtering applied to `groupItems()`, `countFates()`, `boxSummaryLine()`, and `reviewBox()` to hide soft-deleted items from all views. Item counts (e.g. "5 items logged") reflect only non-deleted items. Deleted items remain in state for Slice 2 (restore feature). Tests updated to check `deleted_at` instead of array length.
+- CSV export — `escapeCSV()` helper implements RFC 4180 escaping (doubles quotes, wraps fields with commas/quotes/newlines). `exportCSV()` builds header + rows using functional `.reduce()` pattern, includes soft-deleted items, downloads as `inventory.csv`. Button in header + `export csv` command. 23 tests covering escaping, special characters, multiple boxes, empty locations, soft deletion inclusion.
+- CSV import — `parseCSV()` validates exact header order (location, box name, item name, fate, notes), `parseCSVLine()` does RFC 4180 unquoting. `importCSV()` groups rows by (location, box_name) pair to create separate boxes, defaults invalid fates to `unsure`, allows duplicate rows, skips empty lines. Matches JSON import behavior: confirms overwrite if existing data, clears inventory on confirm, resets session preferences. Button in header + `import csv` command + `handleImportCSV()` file handler. 40 tests covering parsing, round-trip fidelity, validation, all FATES preservation.
+- Functional refactoring — replaced for loops with `.filter()`, `.map()`, `.reduce()`, `.find()`, `.forEach()` in: `countFates()`, `groupItems()`, `exportCSV()`, `activeBox()`, `activeItem()`, item transfer operations. Code is more declarative and consistent with codebase style.
+- No chips shown after "Review items" on an empty box — `setBoxOpenChips()` now called after the empty message in `reviewBox`.
+- Trash N from box review — `state._reviewingBox` flag set in `handleTrashByNumber`, checked in `deleteActiveItem` and `handleDisposal` to call `reviewBox()` instead of `setBoxOpenChips()`.
+- Change fate from box review — elliptical action chips (Keep, Donate, Sell, Unsure, Trash, Delete) now appear in the review screen. 1-2 eligible items show numbered chips (e.g. `Keep 1`); 3+ show an elliptical chip (e.g. `Keep...`) which prepopulates the input and sends a reminder listing eligible item numbers. Implemented via `buildActionChips`, `eligibleGroupNumbers`, and `handleEllipticalAction` helpers.
+- Arrow up/down — cycles through sent message history; arrow down returns to draft
+- Context bar + help command — hi/hello/hey/help/? all trigger contextual help; context bar now reads "type \"help\" or \"?\" for commands"
+- Rename to DeclutterBot — completed
+- Nested boxes — nest command, parentId data model, sidebar indent/caret, delete guard, dump with child re-parenting
+
 ## Punchlist
 
-> **Next session — start here (three small fixes, one at a time):**
-> 1. `fateReviewChips` sell and donate missing fate options — add Keep, Trash, Unsure to sell chips; add Keep, Sell, Trash to donate chips. Then refactor `fateReviewChips` to use a single `FATE_REVIEW_CHIPS` object per the scalpel/single-source-of-truth principles above.
-> 2. `handleDisposal` skip path doesn't check `_resumeAfterDisposal` or `_resumeAfterTrash` — copy the resume check from the note-written branch into the skip branch (lines ~1570-1577).
-> 3. "Stopped reviewing. N of M actioned" → "Stopped reviewing. N of M items have been changed."
- (upcoming features needing tests on implementation)
+> **Next session — start here (one small fix):**
+> (none — all urgent items completed)
 
-- Export CSV — export inventory as a flat CSV file with columns: box name, box location, item name, fate, notes. One row per item. Needs tests for correct column order, escaping of commas/quotes in values, and empty boxes handled gracefully.
-- Import accepts CSV or JSON — the import button and `import` command should accept either format. CSV import should reconstruct boxes and items from the flat structure. Needs tests for valid CSV, malformed CSV, mixed encoding edge cases, and round-trip fidelity (export then re-import produces equivalent state).
-- Add Lodash via CDN ✅ done — Lodash 4.17.21 added to index.html via cdnjs. When a test needs to exercise a Lodash function: (1) `npm init -y && npm install lodash`, (2) add `global._ = require('lodash')` to the relevant test file's stub section before `require('../app.js')`. Favor this over injecting into the app.js shim. Currently all Lodash calls in app.js are guarded with `typeof _ !== 'undefined'` so they degrade gracefully in the Node test environment. Then incrementally replace verbose for loops and manual array operations with Lodash equivalents where they improve readability. Good candidates: `collectFateItems`, `groupItems`, `buildFateReviewPath`, and any nested loop that iterates boxes then items. Follow the scalpel principle — modernize when touching a function, not as a standalone rewrite pass.
-- **Unreviewed refactor candidates** — identified by automated scan, not yet reviewed for correctness or priority:
-  - `detectFate(text)` — lines 816 and 841 have identical `for` loops finding which fate word appears in input. Extract to a shared helper.
-  - `requireActiveBox(message)` — 7+ variations of `if (!box) { addBotMessage(...); return; }` with slightly different wording. Standardize message and extract guard.
-  - `returnToBoxOpen()` — `state.conversationStage = 'BOX_OPEN'` appears 36 times, often paired with `setBoxOpenChips()` and/or `saveState()`. A helper for the most common combination would reduce noise.
-  - `resumeFateReviewIfNeeded()` — the `_resumeAfterTrash` flag guard appears in multiple places with nearly identical handling.
-  - `commitState()` — `saveState(); renderSidebar(); updateContextBar()` appear together frequently in varying orders. A single helper would standardize the sequence.
-- Elliptical chip eligibility model — the current `flatMap` over `FATES` assumes any fate can transition to any other fate (filter: `group.fate !== fate`). This is brittle if future rules restrict transitions (e.g. keep items can only become unsure, not sell or donate). Refactor: move eligibility to a derived property on each group, or a lookup table of allowed transitions per fate. This makes transition rules explicit, testable, and decoupled from the chip building logic.
-- Elliptical chip intercepts — the six `if (command === 'x...')` blocks in `processInput` are a linear scan where only one can ever match. Promote to a `switch` statement. Each case calls `handleEllipticalAction` with its specific filter function. Independent of the eligibility model refactor above.
-- Split app.js into modules — at 1500+ LOC, natural split points are state/helpers, handlers, fate review, trash/disposal, UI/DOM functions, and processInput/init. Requires decision on bundler (esbuild/rollup), ES modules, or multiple script tags. Multiple script tags is lowest friction but requires load order management and test setup changes. Hold until a bundler is added or readability becomes a genuine pain point.
+### Low Priority
+
+- Soft Deletion Slice 2: Restore/review deleted + export — Add `review deleted` or `restore` command to list soft-deleted items with delete timestamp and original box context. Chips for: restore to original box, permanently hard-delete from array, or cancel. Update JSON export to include `deleted` array alongside `boxes` (each with `boxId` for provenance). Tests: verify deleted items appear in restore view, verify export structure, verify restore works, verify permanent delete removes from `deleted` array and state. Builds on Slice 1 (soft deletion data model).
+- Elliptical chip eligibility model — move fate transitions to explicit data structure (implement when requirement appears). Currently assumes any fate can transition to any other (filter: `group.fate !== fate`). When needed: create `FATE_TRANSITIONS` lookup table at top of app.js defining allowed transitions per fate. Makes transition rules explicit, testable, and decoupled from chip building logic. Do not implement speculatively.
 - Test coverage with c8 — run `npx c8 node tests/test.js` to get line, branch, and function coverage reports with no architecture changes. Add a `coverage` script to a `package.json` if one doesn't exist. Use coverage reports to identify untested code paths and prioritize new tests.
-- Storage budget counter — display a live countdown of remaining item capacity in the context bar, right-aligned. Show remaining capacity in items only (at ~347 bytes per item). When a photo is added the counter drops dramatically (~238 items per photo). Implementation notes from a failed attempt: (1) `conversationHistory` grows at roughly the same rate as items are added, masking the decrement — either exclude `conversationHistory` from the size calculation, or calculate budget as `(STORAGE_MAX - state_without_history) / 347`; (2) init timing is unreliable — `loadState` calls `updateContextBar` before state is fully in memory, so the first calculation is stale; use a `setTimeout(0)` defer after load and recalculate on every `saveState`. Starting value should be calculated from actual state, not hardcoded. The 'recalculating' pulse animation is a nice-to-have once numbers are reliable. Load order: calculate budget on `window.onload` or `DOMContentLoaded` rather than inline in script execution, which guarantees both DOM and state are fully ready. Avoid calculating inside `loadState` or any function called by it.
-- localStorage quota handling — `saveState` currently has no error handling for `QuotaExceededError`. When storage is full, the app should catch the error, show a warning message with an Export JSON chip, and suppress repeated warnings using a `storageFull` flag. Import should still work when storage is full (state lives in memory; only the save-back fails). Tests: throwing `setItem` stub shows warning + chip; normal `setItem` saves silently; repeated saves after full don't repeat the warning; import works regardless of storage state.
-- Soft deletion — items (and optionally boxes) receive a `deleted_at` timestamp instead of being spliced from the array. Soft-deleted items are hidden from all UI views (review list, item count, sidebar tags) but included in JSON export.
-  - Open questions to resolve before implementing:
-    - Scope: items only, or boxes too?
-    - Export format: top-level `deleted` array alongside `boxes`. Each deleted item retains a `boxId` field referencing its original box, preserving provenance without cluttering the active box's items array.
-    - Review command: a `review deleted` or `restore` command to list soft-deleted items, with options to restore or hard-delete permanently.
-    - Current `deleteActiveItem` and `handleDeleteByNumber` do hard deletion — both would need to be updated to set `deleted_at` instead of splicing.
-    - Session/daily deletion count still applies.
-    - Filtering: all existing functions that iterate `box.items` (groupItems, countFates, boxSummaryLine, reviewBox) must filter out soft-deleted items.
 - Merge on import JSON — when importing, instead of replacing, offer a merge strategy:
   - Boxes only in the JSON file are added to the app
   - Boxes only in the app are kept as-is

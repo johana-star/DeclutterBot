@@ -68,6 +68,12 @@ function loadState() {
   } catch(e) {} }
 }
 
+function commitState() {
+  saveState();
+  renderSidebar();
+  updateContextBar();
+}
+
 function uid() { return Math.random().toString(36).slice(2,9); }
 function activeBox() {
   for (var i = 0; i < state.boxes.length; i++) {
@@ -153,7 +159,7 @@ function selectBox(id) {
   state.activeBoxId = id;
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
-  saveState(); renderSidebar(); updateContextBar();
+  commitState();
   var box = activeBox();
   addUserMessage(box.name, []);
   // Add to arrow-up history so sidebar clicks are navigable
@@ -326,7 +332,7 @@ async function sendUserMessage() {
   await new Promise(function(r){setTimeout(r,500);});
   hideTyping();
   processInput(text, []);
-  renderSidebar(); updateContextBar(); saveState();
+  commitState();
 }
 
 function handleBoxOpen(command, photos) {
@@ -1229,9 +1235,7 @@ function importJSON(data) {
   state.activeBoxId     = null;
   state.activeItemId    = null;
   state.conversationStage = 'FINISHED';
-  saveState();
-  renderSidebar();
-  updateContextBar();
+  commitState();
   document.getElementById('chat-messages').innerHTML = '';
   document.getElementById('quick-replies').innerHTML = '';
   var totalItems = boxes.reduce(function(acc, b) { return acc + b.items.length; }, 0);
@@ -1277,7 +1281,7 @@ function clearAll() {
   sessionDeletedCount=0; sessionTrashPreference=null; boxTrashPreferences={};
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
-  renderSidebar(); updateContextBar();
+  commitState();
   setTimeout(function(){
     addBotMessage(WELCOME_MSG);
     state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
