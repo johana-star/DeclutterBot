@@ -296,6 +296,12 @@ All files exit with code `0` on success and `1` on any failure.
 - Export CSV — export inventory as a flat CSV file with columns: box name, box location, item name, fate, notes. One row per item. Needs tests for correct column order, escaping of commas/quotes in values, and empty boxes handled gracefully.
 - Import accepts CSV or JSON — the import button and `import` command should accept either format. CSV import should reconstruct boxes and items from the flat structure. Needs tests for valid CSV, malformed CSV, mixed encoding edge cases, and round-trip fidelity (export then re-import produces equivalent state).
 - Add Lodash via CDN ✅ done — Lodash 4.17.21 added to index.html via cdnjs. When a test needs to exercise a Lodash function: (1) `npm init -y && npm install lodash`, (2) add `global._ = require('lodash')` to the relevant test file's stub section before `require('../app.js')`. Favor this over injecting into the app.js shim. Currently all Lodash calls in app.js are guarded with `typeof _ !== 'undefined'` so they degrade gracefully in the Node test environment. Then incrementally replace verbose for loops and manual array operations with Lodash equivalents where they improve readability. Good candidates: `collectFateItems`, `groupItems`, `buildFateReviewPath`, and any nested loop that iterates boxes then items. Follow the scalpel principle — modernize when touching a function, not as a standalone rewrite pass.
+- **Unreviewed refactor candidates** — identified by automated scan, not yet reviewed for correctness or priority:
+  - `detectFate(text)` — lines 816 and 841 have identical `for` loops finding which fate word appears in input. Extract to a shared helper.
+  - `requireActiveBox(message)` — 7+ variations of `if (!box) { addBotMessage(...); return; }` with slightly different wording. Standardize message and extract guard.
+  - `returnToBoxOpen()` — `state.conversationStage = 'BOX_OPEN'` appears 36 times, often paired with `setBoxOpenChips()` and/or `saveState()`. A helper for the most common combination would reduce noise.
+  - `resumeFateReviewIfNeeded()` — the `_resumeAfterTrash` flag guard appears in multiple places with nearly identical handling.
+  - `commitState()` — `saveState(); renderSidebar(); updateContextBar()` appear together frequently in varying orders. A single helper would standardize the sequence.
 - Elliptical chip eligibility model — the current `flatMap` over `FATES` assumes any fate can transition to any other fate (filter: `group.fate !== fate`). This is brittle if future rules restrict transitions (e.g. keep items can only become unsure, not sell or donate). Refactor: move eligibility to a derived property on each group, or a lookup table of allowed transitions per fate. This makes transition rules explicit, testable, and decoupled from the chip building logic.
 - Elliptical chip intercepts — the six `if (command === 'x...')` blocks in `processInput` are a linear scan where only one can ever match. Promote to a `switch` statement. Each case calls `handleEllipticalAction` with its specific filter function. Independent of the eligibility model refactor above.
 - Split app.js into modules — at 1500+ LOC, natural split points are state/helpers, handlers, fate review, trash/disposal, UI/DOM functions, and processInput/init. Requires decision on bundler (esbuild/rollup), ES modules, or multiple script tags. Multiple script tags is lowest friction but requires load order management and test setup changes. Hold until a bundler is added or readability becomes a genuine pain point.
@@ -418,7 +424,17 @@ ES6 is the target. The codebase was originally written in ES5 but that constrain
 - Use native array methods (`map`, `filter`, `reduce`, `find`, `some`, `every`) instead of `for` loops where they improve readability
 - Lodash is available and encouraged where it improves readability. Prefer native array methods for simple cases (`map`, `filter`, `find`), reach for Lodash for more complex operations (`_.groupBy`, `_.flatMap`, `_.chunk`, `_.uniqBy`, etc.). Import via CDN in index.html if not already present.
 
+**Arrow functions:** always use parentheses around parameters, even for single parameters. `(group) => group.fate !== 'trash'` not `group => group.fate !== 'trash'`. Consistent parentheses make all arrow functions easier to scan.
+
 **Variable naming:** use descriptive names. Single-letter variables (`g`, `i`, `j`, `n`, `b`) are not permitted except as classic `for` loop counters where the variable is never referenced outside the loop body. In all other cases — array methods, named loop variables, intermediate values — use a name that describes what the variable holds. Examples: `group` not `g`, `itemIndex` not `i`, `boxIndex` not `j`, `num` at minimum but prefer `itemNumber` or `groupIndex`. When editing a function, rename any single-letter variables you encounter.
+
+**Line length:** keep all lines at or under 120 characters. This is enforced by character count, not bytes — the multi-byte box-drawing characters in section banners (`─`) are single characters and do not inflate the count. When a line exceeds the limit:
+
+- Break long `addBotMessage` strings with `+` concatenation across two or three lines, indented to align with the opening quote.
+- Expand dense object literals (`{ id: uid(), name: ..., ... }`) to multi-line form.
+- Extract long regex literals to a named variable defined on the line above (`var pattern = /…/; if (n.match(pattern))`), or split into two named patterns if the regex itself is over the limit.
+- Split long boolean conditions at `&&` or `||`, placing the operator at the start of the continuation line.
+- Never measure line length with `awk length()` or `wc -c` — both count bytes. Use Python's `len()` on a decoded string, or check character count in your editor.
 
 **Migration strategy:** modernize incrementally. New code is written in ES6. Existing functions are modernized when touched for any other reason. Do not rewrite functions solely to modernize them — follow the scalpel principle.
 

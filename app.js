@@ -2,7 +2,7 @@
 // DOM-touching functions (addBotMessage, setChips, renderSidebar, etc.)
 // are expected to be defined globally or stubbed before this file runs.
 
-var state = {
+let state = {
   boxes: [],
   activeBoxId: null,
   activeItemId: null,
@@ -14,21 +14,23 @@ var state = {
   pendingFateReview: null,
   conversationStage: 'WELCOME',
 };
-var FATES = ['keep','donate','sell','unsure','trash'];
-var FATE_TITLES = FATES.map(function(fate) {
+const FATES = ['keep','donate','sell','unsure','trash'];
+const FATE_TITLES = FATES.map(function(fate) {
   return fate.charAt(0).toUpperCase() + fate.slice(1);
 });
-var collapsedBoxIds = [];
-var sessionDeletedCount = 0;
-var sessionTrashPreference = null; // null | 'always' | 'never'
-var boxTrashPreferences = {}; // boxId -> 'always' | 'never'
+let collapsedBoxIds = [];
+let sessionDeletedCount = 0;
+let sessionTrashPreference = null; // null | 'always' | 'never'
+let boxTrashPreferences = {}; // boxId -> 'always' | 'never'
 function toggleCollapse(id) {
   var idx = collapsedBoxIds.indexOf(id);
   var collapsing = idx === -1;
   if (collapsing) collapsedBoxIds.push(id);
   else collapsedBoxIds.splice(idx, 1);
   var box = null;
-  for (var i = 0; i < state.boxes.length; i++) { if (state.boxes[i].id === id) { box = state.boxes[i]; break; } }
+  for (var i = 0; i < state.boxes.length; i++) {
+    if (state.boxes[i].id === id) { box = state.boxes[i]; break; }
+  }
   if (box) addUserMessage((collapsing ? 'collapse ' : 'expand ') + box.name, []);
   renderSidebar();
 }
@@ -68,32 +70,38 @@ function loadState() {
 
 function uid() { return Math.random().toString(36).slice(2,9); }
 function activeBox() {
-  for (var i=0;i<state.boxes.length;i++) { if (state.boxes[i].id===state.activeBoxId) return state.boxes[i]; }
+  for (var i = 0; i < state.boxes.length; i++) {
+    if (state.boxes[i].id === state.activeBoxId) return state.boxes[i];
+  }
   return null;
 }
 function activeItem() {
   var box = activeBox();
   if (!box || !state.activeItemId) return null;
-  for (var i=0;i<box.items.length;i++) { if (box.items[i].id===state.activeItemId) return box.items[i]; }
+  for (var i = 0; i < box.items.length; i++) {
+    if (box.items[i].id === state.activeItemId) return box.items[i];
+  }
   return null;
 }
 function countFates(box) {
   var c = {keep:0,donate:0,trash:0,sell:0,unsure:0};
-  for (var i=0;i<box.items.length;i++) { var f=box.items[i].fate; if (c[f]!==undefined) c[f]++; }
+  for (var i = 0; i < box.items.length; i++) {
+    var f = box.items[i].fate;
+    if (c[f] !== undefined) c[f]++;
+  }
   return c;
 }
 
 function renderSidebar() {
   var el = document.getElementById('sidebar-content');
   var cnt = document.getElementById('box-count');
-  cnt.textContent = state.boxes.length + ' box' + (state.boxes.length!==1?'es':'');
+  cnt.textContent = state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '');
   if (state.boxes.length===0) {
     el.innerHTML = '<div class="empty-sidebar">No boxes yet.<br/>Start chatting to<br/>begin sorting.</div>';
     return;
   }
   el.innerHTML = renderBoxTree(null, 0, collapsedBoxIds);
 }
-
 
 function renderBoxTree(boxId, depth, collapsedIds) {
   var html = '';
@@ -126,7 +134,8 @@ function renderBoxTree(boxId, depth, collapsedIds) {
     if (hasKids) metaParts.push(kidBoxes.length + ' box' + (kidBoxes.length !== 1 ? 'es' : ''));
     if (metaParts.length === 0) metaParts.push('empty');
     var metaStr = escHtml(box.location || 'location unknown') + ' &middot; ' + metaParts.join(', ');
-    html += '<div class="box-card' + ac + '" draggable="true" data-box-id="' + box.id + '" style="margin-left:' + indent + 'px" onclick="selectBox(\'' + box.id + '\')">'
+    html += '<div class="box-card' + ac + '" draggable="true" data-box-id="' + box.id + '"'
+      + ' style="margin-left:' + indent + 'px" onclick="selectBox(\'' + box.id + '\')">'
       + '<div class="box-card-header">' + caret
       + '<div class="box-card-body">'
       + '<div class="box-name">' + escHtml(box.name) + '</div>'
@@ -140,7 +149,6 @@ function renderBoxTree(boxId, depth, collapsedIds) {
   return html;
 }
 
-
 function selectBox(id) {
   state.activeBoxId = id;
   state.activeItemId = null;
@@ -149,12 +157,13 @@ function selectBox(id) {
   var box = activeBox();
   addUserMessage(box.name, []);
   // Add to arrow-up history so sidebar clicks are navigable
-  if (inputHistory.length === 0 || inputHistory[inputHistory.length - 1] !== box.name) {
+  if (inputHistory.length === 0 ||
+      inputHistory[inputHistory.length - 1] !== box.name) {
     inputHistory.push(box.name);
     if (inputHistory.length > 100) inputHistory.shift();
   }
   var summary = box.items.length > 0 ? boxSummaryLine(box) : 'empty';
-  addBotMessage('Switched to **'+box.name+'**. Contents: '+summary+'.\n\nWhat would you like to do?');
+  addBotMessage('Switched to **' + box.name + '**. Contents: ' + summary + '.\n\nWhat would you like to do?');
   setBoxOpenChips();
 }
 
@@ -200,11 +209,11 @@ function renderMarkdown(s) {
 }
 
 // ── INPUT HISTORY state vars ──────────────────────────────────────────────────
-var inputHistory = [];   // sent messages, oldest first
-var _budgetItems = 14397; // counter, updated per-item and recalibrated every 10 saves
-var _budgetSaveCount = 0;  // counts saveState calls, triggers recalibration at 10
-var historyIndex = -1;   // -1 = not browsing; 0 = oldest
-var historyDraft = '';   // text in field before arrow-up was pressed
+let inputHistory = [];   // sent messages, oldest first
+let _budgetItems = 14397; // counter, updated per-item and recalibrated every 10 saves
+let _budgetSaveCount = 0;  // counts saveState calls, triggers recalibration at 10
+let historyIndex = -1;   // -1 = not browsing; 0 = oldest
+let historyDraft = '';   // text in field before arrow-up was pressed
 
 // DOM functions defined at top level so Safari/iOS can find them as globals.
 // Each guards its document calls so they are safe to define in Node too.
@@ -320,150 +329,181 @@ async function sendUserMessage() {
   renderSidebar(); updateContextBar(); saveState();
 }
 
+function handleBoxOpen(command, photos) {
+  if (/^\d+$/.test(command.trim()) && activeBox()) {
+    handleItemViewByNumber(parseInt(command.trim(), 10));
+  } else {
+    handleItemName(command, photos);
+  }
+}
 
-function processInput(text, photos) {
-  var command = text.toLowerCase().trim();
-  if (command==='y') { command='yes'; text='yes'; }
-  if (command==='n') { command='no';  text='no';  }
-  if (command==='reset'||command==='start over') { clearAll(); return; }
-  if (command==='hi'||command==='hello'||command==='hey'||command==='help'||command==='h'||command==='?') { handleHelp(); return; }
-  if (command==='review items'&&activeBox()) { reviewBox(); return; }
-  if (command==='new box') { startNewBox(); return; }
-  if (command==='done with this box'||command==='done'||command==='skip to next box') { doneWithBox(); return; }
-  if (command==='add item') {
-    if (!activeBox()) {
-      addBotMessage('No active box \u2014 open a box first, or start a new one.');
-      setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
-    } else {
-      state.conversationStage='BOX_OPEN';
-      addBotMessage('What\'s the item?');
-    }
-    return;
+function handleAddItem() {
+  if (!activeBox()) {
+    addBotMessage('No active box — open a box first, or start a new one.');
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+  } else {
+    state.conversationStage = 'BOX_OPEN';
+    addBotMessage("What's the item?");
   }
-  if (command==='start sorting'||command==='start new box') { return; } // chips handled by init, ignore if replayed
-  if (command==='continue last box') {
-    if (state.activeBoxId && activeBox()) { selectBox(state.activeBoxId); }
-    else if (state.boxes.length > 0) { selectBox(state.boxes[state.boxes.length - 1].id); }
-    else { startNewBox(); }
-    return;
+}
+
+function handleContinueLastBox() {
+  if (state.activeBoxId && activeBox()) { selectBox(state.activeBoxId); }
+  else if (state.boxes.length > 0) { selectBox(state.boxes[state.boxes.length - 1].id); }
+  else { startNewBox(); }
+}
+
+// Returns true if the command was handled, false if processInput should continue.
+function tryIntercept(command, photos) {
+  // clearAll
+  if (['reset', 'start over'].includes(command)) { clearAll(); return true; }
+
+  // doneWithBox
+  if (['done', 'done with this box', 'skip to next box'].includes(command)) { doneWithBox(); return true; }
+
+  // handleDeleteBox
+  if (['delete box', 'delete this box'].includes(command)) { handleDeleteBox(); return true; }
+
+  // handleDump
+  if (command === 'dump into...') { handleDump('dump'); return true; }
+
+  // handleEllipticalAction
+  if (command === 'delete...') { handleEllipticalAction('Delete', group => group.fate === 'trash');  return true; }
+  if (command === 'donate...') { handleEllipticalAction('Donate', group => group.fate !== 'donate'); return true; }
+  if (command === 'keep...')   { handleEllipticalAction('Keep',   group => group.fate !== 'keep');   return true; }
+  if (command === 'sell...')   { handleEllipticalAction('Sell',   group => group.fate !== 'sell');   return true; }
+  if (command === 'trash...')  { handleEllipticalAction('Trash',  group => group.fate !== 'trash');  return true; }
+  if (command === 'unsure...') { handleEllipticalAction('Unsure', group => group.fate !== 'unsure'); return true; }
+
+  // handleFateReview
+  if (['review donate', 'review keep', 'review sell', 'review trash', 'review unsure'].includes(command)) {
+    handleFateReview(command.slice(7)); return true;
   }
-  if (command==='delete box') { handleDeleteBox(); return; }
-  if (command==='nest box' || command==='put inside') { handleNest(text); return; }
-  if (command==='dump into...') { handleDump('dump'); return; }
-  if (command==='back to list') { handleItemViewAction('back to list'); return; }
-  if (command==='back' && (state.conversationStage==='AWAITING_FATE_REVIEW_ACTION' ||
-      state.conversationStage==='AWAITING_FATE_REVIEW_ITEM' ||
-      state.conversationStage==='AWAITING_FATE_REVIEW_BULK')) { handleFateReviewAction('back'); return; }
-  if (command==='back' && state.pendingFateReview) { handleFateReviewAction('back'); return; }
-  if (command==='review unsure'||command==='review trash'||command==='review sell'||command==='review donate'||command==='review keep') {
-    handleFateReview(command.slice(7)); return;
+
+  // handleFateReviewMenu
+  if (command === 'review by fate') { handleFateReviewMenu(); return true; }
+
+  // handleFinished
+  if (command === 'done for now')     { handleFinished('done'); return true; }
+  if (command === 'review all boxes') { handleFinished('review all'); return true; }
+
+  // handleHelp
+  if (['?', 'h', 'hello', 'help', 'hey', 'hi'].includes(command)) { handleHelp(); return true; }
+
+  // handleItemViewAction
+  if (command === 'back to list') { handleItemViewAction('back to list'); return true; }
+
+  // handleNest
+  if (['nest box', 'put inside'].includes(command)) { handleNest(command); return true; }
+
+  // import
+  if (['import', 'import json'].includes(command)) {
+    const importEl = document.getElementById('import-input');
+    if (importEl) importEl.click();
+    else addBotMessage('Use the ↑ Import JSON button in the header to import a file.');
+    return true;
   }
-  if (command==='review by fate') { handleFateReviewMenu(); return; }
-  // Handle 'Review keep (11)' style chips from the fate review menu
+
+  // add item
+  if (command === 'add item') { handleAddItem(); return true; }
+
+  // continue last box
+  if (command === 'continue last box') { handleContinueLastBox(); return true; }
+
+  // new box
+  if (command === 'new box') { startNewBox(); return true; }
+
+  // no-ops — chips handled by init, ignore if replayed
+  if (['start new box', 'start sorting'].includes(command)) { return true; }
+
+  // review items — only intercept if there is an active box
+  if (command === 'review items') {
+    if (activeBox()) { reviewBox(); }
+    return activeBox() !== null;
+  }
+
+  // back — routes to fate review handler based on stage or pending review
+  if (command === 'back' && (
+      state.conversationStage === 'AWAITING_FATE_REVIEW_ACTION' ||
+      state.conversationStage === 'AWAITING_FATE_REVIEW_ITEM' ||
+      state.conversationStage === 'AWAITING_FATE_REVIEW_BULK' ||
+      state.pendingFateReview)) {
+    handleFateReviewAction('back'); return true;
+  }
+
+  // 'Review keep (11)' style chips from the fate review menu
   if (/^review (keep|donate|trash|sell|unsure)( \(\d+\))?$/.test(command)) {
     handleFateReview(command.replace(/^review /, '').replace(/\s*\(\d+\)$/, '').trim());
-    return;
+    return true;
   }
-  if (state.conversationStage==='AWAITING_FATE_REVIEW_ACTION') { handleFateReviewAction(text); return; }
-  if (state.conversationStage==='AWAITING_FATE_REVIEW_ITEM')   { handleFateReviewItem(text); return; }
-  if (state.conversationStage==='AWAITING_FATE_REVIEW_BULK')   { handleFateReviewBulk(text); return; }
-  if (state.conversationStage==='AWAITING_TRASH_DELETE') { handleTrashDelete(text); return; }
-  if (state.conversationStage==='AWAITING_DISPOSAL') { handleDisposal(text); return; }
-  if (command==='import json' || command==='import') {
-    var el = document.getElementById('import-input');
-    if (el) el.click();
-    else addBotMessage('Use the \u2191 Import JSON button in the header to import a file.');
-    return;
-  }
-  if (command==='done for now') { handleFinished('done'); return; }
-  // Number input in FINISHED stage selects a box from the review all list
-  if (state.conversationStage === 'FINISHED' && /^\d+$/.test(command)) {
-    var boxIdx = parseInt(command, 10) - 1;
-    if (boxIdx >= 0 && boxIdx < state.boxes.length) {
-      selectBox(state.boxes[boxIdx].id);
-    } else {
-      addBotMessage('No box ' + command + ' in the list.');
-    }
-    return;
-  }
-  if (command==='review all boxes') { handleFinished('review all'); return; }
 
-  // Delete box command: "delete box" or "delete this box"
-  if (command === 'delete box' || command === 'delete this box') { handleDeleteBox(); return; }
-  // Confirm delete box
-  if (state.conversationStage === 'AWAITING_DELETE_BOX_CONFIRM') { handleDeleteBoxConfirm(text); return; }
+  // dump variants
+  if (command.split(' ')[0] === 'dump') { handleDump(command); return true; }
 
-  // Dump command: "dump into <box name>" or "dump"
-  if (command === 'dump' || command.startsWith('dump into ') || command.startsWith('dump ')) { handleDump(text); return; }
-  if (state.conversationStage === 'AWAITING_DUMP_TARGET') { handleDumpTarget(text); return; }
+  // trash N / delete N
+  if (/^trash \d+$/.test(command)) { handleTrashByNumber(parseInt(command.slice(6), 10)); return true; }
+  if (/^delete \d+$/.test(command)) { handleDeleteByNumber(parseInt(command.slice(7), 10)); return true; }
 
-  // Remove command: "remove <name or number>" or "delete <name or number>"
-  // Trash N / Delete N chips from review screen
-  if (/^trash \d+$/.test(command)) { handleTrashByNumber(parseInt(command.slice(6), 10)); return; }
-
-  // Elliptical chip intercepts — prepopulate input and send reminder
-  if (command === 'trash...')  { handleEllipticalAction('Trash',  function(group) { return group.fate !== 'trash'; });  return; }
-  if (/^delete \d+$/.test(command)) { handleDeleteByNumber(parseInt(command.slice(7), 10)); return; }
-  if (command === 'delete...') { handleEllipticalAction('Delete', function(group) { return group.fate === 'trash'; });  return; }
-  if (command === 'keep...')   { handleEllipticalAction('Keep',   function(group) { return group.fate !== 'keep'; });   return; }
-  if (command === 'donate...') { handleEllipticalAction('Donate', function(group) { return group.fate !== 'donate'; }); return; }
-  if (command === 'sell...')   { handleEllipticalAction('Sell',   function(group) { return group.fate !== 'sell'; });   return; }
-  if (command === 'unsure...') { handleEllipticalAction('Unsure', function(group) { return group.fate !== 'unsure'; }); return; }
-
-  // Nest command: "nest", "put <box> inside <box>", "put inside"
-  if (command === 'nest' || command === 'put inside' || command === 'nest box') { handleNest(text); return; }
-  // "put X inside/in/on Y" or "nest X inside/in/on Y" — require a preposition
-  if ((command.startsWith('put ') || command.startsWith('nest ')) &&
+  // nest variants
+  if (['nest', 'put inside', 'nest box'].includes(command)) { handleNest(command); return true; }
+  if (['put', 'nest'].includes(command.split(' ')[0]) &&
       (command.indexOf(' inside ') !== -1 || command.indexOf(' in ') !== -1 || command.indexOf(' on ') !== -1)) {
-    handleNest(text); return;
+    handleNest(command); return true;
   }
-  if (state.conversationStage === 'AWAITING_NEST_CHILD') { handleNestChild(text); return; }
-  if (state.conversationStage === 'AWAITING_NEST_PARENT') { handleNestParent(text); return; }
 
-  // Move command: "move [location]" or "m [location]"
-  // Exclude 'move to box' which is handled by the item view stage
-  if (command !== 'move to box' && (command==='m'||command==='move'||command.startsWith('move ')||command.startsWith('m '))) {
-    var loc = command.startsWith('move ') ? text.slice(5).trim()
-            : command.startsWith('m ')    ? text.slice(2).trim()
-            : '';
-    handleMove(loc); return;
+  // move command — exclude 'move to box' which is handled by the item view stage
+  if (command !== 'move to box' && ['m', 'move'].includes(command.split(' ')[0])) {
+    const loc = command.split(' ').slice(1).join(' ');
+    handleMove(loc); return true;
   }
-  // Response to awaiting move location
-  if (state.conversationStage==='AWAITING_MOVE_LOCATION') { handleMove(text); return; }
 
-  switch(state.conversationStage) {
-    case 'WELCOME':               handleWelcome(text,photos); break;
-    case 'AWAITING_BOX_NAME':         handleBoxName(text); break;
-    case 'AWAITING_BOX_BATCH_CONFIRM': handleBoxBatchConfirm(text); break;
-    case 'AWAITING_BOX_BATCH_QTY':     handleBoxBatchQty(text); break;
-    case 'AWAITING_BOX_BATCH_LOCATION': handleBoxBatchLocation(text); break;
-    case 'AWAITING_LOCATION':           handleLocation(text); break;
-    case 'BOX_OPEN':
-      // If input is a plain number and we just reviewed, show item detail
-      if (/^\d+$/.test(text.trim()) && activeBox()) {
-        handleItemViewByNumber(parseInt(text.trim(), 10)); break;
-      }
-      handleItemName(text,photos); break;
-    case 'AWAITING_ITEM_NAME':    handleItemName(text,photos); break;
-    case 'AWAITING_BATCH_CONFIRM':handleBatchConfirm(text,photos); break;
-    case 'AWAITING_BATCH_QTY':    handleBatchQty(text); break;
-    case 'AWAITING_BATCH_FATE':   handleBatchFate(text,photos); break;
-    case 'AWAITING_ITEM_DESC':    handleItemDesc(text,photos); break;
-    case 'AWAITING_FATE':         handleFate(text,photos); break;
-    case 'AWAITING_ITEM_NOTES':   handleItemNotes(text); break;
-    case 'AWAITING_TRASH_DELETE':  handleTrashDelete(text); break;
-    case 'AWAITING_DISPOSAL':      handleDisposal(text); break;
-    case 'AWAITING_ITEM_VIEW':      handleItemViewAction(text); break;
-    case 'AWAITING_ITEM_VIEW_NOTES':   handleItemViewNotes(text); break;
-    case 'AWAITING_ITEM_MOVE_TARGET':  handleItemMoveTarget(text); break;
-    case 'AWAITING_FATE_REVIEW_ACTION': handleFateReviewAction(text); break;
-    case 'AWAITING_FATE_REVIEW_ITEM':   handleFateReviewItem(text); break;
-    case 'AWAITING_FATE_REVIEW_BULK':   handleFateReviewBulk(text); break;
-    case 'AWAITING_NEST_CHILD':    handleNestChild(text); break;
-    case 'AWAITING_NEST_PARENT':   handleNestParent(text); break;
-    case 'FINISHED':              handleFinished(text); break;
-    default: handleFreeform(text,photos);
+  return false;
+}
+
+function routeToHandler(stage, command, photos) {
+  switch(stage) {
+    case 'AWAITING_DELETE_BOX_CONFIRM':  handleDeleteBoxConfirm(command);      break;
+    case 'AWAITING_DISPOSAL':            handleDisposal(command);              break;
+    case 'AWAITING_DUMP_TARGET':         handleDumpTarget(command);            break;
+    case 'AWAITING_FATE_REVIEW_ACTION':  handleFateReviewAction(command);      break;
+    case 'AWAITING_FATE_REVIEW_BULK':    handleFateReviewBulk(command);        break;
+    case 'AWAITING_FATE_REVIEW_ITEM':    handleFateReviewItem(command);        break;
+    case 'AWAITING_MOVE_LOCATION':       handleMove(command);                  break;
+    case 'AWAITING_NEST_CHILD':          handleNestChild(command);             break;
+    case 'AWAITING_NEST_PARENT':         handleNestParent(command);            break;
+    case 'AWAITING_TRASH_DELETE':        handleTrashDelete(command);           break;
+    case 'WELCOME':                      handleWelcome(command, photos);       break;
+    case 'AWAITING_BOX_NAME':            handleBoxName(command);               break;
+    case 'AWAITING_BOX_BATCH_CONFIRM':   handleBoxBatchConfirm(command);       break;
+    case 'AWAITING_BOX_BATCH_QTY':       handleBoxBatchQty(command);           break;
+    case 'AWAITING_BOX_BATCH_LOCATION':  handleBoxBatchLocation(command);      break;
+    case 'AWAITING_LOCATION':            handleLocation(command);              break;
+    case 'BOX_OPEN':                     handleBoxOpen(command, photos);       break;
+    case 'AWAITING_ITEM_NAME':           handleItemName(command, photos);      break;
+    case 'AWAITING_BATCH_CONFIRM':       handleBatchConfirm(command, photos);  break;
+    case 'AWAITING_BATCH_QTY':           handleBatchQty(command);              break;
+    case 'AWAITING_BATCH_FATE':          handleBatchFate(command, photos);     break;
+    case 'AWAITING_ITEM_DESC':           handleItemDesc(command, photos);      break;
+    case 'AWAITING_FATE':                handleFate(command, photos);          break;
+    case 'AWAITING_ITEM_NOTES':          handleItemNotes(command);             break;
+    case 'AWAITING_ITEM_VIEW':           handleItemViewAction(command);        break;
+    case 'AWAITING_ITEM_VIEW_NOTES':     handleItemViewNotes(command);         break;
+    case 'AWAITING_ITEM_MOVE_TARGET':    handleItemMoveTarget(command);        break;
+    case 'FINISHED':                     handleFinished(command);              break;
+    default:                             handleFreeform(command, photos);
   }
+}
+
+function processInput(input, photos) {
+  let command = input.toLowerCase().trim();
+
+  // ── Aliases — must run first as they mutate command ──────────────────────────
+  if (command === 'y') { command = 'yes'; }
+  if (command === 'n') { command = 'no'; }
+
+  if (tryIntercept(command, photos)) return;
+
+  routeToHandler(state.conversationStage, command, photos);
 }
 
 function handleMove(loc) {
@@ -554,7 +594,10 @@ function handleTrashByNumber(num) {
 }
 
 function handleWelcome(text, photos) {
-  addBotMessage('Welcome to **DeclutterBot**! I\'ll help you sort through boxes, log what\'s inside, and decide what to do with each item.\n\nLet\'s start with your first box. What would you like to call it?');
+  addBotMessage(
+    'Welcome to **DeclutterBot**! I\'ll help you sort through boxes, log what\'s inside,' +
+    ' and decide what to do with each item.\n\nLet\'s start with your first box. What would you like to call it?'
+  );
   state.conversationStage = 'AWAITING_BOX_NAME';
 }
 function startNewBox() {
@@ -599,7 +642,7 @@ function singularizeLast(phrase) {
   return words.join(' ');
 }
 
-var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 function handleBoxName(text) {
   var raw = text.trim() || 'Unnamed box';
@@ -609,14 +652,20 @@ function handleBoxName(text) {
     var singular = singularizeLast(parsed.itemName);
     state.pendingBoxBatch = { qty: parsed.qty, baseName: singular };
     state.conversationStage = 'AWAITING_BOX_BATCH_CONFIRM';
-    addBotMessage('I see **' + parsed.qty + ' \u00d7 ' + singular + '**. Should I create ' + parsed.qty + ' boxes named **' + singular + ' A** through **' + singular + ' ' + LETTERS[parsed.qty-1] + '**?');
+    addBotMessage(
+      'I see **' + parsed.qty + ' \u00d7 ' + singular + '**. Should I create ' + parsed.qty +
+      ' boxes named **' + singular + ' A** through **' + singular + ' ' + LETTERS[parsed.qty - 1] + '**?'
+    );
     setChips(['Yes, create ' + parsed.qty, 'No, just 1', 'Change quantity']);
     return;
   }
   var box = {id:uid(),name:raw,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
   state.boxes.push(box); state.activeBoxId=box.id;
   state.conversationStage='AWAITING_LOCATION';
-  addBotMessage('Got it \u2014 **"'+raw+'"**.\n\nWhere is this box located? (e.g. "spare bedroom", "garage shelf 2", "storage unit A")');
+  addBotMessage(
+    'Got it \u2014 **"' + raw + '"**.\n\nWhere is this box located?' +
+    ' (e.g. "spare bedroom", "garage shelf 2", "storage unit A")'
+  );
 }
 
 function handleBoxBatchConfirm(text) {
@@ -626,7 +675,10 @@ function handleBoxBatchConfirm(text) {
 
   if (command.startsWith('no') || command.includes('just 1') || command === '1') {
     state.pendingBoxBatch = null;
-    var box = {id:uid(),name:batch.baseName,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
+    var box = {
+      id: uid(), name: batch.baseName, location: '', notes: '',
+      parentId: null, createdAt: new Date().toISOString(), items: []
+    };
     state.boxes.push(box); state.activeBoxId=box.id;
     state.conversationStage='AWAITING_LOCATION';
     addBotMessage('Just the one **"'+batch.baseName+'"** then.\n\nWhere is this box located?');
@@ -642,7 +694,10 @@ function handleBoxBatchConfirm(text) {
   var qty = numMatch ? parseInt(numMatch[0], 10) : batch.qty;
   batch.qty = qty;
   state.conversationStage = 'AWAITING_BOX_BATCH_LOCATION';
-  addBotMessage('Where are all ' + qty + ' **' + batch.baseName + '** boxes located? (They\'ll share the same location)');
+  addBotMessage(
+    'Where are all ' + qty + ' **' + batch.baseName + '** boxes located?' +
+    ' (They\'ll share the same location)'
+  );
 }
 
 function handleBoxBatchQty(text) {
@@ -656,7 +711,10 @@ function handleBoxBatchQty(text) {
   }
   batch.qty = qty;
   state.conversationStage = 'AWAITING_BOX_BATCH_CONFIRM';
-  addBotMessage('Got it \u2014 **' + qty + ' \u00d7 ' + batch.baseName + '**. Create boxes **' + batch.baseName + ' A** through **' + batch.baseName + ' ' + LETTERS[qty-1] + '**?');
+  addBotMessage(
+    'Got it \u2014 **' + qty + ' \u00d7 ' + batch.baseName + '**. Create boxes **' +
+    batch.baseName + ' A** through **' + batch.baseName + ' ' + LETTERS[qty - 1] + '**?'
+  );
   setChips(['Yes, create ' + qty, 'No, just 1']);
 }
 
@@ -677,18 +735,24 @@ function handleBoxBatchLocation(text) {
   state.conversationStage = 'BOX_OPEN';
   var names = [];
   for (var i = 0; i < batch.qty; i++) names.push(batch.baseName + ' ' + LETTERS[i]);
-  addBotMessage('Created **' + batch.qty + '** boxes in _' + location + '_:\n' + names.join(', ') + '.\n\nStarting with **' + names[0] + '**. Tell me about the first item you pick up.');
+  addBotMessage(
+    'Created **' + batch.qty + '** boxes in _' + location + '_:\n' + names.join(', ') +
+    '.\n\nStarting with **' + names[0] + '**. Tell me about the first item you pick up.'
+  );
   setChips(['Skip to next box','Review items','Done']);
 }
 
 function handleLocation(text) {
   var box=activeBox(); box.location=text.trim()||'unspecified';
   state.conversationStage='BOX_OPEN';
-  addBotMessage('Perfect. Box **"'+box.name+'"** is in _'+box.location+'_.\n\nNow let\'s sort through it. Tell me about the **first item** you pick up \u2014 what is it?');
+  addBotMessage(
+    'Perfect. Box **"' + box.name + '"** is in _' + box.location + '_.' +
+    '\n\nNow let\'s sort through it. Tell me about the **first item** you pick up \u2014 what is it?'
+  );
   setChips(['Skip to next box','Review items','Done']);
 }
 
-var WORD_NUMBERS = {
+const WORD_NUMBERS = {
   'a':1,'an':1,'one':1,'two':2,'three':3,'four':4,'five':5,'six':6,'seven':7,'eight':8,
   'nine':9,'ten':10,'eleven':11,'twelve':12,'thirteen':13,'fourteen':14,'fifteen':15,
   'sixteen':16,'seventeen':17,'eighteen':18,'nineteen':19,'twenty':20,
@@ -757,14 +821,18 @@ function handleBatchConfirm(text, photos) {
   if (command.startsWith('no') || command.indexOf('just 1') !== -1 || command === '1') {
     state.pendingBatch = null;
     var box = activeBox();
-    var item = {id:uid(),name:batch.itemName,description:'',fate:'unsure',notes:'',photos:batch.photos,addedAt:new Date().toISOString()};
+    var item = {
+      id: uid(), name: batch.itemName, description: '', fate: 'unsure',
+      notes: '', photos: batch.photos, addedAt: new Date().toISOString()
+    };
     addItem(box, item); state.activeItemId = item.id;
     state.conversationStage = 'AWAITING_FATE';
     addBotMessage('Just the one **' + batch.itemName + '** then. What should we do with it?');
     setChips(FATE_TITLES);
     return;
   }
-  if (command.startsWith('yes')||command.indexOf('log')!==-1||command.indexOf('confirm')!==-1||command.match(/^\d+$/)) {
+  if (command.startsWith('yes') || command.indexOf('log') !== -1 ||
+      command.indexOf('confirm') !== -1 || command.match(/^\d+$/)) {
     var nm = command.match(/\d+/);
     var qty = nm ? parseInt(nm[0],10) : batch.qty;
     commitBatch(qty, batch.itemName, batch.photos); return;
@@ -778,7 +846,10 @@ function handleBatchQty(text) {
   var parsed=parseQuantity(text);
   var wordQty=WORD_NUMBERS[text.toLowerCase().trim()];
   var qty=wordQty||(parsed&&parsed.qty)||parseInt(text,10);
-  if (!qty||isNaN(qty)||qty<1) { addBotMessage('Sorry, I didn\'t catch a number. How many **'+batch.itemName+'** are there?'); return; }
+  if (!qty || isNaN(qty) || qty < 1) {
+    addBotMessage('Sorry, I didn\'t catch a number. How many **' + batch.itemName + '** are there?');
+    return;
+  }
   batch.qty=qty; state.conversationStage='AWAITING_BATCH_CONFIRM';
   addBotMessage('Got it \u2014 **'+qty+' \u00d7 '+batch.itemName+'**. Log them all as separate entries?');
   setChips(['Yes, log '+qty,'No, just 1']);
@@ -820,8 +891,20 @@ function handleBatchFate(text, photos) {
     return;
   }
   var anchor=activeItem();
-  if (anchor) { for(var i=0;i<box.items.length;i++){if(box.items[i].name===anchor.name&&box.items[i].addedAt===anchor.addedAt)box.items[i].fate=matched;} }
-  var fm={keep:'\u2705 **Keep** \u2014 all going back home.',donate:'\uD83D\uDC99 **Donate** \u2014 great!',trash:'\uD83D\uDDD1 **Trash** \u2014 out they go.',sell:'\uD83D\uDCB0 **Sell** \u2014 nice haul!',unsure:'\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit.'};
+  if (anchor) {
+    for (var i = 0; i < box.items.length; i++) {
+      if (box.items[i].name === anchor.name && box.items[i].addedAt === anchor.addedAt) {
+        box.items[i].fate = matched;
+      }
+    }
+  }
+  var fm = {
+    keep:   '\u2705 **Keep** \u2014 all going back home.',
+    donate: '\uD83D\uDC99 **Donate** \u2014 great!',
+    trash:  '\uD83D\uDDD1 **Trash** \u2014 out they go.',
+    sell:   '\uD83D\uDCB0 **Sell** \u2014 nice haul!',
+    unsure: '\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit.'
+  };
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   addBotMessage(fm[matched]+'\n\n**'+box.items.length+'** item(s) logged in "'+box.name+'". What\'s next?');
   setBoxOpenChips();
@@ -845,7 +928,13 @@ function handleFate(text, photos) {
     return;
   }
   item.fate=matched;
-  var fm={keep:'\u2705 **Keep** \u2014 going back home.',donate:'\uD83D\uDC99 **Donate** \u2014 someone will love this.',trash:'\uD83D\uDDD1 **Trash** \u2014 out it goes.',sell:'\uD83D\uDCB0 **Sell** \u2014 make some money!',unsure:'\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit it.'};
+  var fm = {
+    keep:   '\u2705 **Keep** \u2014 going back home.',
+    donate: '\uD83D\uDC99 **Donate** \u2014 someone will love this.',
+    trash:  '\uD83D\uDDD1 **Trash** \u2014 out it goes.',
+    sell:   '\uD83D\uDCB0 **Sell** \u2014 make some money!',
+    unsure: '\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit it.'
+  };
   if (matched === 'trash') {
     var boxPref = activeBox() ? boxTrashPreferences[activeBox().id] : null;
     var effectivePref = boxPref || sessionTrashPreference;
@@ -870,7 +959,10 @@ function handleFate(text, photos) {
     return;
   }
   state.conversationStage='AWAITING_ITEM_NOTES';
-  addBotMessage(fm[matched]+'\n\nAny notes about this one? (condition, value, destination) \u2014 or say _"next"_ to move on.');
+  addBotMessage(
+    fm[matched] + '\n\nAny notes about this one? (condition, value, destination)' +
+    ' \u2014 or say _"next"_ to move on.'
+  );
   setChips(['Next item','No notes','Done with this box']);
 }
 
@@ -890,7 +982,10 @@ function doneWithBox() {
   var summary=parts.length?parts.join(', '):'nothing yet';
   if (box) delete boxTrashPreferences[box.id];
   state.activeBoxId=null; state.activeItemId=null; state.conversationStage='FINISHED';
-  addBotMessage('Nice work on **"'+box.name+'"**!\n\nSummary: '+summary+'.\n\nReady to tackle another box, or are you done for now?');
+  addBotMessage(
+    'Nice work on **"' + box.name + '"**!\n\nSummary: ' + summary +
+    '.\n\nReady to tackle another box, or are you done for now?'
+  );
   setChips(['New box','Done for now','Review all boxes','Review by fate']);
 }
 
@@ -919,7 +1014,6 @@ function boxSummaryLine(box) {
     return (g.count > 1 ? g.count + ' × ' : '') + g.name + ' → ' + g.fate;
   }).join(', ');
 }
-
 
 // ── ELLIPTICAL CHIP HELPERS ───────────────────────────────────────────────────
 // Shared logic for building action chips and handling elliptical chip intercepts.
@@ -988,6 +1082,16 @@ function reviewBox() {
 }
 
 function handleFinished(text) {
+  // Number input selects a box from the review all list
+  if (/^\d+$/.test(text)) {
+    const boxIdx = parseInt(text, 10) - 1;
+    if (boxIdx >= 0 && boxIdx < state.boxes.length) {
+      selectBox(state.boxes[boxIdx].id);
+    } else {
+      addBotMessage('No box ' + text + ' in the list.');
+    }
+    return;
+  }
   var command = text.toLowerCase();
   if (command.indexOf('new box') !== -1 || command.indexOf('another') !== -1) {
     startNewBox();
@@ -1015,7 +1119,9 @@ function handleFinished(text) {
 
 function handleHelp() {
   if (state.boxes.length === 0) {
-    addBotMessage('Hello! I\'m **DeclutterBot**, your sorting companion.\n\nTell me what to call your first box to get started.');
+    addBotMessage(
+      'Hello! I\'m **DeclutterBot**, your sorting companion.\n\nTell me what to call your first box to get started.'
+    );
     state.conversationStage = 'AWAITING_BOX_NAME';
     setChips(['Start sorting']);
   } else {
@@ -1060,7 +1166,9 @@ function handleFreeform(text, photos) {
     }
     return;
   }
-  addBotMessage('I\'m not sure what you mean \u2014 try: _"New box"_, _"Add item"_, _"Done with this box"_, or _"Review items"_.');
+  addBotMessage(
+    'I\'m not sure what you mean \u2014 try: _"New box"_, _"Add item"_, _"Done with this box"_, or _"Review items"_.'
+  );
   setBoxOpenChips();
 }
 
@@ -1080,19 +1188,29 @@ function exportJSON() {
   dlBlob(blob,'inventory.json');
 }
 
-
-
-function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);}
+function dlBlob(blob, name) {
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 function importJSON(data) {
   // Validate structure
   if (!data || !Array.isArray(data.boxes)) {
-    addBotMessage('Import failed \u2014 the file does not look like a valid DeclutterBot inventory. Expected a JSON object with a "boxes" array.');
+    addBotMessage(
+      'Import failed \u2014 the file does not look like a valid DeclutterBot inventory.' +
+      ' Expected a JSON object with a "boxes" array.'
+    );
     return;
   }
   // Confirm if existing data would be overwritten
   if (state.boxes.length > 0) {
-    if (!confirm('Import will replace your current inventory (' + state.boxes.length + ' box(es)). This cannot be undone. Continue?')) return;
+    if (!confirm(
+      'Import will replace your current inventory (' + state.boxes.length + ' box(es)).' +
+      ' This cannot be undone. Continue?'
+    )) return;
   }
   // Normalise and load
   var boxes = data.boxes;
@@ -1131,26 +1249,40 @@ function handleImportJSON(event) {
   reader.onload = function(e) {
     var data;
     try { data = JSON.parse(e.target.result); }
-    catch(err) { addBotMessage('Import failed \u2014 could not parse the file as JSON. Is it a valid inventory export?'); return; }
+    catch(err) {
+      addBotMessage('Import failed \u2014 could not parse the file as JSON. Is it a valid inventory export?');
+      return;
+    }
     importJSON(data);
   };
   reader.readAsText(file);
 }
 
+const WELCOME_MSG =
+  'Hello! I\'m **DeclutterBot**, your decluttering companion. \uD83D\uDCE6\n\n' +
+  'I\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate:' +
+  ' **keep, donate, trash, sell,** or **unsure**.' +
+  ' Add notes and export your inventory when you\'re done.\n\n' +
+  'Ready to start? Tell me what to call your first box.';
+
 function clearAll() {
   if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
   localStorage.removeItem('declutterbot_state');
-  state={boxes:[],activeBoxId:null,activeItemId:null,pendingBatch:null,pendingBoxBatch:null,pendingDeleteBoxId:null,pendingNest:null,activeItemViewGroup:null,pendingFateReview:null,conversationStage:'WELCOME'};
+  state = {
+    boxes: [], activeBoxId: null, activeItemId: null,
+    pendingBatch: null, pendingBoxBatch: null, pendingDeleteBoxId: null,
+    pendingNest: null, activeItemViewGroup: null, pendingFateReview: null,
+    conversationStage: 'WELCOME'
+  };
   sessionDeletedCount=0; sessionTrashPreference=null; boxTrashPreferences={};
   document.getElementById('chat-messages').innerHTML='';
   document.getElementById('quick-replies').innerHTML='';
   renderSidebar(); updateContextBar();
   setTimeout(function(){
-    addBotMessage('Hello! I\'m **DeclutterBot**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. Add notes and export your inventory when you\'re done.\n\nReady to start? Tell me what to call your first box.');
+    addBotMessage(WELCOME_MSG);
     state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
   },100);
 }
-
 
 // Init — only runs in browser, not in Node test environment
 if (typeof window !== 'undefined') {
@@ -1173,8 +1305,8 @@ setTimeout(function() { setTimeout(function() {
 }, 0); }, 0);
 initSidebarDrag();
 // Expose impl functions to global scope for onclick attributes
-var setChips  = _setChipsImpl;
-var chipClick = _chipClickImpl;
+const setChips  = _setChipsImpl;
+const chipClick = _chipClickImpl;
 
 // Redirect printable keypresses to the textarea if focus is elsewhere.
 // Captures the keystroke by appending it manually after focusing,
@@ -1198,21 +1330,25 @@ document.addEventListener('keydown', function(e) {
 
 // Prevent send button click from blurring the textarea.
 // mousedown fires before blur, so preventDefault keeps focus in place.
-var sendBtn = document.querySelector('.send-btn');
+const sendBtn = document.querySelector('.send-btn');
 if (sendBtn) {
   sendBtn.addEventListener('mousedown', function(e) { e.preventDefault(); });
 }
 
 if(state.boxes.length===0){
   setTimeout(function(){
-    addBotMessage('Hello! I\'m **DeclutterBot**, your decluttering companion. \uD83D\uDCE6\n\nI\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate: **keep, donate, trash, sell,** or **unsure**. Add notes and export your inventory when you\'re done.\n\nReady to start? Tell me what to call your first box.');
+    addBotMessage(WELCOME_MSG);
     state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
   },200);
 } else {
   var _b=state.boxes.length;
   var _i=0; for(var _j=0;_j<state.boxes.length;_j++) _i+=state.boxes[_j].items.length;
   setTimeout(function(){
-    addBotMessage('Welcome back! You have **'+_b+' box'+(_b!==1?'es':'')+'** and **'+_i+' item'+(_i!==1?'s':'')+'** logged so far.\n\nPick up where you left off, or start a new box.');
+    addBotMessage(
+      'Welcome back! You have **' + _b + ' box' + (_b !== 1 ? 'es' : '') + '**' +
+      ' and **' + _i + ' item' + (_i !== 1 ? 's' : '') + '** logged so far.' +
+      '\n\nPick up where you left off, or start a new box.'
+    );
     state.conversationStage=state.activeBoxId?'BOX_OPEN':'FINISHED';
     setChips(['New box','Continue last box','Review all boxes']);
   },200);
@@ -1220,8 +1356,8 @@ if(state.boxes.length===0){
 }
 
 // Capture real implementations before Node shim wrappers shadow the names
-var _addBotMessageImpl  = addBotMessage;
-var _addUserMessageImpl = addUserMessage;
+const _addBotMessageImpl  = addBotMessage;
+const _addUserMessageImpl = addUserMessage;
 
 // In Node, alias global stubs via wrappers so tests can override globals at runtime
 if (typeof window === 'undefined' && typeof global !== 'undefined') {
@@ -1233,9 +1369,12 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
   var showTyping       = function(){    return (global.showTyping       ||function(){})();    };
   var hideTyping       = function(){    return (global.hideTyping       ||function(){})();    };
   var saveState        = function(){    return (global.saveState        ||function(){})();    };
-  if (typeof localStorage === 'undefined') var localStorage = global.localStorage || { getItem: function(){ return null; }, setItem: function(){}, removeItem: function(){} };
+  if (typeof localStorage === 'undefined') {
+    var localStorage = global.localStorage || {
+      getItem: function(){ return null; }, setItem: function(){}, removeItem: function(){}
+    };
+  }
 }
-
 
 function setBoxOpenChips() {
   var box = activeBox();
@@ -1249,12 +1388,18 @@ function handleDeleteBox() {
   var kids = childBoxes(box.id);
   if (kids.length > 0) {
     var kidNames = kids.map(function(b){ return '"' + b.name + '"'; }).join(', ');
-    addBotMessage('**"' + box.name + '"** contains ' + kids.length + ' box(es): ' + kidNames + '. Move or delete those first.');
+    addBotMessage(
+      '**"' + box.name + '"** contains ' + kids.length + ' box(es): ' + kidNames +
+      '. Move or delete those first.'
+    );
     setBoxOpenChips();
     return;
   }
   if (box.items.length > 0) {
-    addBotMessage('**"' + box.name + '"** still has ' + box.items.length + ' item(s). Empty the box first, or use _"dump into <box name>"_ to transfer all items to another box.');
+    addBotMessage(
+      '**"' + box.name + '"** still has ' + box.items.length + ' item(s).' +
+      ' Empty the box first, or use _"dump into <box name>"_ to transfer all items to another box.'
+    );
     setChips(['Review items', 'Dump into...', 'Done with this box']); // box has items
     return;
   }
@@ -1321,7 +1466,10 @@ function handleDump(text) {
       return;
     }
     var chips = others.map(function(b){ return dumpChipLabel(box, b); });
-    addBotMessage('Dump all ' + box.items.length + ' item(s) from **"' + box.name + '"** into which box? Type a new name to create one.');
+    addBotMessage(
+      'Dump all ' + box.items.length + ' item(s) from **"' + box.name + '"** into which box?' +
+      ' Type a new name to create one.'
+    );
     setChips(chips);
   }
 }
@@ -1353,7 +1501,10 @@ function handleDumpTarget(text) {
 
   // No match — create a new box with the typed name, then transfer
   if (!target) {
-    var newBox = { id: uid(), name: text.trim(), location: '', notes: '', parentId: null, createdAt: new Date().toISOString(), items: [] };
+    var newBox = {
+      id: uid(), name: text.trim(), location: '', notes: '',
+      parentId: null, createdAt: new Date().toISOString(), items: []
+    };
     state.boxes.push(newBox);
     target = newBox;
     // Transfer items to new box, then ask for its location
@@ -1363,7 +1514,10 @@ function handleDumpTarget(text) {
     // Set new box as active and ask for location
     state.activeBoxId = target.id;
     state.conversationStage = 'AWAITING_LOCATION';
-    addBotMessage('Created **"' + target.name + '"** and dumped **' + count + '** item(s) into it. "' + source.name + '" is now empty.\n\nWhere is **"' + target.name + '"** located?');
+    addBotMessage(
+      'Created **"' + target.name + '"** and dumped **' + count + '** item(s) into it.' +
+      ' "' + source.name + '" is now empty.\n\nWhere is **"' + target.name + '"** located?'
+    );
     return;
   }
 
@@ -1435,8 +1589,8 @@ function handleNest(text) {
   var insideIdx = command.indexOf(' inside ');
   if (insideIdx === -1) insideIdx = command.indexOf(' in ');
   if (insideIdx === -1) insideIdx = command.indexOf(' on ');
-  if (insideIdx !== -1 && (command.startsWith('put ') || command.startsWith('nest '))) {
-    var pfxLen = command.startsWith('put ') ? 4 : 5;
+  if (insideIdx !== -1 && ['put', 'nest'].includes(command.split(' ')[0])) {
+    var pfxLen = command.split(' ')[0] === 'put' ? 4 : 5;
     // find which preposition matched
     var prep = ' inside ';
     if (command.indexOf(' inside ') === -1) prep = command.indexOf(' in ') !== -1 ? ' in ' : ' on ';
@@ -1451,7 +1605,9 @@ function handleNest(text) {
     if (!child && childName) {
       // partial match
       for (var i = 0; i < state.boxes.length; i++) {
-        if (state.boxes[i].name.toLowerCase().indexOf(childName.toLowerCase()) !== -1) { child = state.boxes[i]; break; }
+        if (state.boxes[i].name.toLowerCase().indexOf(childName.toLowerCase()) !== -1) {
+          child = state.boxes[i]; break;
+        }
       }
     }
     if (!child) child = box; // fall back to active box
@@ -1656,7 +1812,6 @@ function handleItemViewNotes(text) {
   }
 }
 
-
 function handleItemMoveTarget(text) {
   var command = text.toLowerCase().trim();
   var box = activeBox();
@@ -1712,7 +1867,6 @@ function handleItemMoveTarget(text) {
   reviewBox();
 }
 
-
 // ── ITEM HELPERS ──────────────────────────────────────────────────────────────
 // Single point of truth for item creation and deletion.
 // Any behavior that should happen on every add or remove (budget, logging,
@@ -1737,12 +1891,11 @@ function removeItem(box, itemId) {
   return removed;
 }
 
-
 // ── MANTRAS ───────────────────────────────────────────────────────────────────
 // Shown on load (always), and occasionally at specific meaningful moments.
 // Tone: west coast, burnout, hippie, vegan, American Buddhist.
 
-var MANTRAS = {
+const MANTRAS = {
   // ✅ copy approved
   load: [
     'Be here now.',
@@ -1784,8 +1937,8 @@ var MANTRAS = {
   ],
 };
 
-var _mantraItemCount = 0; // increments on item add, triggers mantra every ~7
-var _mantrasEnabled = (typeof window !== 'undefined'); // true in browser, false in Node
+let _mantraItemCount = 0; // increments on item add, triggers mantra every ~7
+let _mantrasEnabled = (typeof window !== 'undefined'); // true in browser, false in Node
 
 function mantra(context) {
   if (!_mantrasEnabled || typeof addBotMessage === 'undefined') return;
@@ -1806,10 +1959,13 @@ function disposalPrompt(itemName) {
   var n = (itemName||'').toLowerCase();
   // Batteries — more accessible drop-offs than general e-waste
   if (n.match(/batter|aa|aaa|9v|lithium/)) {
-    return 'Batteries can be dropped off at many libraries, hardware stores, or e-waste facilities \u2014 where will you take this?';
+    return 'Batteries can be dropped off at many libraries, hardware stores, or e-waste facilities' +
+      ' \u2014 where will you take this?';
   }
   // E-waste
-  if (n.match(/laptop|phone|computer|monitor|printer|cable|charger|keyboard|mouse|\btv\b|tablet|speaker|headphone|camera|router|hard drive|ssd|ram|cpu|gpu/)) {
+  var ewastePattern1 = /laptop|phone|computer|monitor|printer|cable|charger|keyboard|mouse|\btv\b/;
+  var ewastePattern2 = /tablet|speaker|headphone|camera|router|hard drive|ssd|ram|cpu|gpu/;
+  if (n.match(ewastePattern1) || n.match(ewastePattern2)) {
     return 'E-waste needs a special drop-off \u2014 where will you take it?';
   }
   // Clothing / textiles
@@ -1906,7 +2062,8 @@ function handleDisposal(text) {
     var note = 'Safely dispose at: ' + text.trim();
     item.notes = item.notes ? item.notes + '. ' + note : note;
   }
-  if (state.pendingFateReview && (state.pendingFateReview._resumeAfterDisposal || state.pendingFateReview._resumeAfterTrash)) {
+  if (state.pendingFateReview &&
+      (state.pendingFateReview._resumeAfterDisposal || state.pendingFateReview._resumeAfterTrash)) {
     state.pendingFateReview._resumeAfterDisposal = false;
     state.pendingFateReview._resumeAfterTrash = false;
     state.pendingFateReview.index++;
@@ -1920,7 +2077,8 @@ function handleDisposal(text) {
     return;
   }
   var botMsg = skipping ?
-    'Kept **' + (item ? item.name : 'item') + '** in "' + (box ? box.name : 'box') + '".' + '\n\nWhat\'s the next item?' :
+    'Kept **' + (item ? item.name : 'item') + '** in "' + (box ? box.name : 'box') + '".' +
+    '\n\nWhat\'s the next item?' :
     'Noted. What\'s the next item?'
   addBotMessage(botMsg);
   setBoxOpenChips();
@@ -1959,15 +2117,16 @@ function collectFateItems(fate) {
   }
   return results;
 }
-var FATE_REVIEW_CHIPS = {
-  keep:   ['Change fate', 'Add to kit', 'Skip'],
-  donate: ['Keep', 'Sell', 'Trash', 'Move to unsure', 'Add donation destination', 'Skip'],
-  sell:   ['Keep', 'Donate', 'Trash', 'Move to unsure', 'Add selling notes', 'Skip'],
-  trash:  ['Keep', 'Donate', 'Sell', 'Move to unsure', 'Delete', 'Disposal note', 'Skip'],
-  unsure: ['Keep', 'Donate', 'Trash', 'Sell', 'Skip']
-};
 
 function fateReviewChips(fate) {
+  const FATE_REVIEW_CHIPS = {
+    keep:   ['Change fate', 'Add to kit', 'Skip'],
+    donate: ['Keep', 'Sell', 'Trash', 'Move to unsure', 'Add donation destination', 'Skip'],
+    sell:   ['Keep', 'Donate', 'Trash', 'Move to unsure', 'Add selling notes', 'Skip'],
+    trash:  ['Keep', 'Donate', 'Sell', 'Move to unsure', 'Delete', 'Disposal note', 'Skip'],
+    unsure: ['Keep', 'Donate', 'Trash', 'Sell', 'Skip']
+  };
+
   return FATE_REVIEW_CHIPS[fate] || ['Skip'];
 }
 
@@ -2130,7 +2289,8 @@ function handleFateReviewItem(text) {
     return;
   }
 
-  if (command === 'skip') { review.index++; showFateReviewCurrentItem(review); return; } // skip does not increment reviewedCount
+  // skip does not increment reviewedCount
+  if (command === 'skip') { review.index++; showFateReviewCurrentItem(review); return; }
 
   // Fate changes
   var newFate = null;
@@ -2304,12 +2464,14 @@ function handleFateReviewBulk(text) {
   setChips(fateReviewBulkChips(review.fate));
 }
 
-
 // ── SIDEBAR DRAG TO REORDER ───────────────────────────────────────────────────
 // Order is session-only — not persisted. When the location model lands,
 // this will be replaced with within-room drag ordering backed by state.
 // The app does not promise to remember everything, just what matters.
-var _dragSrcId = null;
+// _dragSrcId is declared at module scope because initSidebarDrag uses event delegation with separate dragstart,
+// dragover, and drop listeners that need to share the dragged element's id across events. It has to live outside the
+// function so all three handlers can read and write it.
+let _dragSrcId = null;
 
 function initSidebarDrag() {
   if (typeof document === 'undefined') return;
@@ -2373,7 +2535,6 @@ function initSidebarDrag() {
     _dragSrcId = null;
   });
 }
-
 
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
