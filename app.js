@@ -420,6 +420,12 @@ function tryIntercept(command, photos) {
     return true;
   }
 
+  // export csv
+  if (['export csv', 'export'].includes(command)) {
+    exportCSV();
+    return true;
+  }
+
   // always ignore — dismiss storage full warning
   if (command === 'always ignore') {
     state.storageFull = false;
@@ -1215,6 +1221,35 @@ function exportJSON() {
   var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   dlBlob(blob,'inventory.json');
 }
+
+function escapeCSV(field) {
+  if (field === null || field === undefined) return '';
+  var str = String(field);
+  if (str.indexOf(',') !== -1 || str.indexOf('"') !== -1 || str.indexOf('\n') !== -1) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function exportCSV() {
+  var header = ['location,box name,item name,fate,notes'];
+  var rows = state.boxes.reduce(function(acc, box) {
+    var boxRows = box.items.map(function(item) {
+      return [
+        escapeCSV(box.location || ''),
+        escapeCSV(box.name),
+        escapeCSV(item.name),
+        escapeCSV(item.fate),
+        escapeCSV(item.notes || '')
+      ].join(',');
+    });
+    return acc.concat(boxRows);
+  }, header);
+  var csv = rows.join('\n');
+  var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+  dlBlob(blob, 'inventory.csv');
+}
+
 
 function dlBlob(blob, name) {
   var a = document.createElement('a');
@@ -2597,6 +2632,8 @@ if (typeof module !== 'undefined') {
     importJSON,
     handleHelp,
     saveState,
+    escapeCSV,
+    exportCSV,
     disposalPrompt, deletionLog, deleteActiveItem,
     handleTrashDelete, handleDisposal, handleTrashByNumber, handleDeleteByNumber,
     getBoxTrashPreferences: function(){ return boxTrashPreferences; },
