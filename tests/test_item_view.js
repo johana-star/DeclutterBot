@@ -64,7 +64,7 @@ function makeBox(name, location) {
   return box;
 }
 function makeItem(box, name, fate, notes) {
-  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: notes||'', photos: [], addedAt: new Date().toISOString() };
+  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: notes||'', photos: [], addedAt: new Date().toISOString(), deleted_at: null };
   box.items.push(item);
   return item;
 }
@@ -132,8 +132,9 @@ handleItemViewByNumber(1);
 handleItemViewAction('trash');
 assert('stage set to AWAITING_TRASH_DELETE', state.conversationStage === 'AWAITING_TRASH_DELETE');
 app.handleTrashDelete('yes');
-assert('item removed', box.items.length === 1);
-assert('correct item removed', box.items[0].name === 'Chair');
+var activeItems = box.items.filter(function(it) { return !it.deleted_at; });
+assert('item removed', activeItems.length === 1);
+assert('correct item removed', activeItems[0].name === 'Chair');
 
 // 7. "Change fate" transitions to AWAITING_FATE
 console.log('\n7. Change fate transitions to fate selection');
@@ -217,7 +218,8 @@ state.activeBoxId = src.id;
 showItemDetail(groupItems(src.items)[0], 0);
 handleItemViewAction('move to box');
 handleItemMoveTarget('Car');
-assert('item removed from source', src.items.length === 0);
+var srcActive = src.items.filter(function(it) { return !it.deleted_at; });
+assert('item removed from source', srcActive.length === 0);
 assert('item added to target', dst.items.length === 1);
 assert('item name preserved', dst.items[0].name === 'Bowl');
 

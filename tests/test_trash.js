@@ -75,7 +75,7 @@ function makeBox(name) {
   return box;
 }
 function makeItem(box, name, fate) {
-  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: '', photos: [], addedAt: '' };
+  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: '', photos: [], addedAt: '', deleted_at: null };
   box.items.push(item);
   state.activeItemId = item.id;
   return item;
@@ -126,7 +126,7 @@ box = makeBox('Test Box');
 makeItem(box, 'Old lamp', 'trash');
 state.conversationStage = 'AWAITING_TRASH_DELETE';
 handleTrashDelete('yes');
-assert('item removed from box', box.items.length === 0);
+assert('item removed from box', box.items[0].deleted_at !== null && box.items[0].deleted_at !== undefined);
 assert('stage back to BOX_OPEN', state.conversationStage === 'BOX_OPEN');
 assertIncludes('deletion logged', lastBotMessage, 'Deleted');
 assertIncludes('item name in log', lastBotMessage, 'Old lamp');
@@ -154,7 +154,7 @@ box = makeBox('Test Box');
 makeItem(box, 'Broken thing', 'trash');
 state.conversationStage = 'AWAITING_TRASH_DELETE';
 handleTrashDelete('always this session');
-assert('item deleted', box.items.length === 0);
+assert('item deleted', box.items[0].deleted_at !== null && box.items[0].deleted_at !== undefined);
 assert('preference set to always', getSessionTrashPreference() === 'always');
 
 console.log('\n10. Always — subsequent trash items auto-deleted without prompt');
@@ -164,7 +164,7 @@ box = makeBox('Test Box');
 makeItem(box, 'Auto-deleted', 'unsure');
 state.conversationStage = 'AWAITING_FATE';
 processInput('trash', []);
-assert('item auto-deleted', box.items.length === 0);
+assert('item auto-deleted', box.items[0].deleted_at !== null && box.items[0].deleted_at !== undefined);
 assert('stage is BOX_OPEN not AWAITING_TRASH_DELETE', state.conversationStage === 'BOX_OPEN');
 assertIncludes('deletion logged', lastBotMessage, 'Deleted');
 

@@ -38,7 +38,7 @@ function toggleCollapse(id) {
 
 function saveState() {
   _budgetSaveCount++;
-  if (_budgetSaveCount >= 10) {
+  if (_budgetSaveCount >= 30) {
     _budgetSaveCount = 0;
     updateBudgetDisplay(true); // show recalculating pulse
     setTimeout(function() {
@@ -47,11 +47,12 @@ function saveState() {
       const used = JSON.stringify(stateData).length;
       const totalItems = state.boxes.reduce((sum, b) => sum + b.items.length, 0);
       const totalObjects = totalItems + state.boxes.length;
-      const divisor = totalObjects >= 10
-        ? Math.round(used / totalObjects)
-        : 347; // fall back to default until sample is large enough
-      const remaining = Math.max(0, STORAGE_MAX - used);
-      _budgetItems = Math.floor(remaining / divisor);
+      if (totalObjects >= 10) {
+        const divisor = Math.round(used / totalObjects);
+        const remaining = Math.max(0, STORAGE_MAX - used);
+        _budgetItems = Math.floor(remaining / divisor);
+      }
+      // else: keep using 14,397 (set at line 235)
       updateBudgetDisplay();
     }, 1500);
   }
@@ -106,12 +107,11 @@ function activeItem() {
   return null;
 }
 function countFates(box) {
-  var c = {keep:0,donate:0,trash:0,sell:0,unsure:0};
-  for (var i = 0; i < box.items.length; i++) {
-    var f = box.items[i].fate;
-    if (c[f] !== undefined) c[f]++;
-  }
-  return c;
+  var activeItems = box.items.filter(function(item) { return !item.deleted_at; });
+  return activeItems.reduce(function(counts, item) {
+    counts[item.fate] = (counts[item.fate] || 0) + 1;
+    return counts;
+  }, {});
 }
 
 function renderSidebar() {
@@ -232,8 +232,8 @@ function renderMarkdown(s) {
 
 // ── INPUT HISTORY state vars ──────────────────────────────────────────────────
 let inputHistory = [];   // sent messages, oldest first
-let _budgetItems = 14397; // counter, updated per-item and recalibrated every 10 saves
-let _budgetSaveCount = 0;  // counts saveState calls, triggers recalibration at 10
+let _budgetItems = 14397; // counter, updated per-item and recalibrated every ~10 items
+let _budgetSaveCount = 0;  // counts saveState() calls, triggers recalibration at 30 (approx 10 items since 3-4 saves per item)
 let historyIndex = -1;   // -1 = not browsing; 0 = oldest
 let historyDraft = '';   // text in field before arrow-up was pressed
 
@@ -830,7 +830,8 @@ function handleItemName(text, photos) {
     fate: 'unsure',
     notes: '',
     photos: photos || [],
-    addedAt: new Date().toISOString()
+    addedAt: new Date().toISOString(),
+    deleted_at: null
   };
   addItem(box, item);
   state.activeItemId = item.id;
@@ -853,7 +854,8 @@ function handleBatchConfirm(text, photos) {
     var box = activeBox();
     var item = {
       id: uid(), name: batch.itemName, description: '', fate: 'unsure',
-      notes: '', photos: batch.photos, addedAt: new Date().toISOString()
+      notes: '', photos: batch.photos, addedAt: new Date().toISOString(),
+      deleted_at: null
     };
     addItem(box, item); state.activeItemId = item.id;
     state.conversationStage = 'AWAITING_FATE';
@@ -897,7 +899,8 @@ function commitBatch(qty, itemName, photos) {
       fate: 'unsure',
       notes: '',
       photos: i === 0 ? photos : [],
-      addedAt:now
+      addedAt:now,
+      deleted_at: null
     });
   }
   state.activeItemId = firstId;
@@ -1023,8 +1026,7 @@ function doneWithBox() {
 function groupItems(items) {
   var groups = [];
   var seen = {};
-  for (var i = 0; i < items.length; i++) {
-    var it = items[i];
+  items.filter(function(it) { return !it.deleted_at; }).forEach(function(it) {
     var key = it.name + '|' + it.fate;
     if (seen[key] !== undefined) {
       groups[seen[key]].count++;
@@ -1032,14 +1034,15 @@ function groupItems(items) {
       seen[key] = groups.length;
       groups.push({ name: it.name, fate: it.fate, count: 1, notes: it.notes });
     }
-  }
+  });
   return groups;
 }
 
 // One-line summary of a box's contents, grouped
 function boxSummaryLine(box) {
-  if (box.items.length === 0) return 'empty';
-  var groups = groupItems(box.items);
+  var activeItems = box.items.filter(function(it) { return !it.deleted_at; });
+  if (activeItems.length === 0) return 'empty';
+  var groups = groupItems(activeItems);
   return groups.map(function(g) {
     return (g.count > 1 ? g.count + ' × ' : '') + g.name + ' → ' + g.fate;
   }).join(', ');
@@ -1082,12 +1085,13 @@ function handleEllipticalAction(label, filterFn) {
 
 function reviewBox() {
   var box=activeBox();
-  if (!box || box.items.length === 0) {
+  var activeItems = box ? box.items.filter(function(it) { return !it.deleted_at; }) : [];
+  if (!box || activeItems.length === 0) {
     addBotMessage('This box has no items logged yet. Add some!');
     setBoxOpenChips();
     return;
   }
-  var groups = groupItems(box.items);
+  var groups = groupItems(activeItems);
   var lines = '';
   var actionChips = [];
 
@@ -1103,8 +1107,8 @@ function reviewBox() {
     .flatMap(fate => buildActionChips(groups, fate[0].toUpperCase() + fate.slice(1), group => group.fate !== fate))
     .concat(buildActionChips(groups, 'Delete', group => group.fate === 'trash'));
 
-  var header = box.items.length !== groups.length
-    ? '**Items in "' + box.name + '" (' + box.items.length + ' items, ' + groups.length + ' unique):**'
+  var header = activeItems.length !== groups.length
+    ? '**Items in "' + box.name + '" (' + activeItems.length + ' items, ' + groups.length + ' unique):**'
     : '**Items in "' + box.name + '":**';
   addBotMessage(header + '\n' + lines.trim());
   setChips(chips.concat(['Add item', 'Move box', 'Done with this box']));
@@ -1326,9 +1330,12 @@ setTimeout(function() { setTimeout(function() {
   const used = JSON.stringify(stateData).length;
   const totalItems = state.boxes.reduce((sum, b) => sum + b.items.length, 0);
   const totalObjects = totalItems + state.boxes.length;
-  const divisor = totalObjects >= 10 ? Math.round(used / totalObjects) : 347;
-  const remaining = Math.max(0, STORAGE_MAX - used);
-  _budgetItems = Math.floor(remaining / divisor);
+  if (totalObjects >= 10) {
+    const divisor = Math.round(used / totalObjects);
+    const remaining = Math.max(0, STORAGE_MAX - used);
+    _budgetItems = Math.floor(remaining / divisor);
+  }
+  // else: keep using 14,397 (set at line 235)
   updateBudgetDisplay();
 }, 0); }, 0);
 initSidebarDrag();
@@ -2028,7 +2035,7 @@ function deleteActiveItem() {
   var item = activeItem();
   if (!box || !item) { state.conversationStage = 'BOX_OPEN'; return; }
   var name = item.name;
-  box.items = box.items.filter(function(i){ return i.id !== item.id; });
+  item.deleted_at = new Date().toISOString(); // soft delete
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
   _budgetItems = _budgetItems + 1; updateBudgetDisplay();
