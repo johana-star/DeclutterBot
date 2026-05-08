@@ -55,7 +55,22 @@ function saveState() {
     }, 1500);
   }
   _budgetDirty = true;
-  localStorage.setItem('declutterbot_state', JSON.stringify(state));
+  try {
+    localStorage.setItem('declutterbot_state', JSON.stringify(state));
+  } catch(err) {
+    if (err.name === 'QuotaExceededError') {
+      if (!state.storageFull) {
+        state.storageFull = true;
+        addBotMessage(
+          '**Storage full.** Delete items marked **trash** to continue, or export your inventory.' +
+          '\n\nState is saved in memory until you refresh the page.'
+        );
+        setChips(['Export JSON', 'Always ignore']);
+      }
+    } else {
+      throw err;
+    }
+  }
 }
 function loadState() {
   var raw = localStorage.getItem('declutterbot_state');
@@ -407,6 +422,14 @@ function tryIntercept(command, photos) {
     const importEl = document.getElementById('import-input');
     if (importEl) importEl.click();
     else addBotMessage('Use the ↑ Import JSON button in the header to import a file.');
+    return true;
+  }
+
+  // always ignore — dismiss storage full warning
+  if (command === 'always ignore') {
+    state.storageFull = false;
+    addBotMessage('Continuing without storage persistence. Export your data regularly to avoid losing changes at refresh.');
+    setBoxOpenChips();
     return true;
   }
 
@@ -1276,7 +1299,7 @@ function clearAll() {
     boxes: [], activeBoxId: null, activeItemId: null,
     pendingBatch: null, pendingBoxBatch: null, pendingDeleteBoxId: null,
     pendingNest: null, activeItemViewGroup: null, pendingFateReview: null,
-    conversationStage: 'WELCOME'
+    conversationStage: 'WELCOME', storageFull: false
   };
   sessionDeletedCount=0; sessionTrashPreference=null; boxTrashPreferences={};
   document.getElementById('chat-messages').innerHTML='';
@@ -1309,8 +1332,8 @@ setTimeout(function() { setTimeout(function() {
 }, 0); }, 0);
 initSidebarDrag();
 // Expose impl functions to global scope for onclick attributes
-const setChips  = _setChipsImpl;
-const chipClick = _chipClickImpl;
+window.setChips  = _setChipsImpl;
+window.chipClick = _chipClickImpl;
 
 // Redirect printable keypresses to the textarea if focus is elsewhere.
 // Captures the keystroke by appending it manually after focusing,
@@ -2567,6 +2590,7 @@ if (typeof module !== 'undefined') {
     handleKey,
     importJSON,
     handleHelp,
+    saveState,
     disposalPrompt, deletionLog, deleteActiveItem,
     handleTrashDelete, handleDisposal, handleTrashByNumber, handleDeleteByNumber,
     getBoxTrashPreferences: function(){ return boxTrashPreferences; },
