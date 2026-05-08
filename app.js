@@ -93,18 +93,12 @@ function commitState() {
 
 function uid() { return Math.random().toString(36).slice(2,9); }
 function activeBox() {
-  for (var i = 0; i < state.boxes.length; i++) {
-    if (state.boxes[i].id === state.activeBoxId) return state.boxes[i];
-  }
-  return null;
+  return state.boxes.find(function(box) { return box.id === state.activeBoxId; }) || null;
 }
 function activeItem() {
   var box = activeBox();
   if (!box || !state.activeItemId) return null;
-  for (var i = 0; i < box.items.length; i++) {
-    if (box.items[i].id === state.activeItemId) return box.items[i];
-  }
-  return null;
+  return box.items.find(function(item) { return item.id === state.activeItemId; }) || null;
 }
 function countFates(box) {
   var activeItems = box.items.filter(function(item) { return !item.deleted_at; });
@@ -1544,7 +1538,7 @@ function handleDumpTarget(text) {
     target = newBox;
     // Transfer items to new box, then ask for its location
     var count = source.items.length;
-    for (var i = 0; i < source.items.length; i++) { target.items.push(source.items[i]); }
+    source.items.forEach(function(item) { target.items.push(item); });
     source.items = [];
     // Set new box as active and ask for location
     state.activeBoxId = target.id;
@@ -1557,7 +1551,7 @@ function handleDumpTarget(text) {
   }
 
   var count = source.items.length;
-  for (var i = 0; i < source.items.length; i++) { target.items.push(source.items[i]); }
+  source.items.forEach(function(item) { target.items.push(item); });
   source.items = [];
   // Re-parent direct children of source to target (preserving deeper ancestry)
   var reparented = 0;
