@@ -2,6 +2,8 @@
 // DOM-touching functions (addBotMessage, setChips, renderSidebar, etc.)
 // are expected to be defined globally or stubbed before this file runs.
 
+const _ = typeof require !== 'undefined' ? require('./tests/lodash.js') : window._;
+
 let state = {
   boxes: [],
   activeBoxId: null,
@@ -13,6 +15,8 @@ let state = {
   activeItemViewGroup: null,
   pendingFateReview: null,
   conversationStage: 'WELCOME',
+  emptyBoxesForDelete: null,
+  emptyBoxPositions: null,
 };
 const FATES = ['keep','donate','sell','unsure','trash'];
 function titleize(str) {
@@ -101,7 +105,7 @@ function activeItem() {
   return box.items.find(function(item) { return item.id === state.activeItemId; }) || null;
 }
 function countFates(box) {
-  var activeItems = box.items.filter(function(item) { return !item.deleted_at; });
+  var activeItems = _.reject(box.items, function(item) { return item.deleted_at; });
   return activeItems.reduce(function(counts, item) {
     counts[item.fate] = (counts[item.fate] || 0) + 1;
     return counts;
@@ -134,7 +138,7 @@ function renderBoxTree(boxId, depth, collapsedIds) {
       var f = FATES[j];
       if (fates[f] > 0) tags += '<span class="tag tag-' + f + '">' + f + ' ' + fates[f] + '</span>';
     }
-    var total = box.items.filter(function(it) { return !it.deleted_at; }).length;
+    var total = _.reject(box.items, function(it) { return it.deleted_at; }).length;
     var kidBoxes = state.boxes.filter(function(b){ return b.parentId === box.id; });
     var hasKids = kidBoxes.length > 0;
     var isCollapsed = collapsedIds && collapsedIds.indexOf(box.id) !== -1;
@@ -380,11 +384,43 @@ function tryIntercept(command, photos) {
   // handleDeleteBox
   if (['delete box', 'delete this box'].includes(command)) { handleDeleteBox(); return true; }
 
+
   // handleTrashAll
   if (['trash all'].includes(command)) { handleTrashAll(); return true; }
 
   // handleDump
   if (command === 'dump into...') { handleDump('dump'); return true; }
+
+  // handleDeleteEmptyBox (delete N where N is an actual empty box position)
+  if ((command === 'delete 1' || command === 'delete 2' ||
+       command === 'delete 3' || command === 'delete 4' ||
+       command === 'delete 5' || command === 'delete 6' ||
+       command === 'delete 7' || command === 'delete 8' ||
+       command === 'delete 9') &&
+      state.conversationStage === 'FINISHED' &&
+      state.emptyBoxesForDelete &&
+      state.emptyBoxesForDelete.length < 3 &&
+      state.emptyBoxPositions) {
+    var match = command.match(/delete (\d+)/);
+    if (match) {
+      var boxNum = parseInt(match[1], 10);
+      // Check if this is a valid empty box position
+      var posIndex = state.emptyBoxPositions.indexOf(boxNum);
+      if (posIndex !== -1) {
+        handleDeleteEmptyBox(posIndex);
+        return true;
+      }
+    }
+  }
+
+  // handleEllipticalDeleteEmptyBox (delete... with 3+ empty boxes)
+  if (command === 'delete...' &&
+      state.conversationStage === 'FINISHED' &&
+      state.emptyBoxesForDelete &&
+      state.emptyBoxesForDelete.length >= 3) {
+    handleEllipticalDeleteEmptyBox();
+    return true;
+  }
 
   // handleEllipticalAction
   if (command === 'delete...') { handleEllipticalAction('Delete', group => group.fate === 'trash');  return true; }
@@ -543,6 +579,7 @@ function routeToHandler(stage, command, photos) {
     case 'AWAITING_ITEM_VIEW':           handleItemViewAction(command);        break;
     case 'AWAITING_ITEM_VIEW_NOTES':     handleItemViewNotes(command);         break;
     case 'AWAITING_ITEM_MOVE_TARGET':    handleItemMoveTarget(command);        break;
+    case 'AWAITING_DELETE_EMPTY_BOX':    handleFinished(command);              break;
     case 'FINISHED':                     handleFinished(command);              break;
     default:                             handleFreeform(command, photos);
   }
@@ -1050,7 +1087,7 @@ function doneWithBox() {
 function groupItems(items) {
   var groups = [];
   var seen = {};
-  items.filter(function(it) { return !it.deleted_at; }).forEach(function(it) {
+  _.reject(items, function(it) { return it.deleted_at; }).forEach(function(it) {
     var key = it.name + '|' + it.fate;
     if (seen[key] !== undefined) {
       groups[seen[key]].count++;
@@ -1064,7 +1101,7 @@ function groupItems(items) {
 
 // One-line summary of a box's contents, grouped
 function boxSummaryLine(box) {
-  var activeItems = box.items.filter(function(it) { return !it.deleted_at; });
+  var activeItems = _.reject(box.items, function(it) { return it.deleted_at; });
   if (activeItems.length === 0) return 'empty';
   var groups = groupItems(activeItems);
   return groups.map(function(g) {
@@ -1109,7 +1146,7 @@ function handleEllipticalAction(label, filterFn) {
 
 function reviewBox() {
   var box=activeBox();
-  var activeItems = box ? box.items.filter(function(it) { return !it.deleted_at; }) : [];
+  var activeItems = box ? _.reject(box.items, function(it) { return it.deleted_at; }) : [];
   if (!box || activeItems.length === 0) {
     addBotMessage('This box has no items logged yet. Add some!');
     setBoxOpenChips();
@@ -1161,22 +1198,89 @@ function handleFinished(text) {
   } else if (command.indexOf('done') !== -1 || command.indexOf('stop') !== -1) {
     var total = 0;
     for (var i = 0; i < state.boxes.length; i++) {
-      total += state.boxes[i].items.length;
+      var activeItems = _.reject(state.boxes[i].items, (item) => item.deleted_at);
+      total += activeItems.length;
     };
     addBotMessage('Great session! You\'ve sorted **' + state.boxes.length + '** box(es) with **' + total +
-      '** items total.\n\nYou can download your data anytime with the buttons at the top. \uD83D\uDCE6');
+      '** items total.\n\nYou can download your data anytime with the buttons at the top. 📦');
     setChips(['Start new box', 'Review by fate']);
   } else if(command.indexOf('review all') !==- 1) {
+    var boxes = _.reject(state.boxes, (box) => box.deleted_at);
     var lines = '';
-    for(var i = 0; i < state.boxes.length; i++) {
-      var box = state.boxes[i];
+    for(var i = 0; i < boxes.length; i++) {
+      var box = boxes[i];
       var loc = box.location ? ' (' + box.location + ')' : '';
       lines += (i+1) + '. **' + box.name + '**' + loc + ' — ' + boxSummaryLine(box) + '\n';
     }
     addBotMessage('**All boxes:**\n' + lines.trim());
-    setChips(['New box','Done for now','Review by fate']);
-  } else {
-    handleFreeform(text,[]);
+
+    // Identify empty boxes and their positions in the review list
+    var emptyBoxPositions = [];
+    for(var i = 0; i < boxes.length; i++) {
+      var activeItems = _.reject(boxes[i].items, (item) => item.deleted_at);
+      if (activeItems.length === 0) {
+        emptyBoxPositions.push(i + 1);  // 1-indexed position in review list
+      }
+    }
+
+    // Build delete chips based on number of empty boxes
+    var deleteChips = [];
+    if (emptyBoxPositions.length === 1) {
+      deleteChips.push('Delete ' + emptyBoxPositions[0]);
+    } else if (emptyBoxPositions.length === 2) {
+      deleteChips.push('Delete ' + emptyBoxPositions[0]);
+      deleteChips.push('Delete ' + emptyBoxPositions[1]);
+    } else if (emptyBoxPositions.length >= 3) {
+      deleteChips.push('Delete...');
+    }
+
+    // Store empty boxes for delete commands (with their positions)
+    var emptyBoxes = _.reject(boxes, (box) => {
+      var activeItems = _.reject(box.items, (item) => item.deleted_at);
+      return activeItems.length > 0;
+    });
+    if (emptyBoxes.length > 0) {
+      state.emptyBoxesForDelete = emptyBoxes;
+      state.emptyBoxPositions = emptyBoxPositions;
+    } else {
+      state.emptyBoxesForDelete = null;
+      state.emptyBoxPositions = null;
+    }
+
+    setChips(deleteChips.concat(['New box','Done for now','Review by fate']));
+  }
+}
+
+function handleDeleteEmptyBox(index) {
+  if (!state.emptyBoxesForDelete || index < 0 || index >= state.emptyBoxesForDelete.length) {
+    addBotMessage('Invalid box number.');
+    return;
+  }
+  var box = state.emptyBoxesForDelete[index];
+  // Soft delete the box
+  box.deleted_at = new Date().toISOString();
+  sessionDeletedCount++;
+  addBotMessage('Deleted the empty box **"' + box.name + '"**.');
+  // Refresh the review
+  state.emptyBoxesForDelete = null;
+  state.emptyBoxPositions = null;
+  handleFinished('review all');
+}
+
+function handleEllipticalDeleteEmptyBox() {
+  if (!state.emptyBoxesForDelete || state.emptyBoxesForDelete.length < 3 ||
+      !state.emptyBoxPositions) {
+    addBotMessage('No empty boxes to delete.');
+    return;
+  }
+  state.conversationStage = 'AWAITING_DELETE_EMPTY_BOX';
+  var eligible = state.emptyBoxPositions;
+  addBotMessage('Which box? Type _delete_ followed by the number. Applies to: ' +
+    eligible.join(', ') + '.');
+  var input = document.getElementById('user-input');
+  if (input) {
+    input.value = 'delete ';
+    if (input.focus) input.focus();
   }
 }
 
@@ -2291,7 +2395,7 @@ function deleteAllItems(box) {
 function handleTrashAll() {
   var box = activeBox();
   if (!box) { state.conversationStage = 'BOX_OPEN'; return; }
-  var activeItems = box.items.filter(function(it) { return !it.deleted_at; });
+  var activeItems = _.reject(box.items, (item) => item.deleted_at);
   if (activeItems.length === 0) {
     addBotMessage('No items to trash.');
     reviewBox();
@@ -2915,6 +3019,8 @@ if (typeof module !== 'undefined') {
     mantra,
     MANTRAS,
     handleFinished,
+    handleDeleteEmptyBox,
+    handleEllipticalDeleteEmptyBox,
     maybeMantraOnItem,
     setMantrasEnabled: function(v){ _mantrasEnabled = v; },
     getMantrasEnabled: function(){ return _mantrasEnabled; },
