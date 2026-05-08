@@ -384,7 +384,9 @@
   <div class="logo">DeclutterBot <span>&#8212; sorting companion</span><span class="rotate-hint"><span class="hint-phone">&#128241;</span><span class="hint-thumb">&#128077;</span></span></div>
   <div class="actions">
     <input type="file" id="import-input" accept=".json" style="display:none" onchange="handleImportJSON(event)"/>
+    <input type="file" id="import-csv-input" accept=".csv" style="display:none" onchange="handleImportCSV(event)"/>
     <button class="btn btn-outline" onclick="document.getElementById('import-input').click()">&#8593; Import JSON</button>
+    <button class="btn btn-outline" onclick="document.getElementById('import-csv-input').click()">&#8593; Import CSV</button>
     <button class="btn btn-outline" onclick="exportJSON()">&#8595; Export JSON</button>
     <button class="btn btn-outline" onclick="exportCSV()">&#8595; Export CSV</button>
     <button class="btn btn-primary" onclick="clearAll()">Reset</button>

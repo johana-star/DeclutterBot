@@ -416,7 +416,25 @@ function tryIntercept(command, photos) {
   if (['import', 'import json'].includes(command)) {
     const importEl = document.getElementById('import-input');
     if (importEl) importEl.click();
+    // Both button click and 'import' command trigger the same file input,
+    // which fires onchange → handleImportJSON(). This ensures button and command
+    // behave identically. There is a potential edge case where the command is not
+    // intercepted correctly, which is why the default fallback encourages the user
+    // to use the button path.
     else addBotMessage('Use the ↑ Import JSON button in the header to import a file.');
+    return true;
+  }
+
+  // import csv
+  if (['import csv'].includes(command)) {
+    const importCSVEl = document.getElementById('import-csv-input');
+    if (importCSVEl) importCSVEl.click();
+    // Both button click and 'import csv' command trigger the same file input,
+    // which fires onchange → handleImportCSV(). This ensures button and command
+    // behave identically. There is a potential edge case where the command is not
+    // intercepted correctly, which is why the default fallback encourages the user
+    // to use the button path.
+    else addBotMessage('Use the ↑ Import CSV button in the header to import a file.');
     return true;
   }
 
@@ -1259,6 +1277,149 @@ function dlBlob(blob, name) {
   URL.revokeObjectURL(a.href);
 }
 
+function parseCSV(text) {
+  var lines = text.trim().split('\n');
+  if (lines.length === 0) return [];
+
+  var headerLine = lines[0];
+  var headers = parseCSVLine(headerLine);
+
+  var expectedHeaders = ['location', 'box name', 'item name', 'fate', 'notes'];
+  var headerMatch = JSON.stringify(headers) === JSON.stringify(expectedHeaders);
+  if (!headerMatch) {
+    addBotMessage(
+      'CSV format error: expected columns in order: location, box name, item name, fate, notes'
+    );
+    return null;
+  }
+
+  var rows = [];
+  for (var i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '') continue; // skip empty lines
+    var values = parseCSVLine(lines[i]);
+    if (values.length !== 5) {
+      addBotMessage('CSV format error on line ' + (i + 1) + ': expected 5 columns, got ' + values.length);
+      return null;
+    }
+    rows.push({
+      location: values[0] || '',
+      boxName: values[1],
+      itemName: values[2],
+      fate: values[3],
+      notes: values[4] || ''
+    });
+  }
+  return rows;
+}
+
+function parseCSVLine(line) {
+  var result = [];
+  var current = '';
+  var inQuotes = false;
+
+  for (var i = 0; i < line.length; i++) {
+    var char = line[i];
+    var next = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function importCSV(text) {
+  var rows = parseCSV(text);
+  if (!rows) return;
+
+  if (rows.length === 0) {
+    addBotMessage('CSV is empty (no items to import).');
+    return;
+  }
+
+  // Confirm if existing data would be overwritten
+  if (state.boxes.length > 0) {
+    if (!confirm(
+      'Import will replace your current inventory (' + state.boxes.length + ' box(es)).' +
+      ' This cannot be undone. Continue?'
+    )) return;
+  }
+
+  // Clear existing inventory
+  state.boxes = [];
+  state.activeBoxId = null;
+  state.activeItemId = null;
+
+  // Group rows by (location, boxName)
+  var boxMap = {};
+  rows.forEach(function(row) {
+    var boxKey = row.location + '|' + row.boxName;
+    if (!boxMap[boxKey]) {
+      boxMap[boxKey] = {
+        location: row.location,
+        name: row.boxName,
+        items: []
+      };
+    }
+    boxMap[boxKey].items.push({
+      name: row.itemName,
+      fate: FATES.indexOf(row.fate) !== -1 ? row.fate : 'unsure',
+      notes: row.notes
+    });
+  });
+
+  // Create boxes
+  Object.keys(boxMap).forEach(function(boxKey) {
+    var boxData = boxMap[boxKey];
+    var box = {
+      id: uid(),
+      name: boxData.name,
+      location: boxData.location,
+      notes: '',
+      parentId: null,
+      createdAt: new Date().toISOString(),
+      items: boxData.items.map(function(item) {
+        return {
+          id: uid(),
+          name: item.name,
+          description: '',
+          fate: item.fate,
+          notes: item.notes,
+          photos: [],
+          addedAt: new Date().toISOString(),
+          deleted_at: null
+        };
+      })
+    };
+    state.boxes.push(box);
+  });
+
+  sessionDeletedCount = 0;
+  sessionTrashPreference = null;
+  boxTrashPreferences = {};
+
+  commitState();
+
+  var totalItems = state.boxes.reduce(function(sum, b) { return sum + b.items.length; }, 0);
+  addBotMessage(
+    '✅ Imported ' + state.boxes.length + ' box(es) with ' + totalItems + ' item(s).' +
+    '\n\nReady to continue organizing?'
+  );
+  state.conversationStage = 'BOX_OPEN';
+  setChips(['New box', 'Review all boxes', 'Review by fate']);
+}
+
 function importJSON(data) {
   // Validate structure
   if (!data || !Array.isArray(data.boxes)) {
@@ -1318,6 +1479,18 @@ function handleImportJSON(event) {
   };
   reader.readAsText(file);
 }
+
+function handleImportCSV(event) {
+  var file = event.target.files[0];
+  event.target.value = ''; // reset so same file can be re-imported
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    importCSV(e.target.result);
+  };
+  reader.readAsText(file);
+}
+
 
 const WELCOME_MSG =
   'Hello! I\'m **DeclutterBot**, your decluttering companion. \uD83D\uDCE6\n\n' +
@@ -2630,10 +2803,16 @@ if (typeof module !== 'undefined') {
     setHistoryIndex: function(v){ historyIndex = v; },
     handleKey,
     importJSON,
+    importCSV,
+    handleImportCSV,
     handleHelp,
     saveState,
     escapeCSV,
     exportCSV,
+    parseCSV,
+    parseCSVLine,
+    importCSV,
+    handleImportCSV,
     disposalPrompt, deletionLog, deleteActiveItem,
     handleTrashDelete, handleDisposal, handleTrashByNumber, handleDeleteByNumber,
     getBoxTrashPreferences: function(){ return boxTrashPreferences; },
