@@ -134,7 +134,7 @@ function renderBoxTree(boxId, depth, collapsedIds) {
       var f = FATES[j];
       if (fates[f] > 0) tags += '<span class="tag tag-' + f + '">' + f + ' ' + fates[f] + '</span>';
     }
-    var total = box.items.length;
+    var total = box.items.filter(function(it) { return !it.deleted_at; }).length;
     var kidBoxes = state.boxes.filter(function(b){ return b.parentId === box.id; });
     var hasKids = kidBoxes.length > 0;
     var isCollapsed = collapsedIds && collapsedIds.indexOf(box.id) !== -1;
@@ -380,6 +380,9 @@ function tryIntercept(command, photos) {
   // handleDeleteBox
   if (['delete box', 'delete this box'].includes(command)) { handleDeleteBox(); return true; }
 
+  // handleTrashAll
+  if (['trash all'].includes(command)) { handleTrashAll(); return true; }
+
   // handleDump
   if (command === 'dump into...') { handleDump('dump'); return true; }
 
@@ -510,7 +513,10 @@ function tryIntercept(command, photos) {
 
 function routeToHandler(stage, command, photos) {
   switch(stage) {
-    case 'AWAITING_DELETE_BOX_CONFIRM':  handleDeleteBoxConfirm(command);      break;
+    case 'AWAITING_DELETE_BOX_CONFIRM':  handleDeleteBoxConfirm(command);             break;
+    case 'AWAITING_TRASH_ALL_CONFIRM':   handleTrashAllConfirm(command);              break;
+    case 'AWAITING_DELETE_TRASHED_CONFIRM':      handleDeleteTrashedConfirm(command);         break;
+    case 'AWAITING_DELETE_BOX_AFTER_TRASH_ALL': handleDeleteBoxAfterTrashAllConfirm(command); break;
     case 'AWAITING_DISPOSAL':            handleDisposal(command);              break;
     case 'AWAITING_DUMP_TARGET':         handleDumpTarget(command);            break;
     case 'AWAITING_FATE_REVIEW_ACTION':  handleFateReviewAction(command);      break;
@@ -1124,6 +1130,11 @@ function reviewBox() {
   const chips = FATES
     .flatMap(fate => buildActionChips(groups, fate[0].toUpperCase() + fate.slice(1), group => group.fate !== fate))
     .concat(buildActionChips(groups, 'Delete', group => group.fate === 'trash'));
+
+  // Only show "Trash All" when there are 2+ items
+  if (activeItems.length >= 2) {
+    chips.push('Trash All');
+  }
 
   var header = activeItems.length !== groups.length
     ? '**Items in "' + box.name + '" (' + activeItems.length + ' items, ' + groups.length + ' unique):**'
@@ -2257,6 +2268,115 @@ function deleteActiveItem() {
   setBoxOpenChips();
 }
 
+function trashAllItems(box) {
+  if (!box) return 0;
+  var count = 0;
+  box.items.forEach(function(item) {
+    if (!item.deleted_at) { item.fate = 'trash'; count++; }
+  });
+  return count;
+}
+
+function deleteAllItems(box) {
+  if (!box) return 0;
+  var count = 0;
+  box.items.forEach(function(item) {
+    if (!item.deleted_at) { item.deleted_at = new Date().toISOString(); count++; }
+  });
+  _budgetItems = _budgetItems + count;
+  updateBudgetDisplay();
+  return count;
+}
+
+function handleTrashAll() {
+  var box = activeBox();
+  if (!box) { state.conversationStage = 'BOX_OPEN'; return; }
+  var activeItems = box.items.filter(function(it) { return !it.deleted_at; });
+  if (activeItems.length === 0) {
+    addBotMessage('No items to trash.');
+    reviewBox();
+    return;
+  }
+  state.conversationStage = 'AWAITING_TRASH_ALL_CONFIRM';
+  addBotMessage('Delete all **' + activeItems.length + '** item(s)?');
+  setChips(['Yes', 'No']);
+}
+
+function handleTrashAllConfirm(text) {
+  var command = text.toLowerCase().trim();
+  var box = activeBox();
+  if (!box) { state.conversationStage = 'BOX_OPEN'; return; }
+  var activeItems = box.items.filter(function(it) { return !it.deleted_at; });
+
+  if (command === 'yes' || command === 'y') {
+    // Mark all active items as trash
+    trashAllItems(box);
+    var trashCount = activeItems.length;
+    state.conversationStage = 'AWAITING_DELETE_TRASHED_CONFIRM';
+    addBotMessage('Marked **' + trashCount + '** item(s) as trash.\n\nDelete all trashed items in this box?');
+    setChips(['Yes', 'No']);
+  } else {
+    state.conversationStage = 'BOX_OPEN';
+    reviewBox();
+  }
+}
+
+function handleDeleteTrashedConfirm(text) {
+  var command = text.toLowerCase().trim();
+  var box = activeBox();
+  if (!box) { state.conversationStage = 'BOX_OPEN'; return; }
+
+  if (command === 'yes' || command === 'y') {
+    var deletedCount = deleteAllItems(box);
+    var summary = 'Deleted **' + deletedCount + '** item(s).';
+    addBotMessage(summary);
+    state.conversationStage = 'AWAITING_DELETE_BOX_AFTER_TRASH_ALL';
+    addBotMessage('Delete the empty box "' + box.name + '" too?');
+    setChips(['Yes', 'No']);
+  } else {
+    state.conversationStage = 'BOX_OPEN';
+    addBotMessage('Items marked as trash but not deleted.');
+    reviewBox();
+  }
+}
+
+function handleDeleteBoxAfterTrashAllConfirm(text) {
+  var command = text.toLowerCase().trim();
+  var box = activeBox();
+  if (!box) { state.conversationStage = 'BOX_OPEN'; return; }
+  var boxName = box.name;
+
+  if (command === 'yes' || command === 'y') {
+    var parentId = box.parentId;
+    var summary = 'Deleted the empty box "' + boxName + '".';
+    addBotMessage(summary);
+    state.boxes = state.boxes.filter(function(b) { return b.id !== box.id; });
+    state.activeBoxId = null;
+
+    if (parentId) {
+      var parent = state.boxes.find(function(b) { return b.id === parentId; });
+      if (parent) {
+        state.activeBoxId = parent.id;
+        reviewBox();
+      } else {
+        state.conversationStage = 'BOX_REVIEW';
+        renderSidebar();
+        handleFinished('');
+      }
+    } else {
+      state.conversationStage = 'BOX_REVIEW';
+      renderSidebar();
+      handleFinished('');
+    }
+  } else {
+    var summary = 'Kept the box "' + boxName + '".';
+    addBotMessage(summary);
+    state.conversationStage = 'BOX_OPEN';
+    reviewBox();
+  }
+}
+
+
 function handleTrashDelete(text) {
   var command = text.toLowerCase().trim();
   var item = activeItem();
@@ -2814,6 +2934,7 @@ if (typeof module !== 'undefined') {
     importCSV,
     handleImportCSV,
     disposalPrompt, deletionLog, deleteActiveItem,
+    trashAllItems, deleteAllItems, handleTrashAll, handleTrashAllConfirm, handleDeleteTrashedConfirm, handleDeleteBoxAfterTrashAllConfirm,
     handleTrashDelete, handleDisposal, handleTrashByNumber, handleDeleteByNumber,
     getBoxTrashPreferences: function(){ return boxTrashPreferences; },
     getSessionTrashPreference: function(){ return sessionTrashPreference; },
