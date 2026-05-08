@@ -413,16 +413,16 @@ var trashChips = fateReviewChips('trash');
 assert('trash chips include Keep', trashChips.indexOf('Keep') !== -1);
 assert('trash chips include Donate', trashChips.indexOf('Donate') !== -1);
 assert('trash chips include Sell', trashChips.indexOf('Sell') !== -1);
-assert('trash chips include Move to unsure', trashChips.indexOf('Move to unsure') !== -1);
+assert('trash chips include Unsure', trashChips.indexOf('Unsure') !== -1);
 assert('trash chips include Delete', trashChips.indexOf('Delete') !== -1);
 
 var actualSellChips   = JSON.stringify(fateReviewChips('sell'));
-var expectedSellChips = JSON.stringify(['Keep', 'Donate', 'Trash', 'Move to unsure', 'Add selling notes', 'Skip']);
+var expectedSellChips = JSON.stringify(['Keep', 'Donate', 'Unsure', 'Trash', 'Add selling notes', 'Skip']);
 console.log('\n32b. Sell review chips match expected set');
 assert('sell chips correct', actualSellChips === expectedSellChips);
 
 var actualDonateChips   = JSON.stringify(fateReviewChips('donate'));
-var expectedDonateChips = JSON.stringify(['Keep', 'Sell', 'Trash', 'Move to unsure', 'Add donation destination', 'Skip']);
+var expectedDonateChips = JSON.stringify(['Keep', 'Sell', 'Unsure', 'Trash', 'Add donation destination', 'Skip']);
 console.log('\n32c. Donate review chips match expected set');
 assert('donate chips correct', actualDonateChips === expectedDonateChips);
 

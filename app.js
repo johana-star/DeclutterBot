@@ -15,9 +15,10 @@ let state = {
   conversationStage: 'WELCOME',
 };
 const FATES = ['keep','donate','sell','unsure','trash'];
-const FATE_TITLES = FATES.map(function(fate) {
-  return fate.charAt(0).toUpperCase() + fate.slice(1);
-});
+function titleize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+const FATE_TITLES = FATES.map(titleize);
 let collapsedBoxIds = [];
 let sessionDeletedCount = 0;
 let sessionTrashPreference = null; // null | 'always' | 'never'
@@ -2145,16 +2146,20 @@ function collectFateItems(fate) {
   return results;
 }
 
-function fateReviewChips(fate) {
-  const FATE_REVIEW_CHIPS = {
-    keep:   ['Change fate', 'Add to kit', 'Skip'],
-    donate: ['Keep', 'Sell', 'Trash', 'Move to unsure', 'Add donation destination', 'Skip'],
-    sell:   ['Keep', 'Donate', 'Trash', 'Move to unsure', 'Add selling notes', 'Skip'],
-    trash:  ['Keep', 'Donate', 'Sell', 'Move to unsure', 'Delete', 'Disposal note', 'Skip'],
-    unsure: ['Keep', 'Donate', 'Trash', 'Sell', 'Skip']
+function addInformationChips(fate) {
+  const infoChips = {
+    keep:   ['Add to kit'],
+    donate: ['Add donation destination'],
+    sell:   ['Add selling notes'],
+    trash:  ['Delete', 'Disposal note'],
+    unsure: []
   };
+  return infoChips[fate] || [];
+}
 
-  return FATE_REVIEW_CHIPS[fate] || ['Skip'];
+function fateReviewChips(fate) {
+  var chips = FATE_TITLES.filter(t => t !== titleize(fate));
+  return chips.concat(addInformationChips(fate)).concat('Skip');
 }
 
 function fateReviewBulkChips(fate) {
