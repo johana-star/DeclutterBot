@@ -17,6 +17,8 @@ let state = {
   conversationStage: 'WELCOME',
   emptyBoxesForDelete: null,
   emptyBoxPositions: null,
+  renamePositions: null,
+  pendingRenameBoxId: null,
 };
 const FATES = ['keep','donate','sell','unsure','trash'];
 function titleize(str) {
@@ -373,8 +375,9 @@ function handleContinueLastBox() {
   else { startNewBox(); }
 }
 
-// Returns true if the command was handled, false if processInput should continue.
-function tryIntercept(command, photos) {
+// Returns true if a global command was handled, false if processInput should continue.
+// Global commands are ones that can be invoked from any stage (reset, done, etc).
+function tryGlobalIntercept(command, photos) {
   // clearAll
   if (['reset', 'start over'].includes(command)) { clearAll(); return true; }
 
@@ -390,37 +393,6 @@ function tryIntercept(command, photos) {
 
   // handleDump
   if (command === 'dump into...') { handleDump('dump'); return true; }
-
-  // handleDeleteEmptyBox (delete N where N is an actual empty box position)
-  if ((command === 'delete 1' || command === 'delete 2' ||
-       command === 'delete 3' || command === 'delete 4' ||
-       command === 'delete 5' || command === 'delete 6' ||
-       command === 'delete 7' || command === 'delete 8' ||
-       command === 'delete 9') &&
-      state.conversationStage === 'FINISHED' &&
-      state.emptyBoxesForDelete &&
-      state.emptyBoxesForDelete.length < 3 &&
-      state.emptyBoxPositions) {
-    var match = command.match(/delete (\d+)/);
-    if (match) {
-      var boxNum = parseInt(match[1], 10);
-      // Check if this is a valid empty box position
-      var posIndex = state.emptyBoxPositions.indexOf(boxNum);
-      if (posIndex !== -1) {
-        handleDeleteEmptyBox(posIndex);
-        return true;
-      }
-    }
-  }
-
-  // handleEllipticalDeleteEmptyBox (delete... with 3+ empty boxes)
-  if (command === 'delete...' &&
-      state.conversationStage === 'FINISHED' &&
-      state.emptyBoxesForDelete &&
-      state.emptyBoxesForDelete.length >= 3) {
-    handleEllipticalDeleteEmptyBox();
-    return true;
-  }
 
   // handleEllipticalAction
   if (command === 'delete...') { handleEllipticalAction('Delete', group => group.fate === 'trash');  return true; }
@@ -580,6 +552,8 @@ function routeToHandler(stage, command, photos) {
     case 'AWAITING_ITEM_VIEW_NOTES':     handleItemViewNotes(command);         break;
     case 'AWAITING_ITEM_MOVE_TARGET':    handleItemMoveTarget(command);        break;
     case 'AWAITING_DELETE_EMPTY_BOX':    handleFinished(command);              break;
+    case 'AWAITING_BOX_RENAME':          handleBoxRenameConfirm(command);      break;
+    case 'AWAITING_RENAME_ELLIPTICAL':   handleEllipticalRenameConfirm(command); break;
     case 'FINISHED':                     handleFinished(command);              break;
     default:                             handleFreeform(command, photos);
   }
@@ -592,7 +566,7 @@ function processInput(input, photos) {
   if (command === 'y') { command = 'yes'; }
   if (command === 'n') { command = 'no'; }
 
-  if (tryIntercept(command, photos)) return;
+  if (tryGlobalIntercept(command, photos)) return;
 
   routeToHandler(state.conversationStage, command, photos);
 }
@@ -841,6 +815,30 @@ function handleLocation(text) {
     '\n\nNow let\'s sort through it. Tell me about the **first item** you pick up \u2014 what is it?'
   );
   setChips(['Skip to next box','Review items','Done']);
+}
+
+function handleBoxRenameConfirm(text) {
+  var newName = text.trim();
+  if (!newName) {
+    addBotMessage('Please provide a name.');
+    return;
+  }
+  var boxId = state.pendingRenameBoxId;
+  if (!boxId) {
+    addBotMessage('No box selected for renaming.');
+    return;
+  }
+  var box = _.find(state.boxes, (b) => b.id === boxId);
+  if (!box) {
+    addBotMessage('Box not found.');
+    return;
+  }
+  var oldName = box.name;
+  box.name = newName;
+  state.pendingRenameBoxId = null;
+  state.conversationStage = 'FINISHED';
+  addBotMessage('Renamed **"' + oldName + '"** to **"' + newName + '"**.');
+  handleFinished('review all');
 }
 
 const WORD_NUMBERS = {
@@ -1206,22 +1204,17 @@ function handleFinished(text) {
     setChips(['Start new box', 'Review by fate']);
   } else if(command.indexOf('review all') !==- 1) {
     var boxes = _.reject(state.boxes, (box) => box.deleted_at);
-    var lines = '';
-    for(var i = 0; i < boxes.length; i++) {
-      var box = boxes[i];
+    var lines = _.map(boxes, (box, i) => {
       var loc = box.location ? ' (' + box.location + ')' : '';
-      lines += (i+1) + '. **' + box.name + '**' + loc + ' — ' + boxSummaryLine(box) + '\n';
-    }
+      return (i+1) + '. **' + box.name + '**' + loc + ' — ' + boxSummaryLine(box);
+    }).join('\n');
     addBotMessage('**All boxes:**\n' + lines.trim());
 
     // Identify empty boxes and their positions in the review list
-    var emptyBoxPositions = [];
-    for(var i = 0; i < boxes.length; i++) {
-      var activeItems = _.reject(boxes[i].items, (item) => item.deleted_at);
-      if (activeItems.length === 0) {
-        emptyBoxPositions.push(i + 1);  // 1-indexed position in review list
-      }
-    }
+    var emptyBoxPositions = _.compact(_.map(boxes, (box, i) => {
+      var activeItems = _.reject(box.items, (item) => item.deleted_at);
+      return activeItems.length === 0 ? (i + 1) : null;
+    }));
 
     // Build delete chips based on number of empty boxes
     var deleteChips = [];
@@ -1247,7 +1240,81 @@ function handleFinished(text) {
       state.emptyBoxPositions = null;
     }
 
-    setChips(deleteChips.concat(['New box','Done for now','Review by fate']));
+    // Build rename chips based on number of eligible boxes
+    var renameChips = [];
+    var renamePositions = _.range(1, boxes.length + 1);
+
+    if (renamePositions.length === 1) {
+      renameChips.push('Rename ' + renamePositions[0]);
+    } else if (renamePositions.length === 2) {
+      renameChips.push('Rename ' + renamePositions[0]);
+      renameChips.push('Rename ' + renamePositions[1]);
+    } else if (renamePositions.length >= 3) {
+      renameChips.push('Rename...');
+    }
+
+    // Store rename positions for rename commands
+    if (renamePositions.length > 0) {
+      state.renamePositions = renamePositions;
+    } else {
+      state.renamePositions = null;
+    }
+
+    setChips(deleteChips.concat(renameChips).concat(['New box','Done for now','Review by fate']));
+  } else {
+    // Handle delete number commands in the review all context
+    if ((command === 'delete 1' || command === 'delete 2' ||
+         command === 'delete 3' || command === 'delete 4' ||
+         command === 'delete 5' || command === 'delete 6' ||
+         command === 'delete 7' || command === 'delete 8' ||
+         command === 'delete 9') &&
+        state.emptyBoxesForDelete &&
+        state.emptyBoxesForDelete.length < 3 &&
+        state.emptyBoxPositions) {
+      var match = command.match(/delete (\d+)/);
+      if (match) {
+        var boxNum = parseInt(match[1], 10);
+        var posIndex = state.emptyBoxPositions.indexOf(boxNum);
+        if (posIndex !== -1) {
+          handleDeleteEmptyBox(posIndex);
+          return;
+        }
+      }
+    }
+
+    // Handle delete... elliptical in the review all context
+    if (command === 'delete...' &&
+        state.emptyBoxesForDelete &&
+        state.emptyBoxesForDelete.length >= 3) {
+      handleEllipticalDeleteEmptyBox();
+      return;
+    }
+
+    // Handle rename number commands in the review all context
+    if ((command === 'rename 1' || command === 'rename 2') &&
+        state.renamePositions &&
+        state.renamePositions.length < 3) {
+      var match = command.match(/rename (\d+)/);
+      if (match) {
+        var boxNum = parseInt(match[1], 10);
+        var posIndex = state.renamePositions.indexOf(boxNum);
+        if (posIndex !== -1) {
+          handleRenameBox(posIndex);
+          return;
+        }
+      }
+    }
+
+    // Handle rename... elliptical (3+ boxes) in the review all context
+    if (command === 'rename...' &&
+        state.renamePositions &&
+        state.renamePositions.length >= 3) {
+      handleEllipticalRenameBox();
+      return;
+    }
+
+    // Handle other freeform commands while in review all
+    handleFreeform(text, []);
   }
 }
 
@@ -1282,6 +1349,55 @@ function handleEllipticalDeleteEmptyBox() {
     input.value = 'delete ';
     if (input.focus) input.focus();
   }
+}
+
+function handleRenameBox(index) {
+  if (!state.renamePositions || index < 0 || index >= state.renamePositions.length) {
+    addBotMessage('Invalid box number.');
+    return;
+  }
+  var boxes = _.reject(state.boxes, (box) => box.deleted_at);
+  if (index >= boxes.length) {
+    addBotMessage('Invalid box number.');
+    return;
+  }
+  var box = boxes[index];
+  state.conversationStage = 'AWAITING_BOX_RENAME';
+  state.pendingRenameBoxId = box.id;
+  addBotMessage('What would you like to call **' + box.name + '**?');
+}
+
+function handleEllipticalRenameBox() {
+  if (!state.renamePositions || state.renamePositions.length < 3) {
+    addBotMessage('No boxes to rename.');
+    return;
+  }
+  state.conversationStage = 'AWAITING_RENAME_ELLIPTICAL';
+  var eligible = state.renamePositions;
+  addBotMessage('Which box? Type _rename_ followed by the number. Applies to: ' +
+    eligible.join(', ') + '.');
+  var input = document.getElementById('user-input');
+  if (input) {
+    input.value = 'rename ';
+    if (input.focus) input.focus();
+  }
+}
+
+function handleEllipticalRenameConfirm(command) {
+  if (!state.renamePositions || state.renamePositions.length < 3) {
+    addBotMessage('No boxes available for renaming.');
+    return;
+  }
+  var match = command.match(/rename (\d+)/);
+  if (match) {
+    var boxNum = parseInt(match[1], 10);
+    var posIndex = state.renamePositions.indexOf(boxNum);
+    if (posIndex !== -1) {
+      handleRenameBox(posIndex);
+      return;
+    }
+  }
+  addBotMessage('Invalid selection. Try again.');
 }
 
 function handleHelp() {
@@ -2410,7 +2526,7 @@ function handleTrashAllConfirm(text) {
   var command = text.toLowerCase().trim();
   var box = activeBox();
   if (!box) { state.conversationStage = 'BOX_OPEN'; return; }
-  var activeItems = box.items.filter(function(it) { return !it.deleted_at; });
+  var activeItems = _.reject(box.items, (item) => item.deleted_at);
 
   if (command === 'yes' || command === 'y') {
     // Mark all active items as trash
