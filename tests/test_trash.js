@@ -62,7 +62,14 @@ function reset() {
   state.pendingDeleteBoxId = null;
   state.pendingNest = null;
   state.activeItemViewGroup = null;
+  state.pendingFateReview = null;
   state.conversationStage = 'BOX_OPEN';
+  state.emptyBoxesForDelete = null;
+  state.emptyBoxPositions = null;
+  state.renamePositions = null;
+  state.pendingRenameBoxId = null;
+  state.movePositions = null;
+  state.pendingMoveBoxId = null;
   localStorageData = {};
   resetSessionCounts();
   lastBotMessage = null;

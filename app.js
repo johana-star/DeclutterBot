@@ -1,8 +1,27 @@
 // app.js — DeclutterBot core logic
 // DOM-touching functions (addBotMessage, setChips, renderSidebar, etc.)
 // are expected to be defined globally or stubbed before this file runs.
+// Pure helper functions are also available in helpers.js
+
+// Load and make helpers globally available (for tests and modular usage)
+if (typeof require !== 'undefined') {
+  try {
+    require('./helpers.js');
+  } catch(e) {
+    try {
+      require('./tests/helpers.js');
+    } catch(e2) {
+      // helpers.js not available, but that's okay - functions are defined below
+    }
+  }
+}
 
 const _ = typeof require !== 'undefined' ? require('./tests/lodash.js') : window._;
+
+// Helper: Filter out soft-deleted items
+function activeItems(box) {
+  return box ? _.reject(box.items, (item) => item.deleted_at) : [];
+}
 
 let state = {
   boxes: [],
@@ -19,6 +38,8 @@ let state = {
   emptyBoxPositions: null,
   renamePositions: null,
   pendingRenameBoxId: null,
+  movePositions: null,
+  pendingMoveBoxId: null,
 };
 const FATES = ['keep','donate','sell','unsure','trash'];
 function titleize(str) {
@@ -198,7 +219,7 @@ function updateContextBar() {
     var item = activeItem();
     label.textContent = item
       ? 'Box: '+box.name+'  \u2192  Item: '+item.name
-      : 'Active box: '+box.name+'  \u00b7  '+box.items.length+' items';
+      : 'Active box: '+box.name+'  \u00b7  '+activeItems(box).length+' items';
   } else {
     dot.style.background = '#c4a882';
     label.textContent = state.boxes.length === 0
@@ -352,6 +373,21 @@ async function sendUserMessage() {
 }
 
 function handleBoxOpen(command, photos) {
+  // Handle delete N (delete item N from current box)
+  if (/^delete \d+$/.test(command)) {
+    var match = command.match(/(\d+)$/);
+    handleDeleteByNumber(parseInt(match[1], 10));
+    return;
+  }
+
+  // Handle move command (relocate current box)
+  if (command !== 'move to box' && ['m', 'move'].includes(command.split(' ')[0])) {
+    const loc = command.split(' ').slice(1).join(' ');
+    handleMove(loc);
+    return;
+  }
+
+  // Handle number input (select item by number) or treat as item name
   if (/^\d+$/.test(command.trim()) && activeBox()) {
     handleItemViewByNumber(parseInt(command.trim(), 10));
   } else {
@@ -395,7 +431,15 @@ function tryGlobalIntercept(command, photos) {
   if (command === 'dump into...') { handleDump('dump'); return true; }
 
   // handleEllipticalAction
-  if (command === 'delete...') { handleEllipticalAction('Delete', group => group.fate === 'trash');  return true; }
+  // Only use for item fate view context, not for review-all
+  if (command === 'delete...') {
+    var isReviewAllDelete = (state.conversationStage === 'FINISHED' ||
+      state.conversationStage === 'AWAITING_DELETE_EMPTY_BOX') &&
+      state.emptyBoxesForDelete;
+    if (!isReviewAllDelete) {
+      handleEllipticalAction('Delete', group => group.fate === 'trash'); return true;
+    }
+  }
   if (command === 'donate...') { handleEllipticalAction('Donate', group => group.fate !== 'donate'); return true; }
   if (command === 'keep...')   { handleEllipticalAction('Keep',   group => group.fate !== 'keep');   return true; }
   if (command === 'sell...')   { handleEllipticalAction('Sell',   group => group.fate !== 'sell');   return true; }
@@ -500,8 +544,36 @@ function tryGlobalIntercept(command, photos) {
   if (command.split(' ')[0] === 'dump') { handleDump(command); return true; }
 
   // trash N / delete N
-  if (/^trash \d+$/.test(command)) { handleTrashByNumber(parseInt(command.slice(6), 10)); return true; }
-  if (/^delete \d+$/.test(command)) { handleDeleteByNumber(parseInt(command.slice(7), 10)); return true; }
+  if (/^trash \d+$/.test(command)) {
+    var match = command.match(/(\d+)$/);
+    handleTrashByNumber(parseInt(match[1], 10));
+    return true;
+  }
+  if (/^delete \d+$/.test(command)) {
+    // Only use for item context, not for review-all
+    var isReviewAllDelete = (state.conversationStage === 'FINISHED' ||
+      state.conversationStage === 'AWAITING_DELETE_EMPTY_BOX') &&
+      state.emptyBoxPositions;
+    if (!isReviewAllDelete) {
+      var match = command.match(/(\d+)$/);
+      handleDeleteByNumber(parseInt(match[1], 10));
+      return true;
+    }
+  }
+
+  // move command — exclude 'move to box' which is handled by the item view stage
+  if (command !== 'move to box' && ['m', 'move'].includes(command.split(' ')[0])) {
+    // Only use for box-context, not for review-all stages
+    var isReviewAllMove = (state.conversationStage === 'FINISHED' ||
+      state.conversationStage === 'AWAITING_MOVE_ELLIPTICAL' ||
+      state.conversationStage === 'AWAITING_MOVE_LOCATION_REVIEW') &&
+      state.movePositions &&
+      (command === 'move...' || /^move \d+$/.test(command));
+    if (!isReviewAllMove) {
+      const loc = command.split(' ').slice(1).join(' ');
+      handleMove(loc); return true;
+    }
+  }
 
   // nest variants
   if (['nest', 'put inside', 'nest box'].includes(command)) { handleNest(command); return true; }
@@ -510,11 +582,7 @@ function tryGlobalIntercept(command, photos) {
     handleNest(command); return true;
   }
 
-  // move command — exclude 'move to box' which is handled by the item view stage
-  if (command !== 'move to box' && ['m', 'move'].includes(command.split(' ')[0])) {
-    const loc = command.split(' ').slice(1).join(' ');
-    handleMove(loc); return true;
-  }
+  // move and nest commands handled by global intercept (except review-all context)
 
   return false;
 }
@@ -554,6 +622,8 @@ function routeToHandler(stage, command, photos) {
     case 'AWAITING_DELETE_EMPTY_BOX':    handleFinished(command);              break;
     case 'AWAITING_BOX_RENAME':          handleBoxRenameConfirm(command);      break;
     case 'AWAITING_RENAME_ELLIPTICAL':   handleEllipticalRenameConfirm(command); break;
+    case 'AWAITING_MOVE_LOCATION_REVIEW': handleMoveLocationConfirm(command);  break;
+    case 'AWAITING_MOVE_ELLIPTICAL':     handleEllipticalMoveConfirm(command); break;
     case 'FINISHED':                     handleFinished(command);              break;
     default:                             handleFreeform(command, photos);
   }
@@ -606,9 +676,9 @@ function handleDeleteByNumber(num) {
     if (!still) state.activeItemId = null;
   }
   state.conversationStage = 'BOX_OPEN';
-  if (box.items.length === 0) {
+  if (activeItems(box).length === 0) {
     addBotMessage(deletionLog(countLabel + name) + ' The box is now empty.');
-    setChips(['Add item', 'Move box', 'Done with this box', 'Delete box']);
+    setChips(['Add item', 'Move box', 'Done with this box', 'Delete this box']);
   } else {
     var newGroups = groupItems(box.items);
     var lines = '';
@@ -665,6 +735,54 @@ function handleWelcome(text, photos) {
   );
   state.conversationStage = 'AWAITING_BOX_NAME';
 }
+// Returns true if text is a reserved command word and shouldn't be used as a box name
+function isReservedCommand(text) {
+  var cmd = text.toLowerCase().trim();
+
+  // Exact matches for common commands
+  var exactReserved = [
+    'reset', 'start over', 'done', 'done with this box', 'skip to next box',
+    'delete box', 'delete this box', 'trash all', 'new box', 'another',
+    'review all', 'review by fate', 'review items',
+    'nest', 'put inside', 'nest box', 'move box', 'add item',
+    'm', 'move', 'move to box',
+    'dump into...'
+  ];
+  if (exactReserved.includes(cmd)) return true;
+
+  // Elliptical commands (with ...)
+  if (/\.\.\.$/.test(cmd)) {
+    var base = cmd.replace(/\.\.\.$/, '');
+    var reserved = ['delete', 'rename', 'move', 'donate', 'keep', 'sell', 'trash', 'unsure', 'review', 'dump'];
+    if (reserved.includes(base)) return true;
+  }
+
+  // Number-based commands: delete 1, move 5, rename 3, trash 2, etc.
+  if (/^(delete|rename|move|trash)\s+\d+$/.test(cmd)) return true;
+
+  // Review commands with numbers (review keep (3), etc.)
+  if (/^review\s+(keep|donate|trash|sell|unsure)(\s*\(\d+\))?$/.test(cmd)) return true;
+
+  // Note: Pure numbers (^\d+$) are NOT reserved - they're used for selecting items/boxes
+
+  return false;
+}
+
+// Helper for handling number-based review-all actions (delete N, move N, rename N)
+// Extracts the number from command, looks up position, and calls the handler
+function executeReviewAllActionByNumber(command, pattern, positionsArray, handler) {
+  var match = command.match(pattern);
+  if (match) {
+    var boxNum = parseInt(match[1], 10);
+    var posIndex = positionsArray.indexOf(boxNum);
+    if (posIndex !== -1) {
+      handler(posIndex);
+      return true;
+    }
+  }
+  return false;
+}
+
 function startNewBox() {
   state.activeBoxId=null; state.activeItemId=null;
   state.conversationStage='AWAITING_BOX_NAME';
@@ -711,6 +829,17 @@ const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 function handleBoxName(text) {
   var raw = text.trim() || 'Unnamed box';
+
+  // Guard against reserved command words
+  if (isReservedCommand(raw)) {
+    addBotMessage(
+      'That sounds like a command! Please use a different name for your box. ' +
+      'Try something descriptive like "spare bedroom", "kitchen stuff", or "my books".'
+    );
+    setChips(['Try again', 'Review all boxes']);
+    return;
+  }
+
   // Check for batch: "five wooden boxes", "3 shelves"
   var parsed = parseQuantity(raw);
   if (parsed && parsed.qty >= 2 && parsed.qty <= 26) {
@@ -868,6 +997,17 @@ function handleItemName(text, photos) {
     startNewBox();
     return;
   }
+
+  // Guard against reserved command words as item names
+  if (isReservedCommand(text)) {
+    addBotMessage(
+      'That sounds like a command! Please describe the item you picked up. ' +
+      'For example: "coffee mug", "blue shirt", "photo album".'
+    );
+    setChips(['Try again']);
+    return;
+  }
+
   var parsed=parseQuantity(text);
   if (parsed) {
     state.pendingBatch= {
@@ -998,7 +1138,7 @@ function handleBatchFate(text, photos) {
     unsure: '\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit.'
   };
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
-  addBotMessage(fm[matched]+'\n\n**'+box.items.length+'** item(s) logged in "'+box.name+'". What\'s next?');
+  addBotMessage(fm[matched]+'\n\n**'+activeItems(box).length+'** item(s) logged in "'+box.name+'". What\'s next?');
   setBoxOpenChips();
 }
 
@@ -1063,7 +1203,7 @@ function handleItemNotes(text) {
   if(item&&t!=='next'&&t!=='next item'&&t!=='no notes'&&text.trim()) item.notes=text.trim();
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   var box=activeBox();
-  addBotMessage('Got it. **'+box.items.length+'** item(s) logged in "'+box.name+'".\n\nWhat\'s the next item?');
+  addBotMessage('Got it. **'+activeItems(box).length+'** item(s) logged in "'+box.name+'".\n\nWhat\'s the next item?');
   setBoxOpenChips();
 }
 
@@ -1179,9 +1319,16 @@ function reviewBox() {
   state.conversationStage = 'BOX_OPEN';
 }
 
+// Regex patterns for command validation in review-all context
+// (These validate command format, not extract values)
+var PATTERN_PURE_NUMBER = /^\d+$/;        // Matches: "5", "42" (box selection)
+var PATTERN_DELETE_NUMBER = /^delete \d+$/; // Matches: "delete 5", "delete 12"
+var PATTERN_MOVE_NUMBER = /^move \d+$/;    // Matches: "move 3", "move 7"
+var PATTERN_RENAME_NUMBER = /^rename \d+$/; // Matches: "rename 2", "rename 9"
+
 function handleFinished(text) {
   // Number input selects a box from the review all list
-  if (/^\d+$/.test(text)) {
+  if (PATTERN_PURE_NUMBER.test(text)) {
     const boxIdx = parseInt(text, 10) - 1;
     if (boxIdx >= 0 && boxIdx < state.boxes.length) {
       selectBox(state.boxes[boxIdx].id);
@@ -1203,6 +1350,9 @@ function handleFinished(text) {
       '** items total.\n\nYou can download your data anytime with the buttons at the top. 📦');
     setChips(['Start new box', 'Review by fate']);
   } else if(command.indexOf('review all') !==- 1) {
+    // Set stage to FINISHED so all review-all commands route back to handleFinished
+    state.conversationStage = 'FINISHED';
+
     var boxes = _.reject(state.boxes, (box) => box.deleted_at);
     var lines = _.map(boxes, (box, i) => {
       var loc = box.location ? ' (' + box.location + ')' : '';
@@ -1260,25 +1410,34 @@ function handleFinished(text) {
       state.renamePositions = null;
     }
 
-    setChips(deleteChips.concat(renameChips).concat(['New box','Done for now','Review by fate']));
+    // Build move chips based on number of eligible boxes
+    var moveChips = [];
+    var movePositions = _.range(1, boxes.length + 1);
+
+    if (movePositions.length === 1) {
+      moveChips.push('Move ' + movePositions[0]);
+    } else if (movePositions.length === 2) {
+      moveChips.push('Move ' + movePositions[0]);
+      moveChips.push('Move ' + movePositions[1]);
+    } else if (movePositions.length >= 3) {
+      moveChips.push('Move...');
+    }
+
+    // Store move positions for move commands
+    if (movePositions.length > 0) {
+      state.movePositions = movePositions;
+    } else {
+      state.movePositions = null;
+    }
+
+    setChips(deleteChips.concat(renameChips).concat(moveChips).concat(['New box','Done for now','Review by fate']));
   } else {
-    // Handle delete number commands in the review all context
-    if ((command === 'delete 1' || command === 'delete 2' ||
-         command === 'delete 3' || command === 'delete 4' ||
-         command === 'delete 5' || command === 'delete 6' ||
-         command === 'delete 7' || command === 'delete 8' ||
-         command === 'delete 9') &&
+    // Handle delete number commands in the review all context (for any number of boxes or specific selection in elliptical)
+    if (PATTERN_DELETE_NUMBER.test(command) &&
         state.emptyBoxesForDelete &&
-        state.emptyBoxesForDelete.length < 3 &&
         state.emptyBoxPositions) {
-      var match = command.match(/delete (\d+)/);
-      if (match) {
-        var boxNum = parseInt(match[1], 10);
-        var posIndex = state.emptyBoxPositions.indexOf(boxNum);
-        if (posIndex !== -1) {
-          handleDeleteEmptyBox(posIndex);
-          return;
-        }
+      if (executeReviewAllActionByNumber(command, /delete (\d+)/, state.emptyBoxPositions, handleDeleteEmptyBox)) {
+        return;
       }
     }
 
@@ -1290,22 +1449,31 @@ function handleFinished(text) {
       return;
     }
 
-    // Handle rename number commands in the review all context
-    if ((command === 'rename 1' || command === 'rename 2') &&
-        state.renamePositions &&
-        state.renamePositions.length < 3) {
-      var match = command.match(/rename (\d+)/);
-      if (match) {
-        var boxNum = parseInt(match[1], 10);
-        var posIndex = state.renamePositions.indexOf(boxNum);
-        if (posIndex !== -1) {
-          handleRenameBox(posIndex);
-          return;
-        }
+    // Handle move number commands in the review all context (for 1-9 boxes or specific selection in elliptical)
+    if (PATTERN_MOVE_NUMBER.test(command) &&
+        state.movePositions) {
+      if (executeReviewAllActionByNumber(command, /move (\d+)/, state.movePositions, handleMoveBox)) {
+        return;
       }
     }
 
-    // Handle rename... elliptical (3+ boxes) in the review all context
+    // Handle move... elliptical in the review all context
+    if (command === 'move...' &&
+        state.movePositions &&
+        state.movePositions.length >= 3) {
+      handleEllipticalMoveBox();
+      return;
+    }
+
+    // Handle rename number commands in the review all context (for any number of boxes or specific selection in elliptical)
+    if (PATTERN_RENAME_NUMBER.test(command) &&
+        state.renamePositions) {
+      if (executeReviewAllActionByNumber(command, /rename (\d+)/, state.renamePositions, handleRenameBox)) {
+        return;
+      }
+    }
+
+    // Handle rename... elliptical in the review all context
     if (command === 'rename...' &&
         state.renamePositions &&
         state.renamePositions.length >= 3) {
@@ -1314,7 +1482,7 @@ function handleFinished(text) {
     }
 
     // Handle other freeform commands while in review all
-    handleFreeform(text, []);
+    handleFreeform(command, []);
   }
 }
 
@@ -1400,6 +1568,80 @@ function handleEllipticalRenameConfirm(command) {
   addBotMessage('Invalid selection. Try again.');
 }
 
+function handleMoveBox(index) {
+  if (!state.movePositions || index < 0 || index >= state.movePositions.length) {
+    addBotMessage('Invalid box number.');
+    return;
+  }
+  var boxes = _.reject(state.boxes, (box) => box.deleted_at);
+  if (index >= boxes.length) {
+    addBotMessage('Invalid box number.');
+    return;
+  }
+  var box = boxes[index];
+  state.conversationStage = 'AWAITING_MOVE_LOCATION_REVIEW';
+  state.pendingMoveBoxId = box.id;
+  addBotMessage('Where would you like to move **"' + box.name + '"**?');
+}
+
+function handleEllipticalMoveBox() {
+  if (!state.movePositions || state.movePositions.length < 3) {
+    addBotMessage('No boxes to move.');
+    return;
+  }
+  state.conversationStage = 'AWAITING_MOVE_ELLIPTICAL';
+  var eligible = state.movePositions;
+  addBotMessage('Which box? Type _move_ followed by the number. Applies to: ' +
+    eligible.join(', ') + '.');
+  var input = document.getElementById('user-input');
+  if (input) {
+    input.value = 'move ';
+    if (input.focus) input.focus();
+  }
+}
+
+function handleMoveLocationConfirm(newLocation) {
+  var location = newLocation.trim();
+  if (!location) {
+    addBotMessage('Please provide a location.');
+    return;
+  }
+  var boxId = state.pendingMoveBoxId;
+  if (!boxId) {
+    addBotMessage('No box selected for moving.');
+    return;
+  }
+  var box = _.find(state.boxes, (b) => b.id === boxId);
+  if (!box) {
+    addBotMessage('Box not found.');
+    return;
+  }
+  var prevLocation = box.location || 'unspecified';
+  box.location = location;
+  state.pendingMoveBoxId = null;
+  state.conversationStage = 'FINISHED';
+  addBotMessage('Moved **"' + box.name + '"** from _' + prevLocation + '_ to _' +
+    location + '_.');
+  handleFinished('review all');
+}
+
+function handleEllipticalMoveConfirm(command) {
+  if (!state.movePositions || state.movePositions.length < 3) {
+    addBotMessage('No boxes available for moving.');
+    return;
+  }
+  var match = command.match(/move (\d+)/);
+  if (match) {
+    var boxNum = parseInt(match[1], 10);
+    var posIndex = state.movePositions.indexOf(boxNum);
+    if (posIndex !== -1) {
+      handleMoveBox(posIndex);
+      return;
+    }
+  }
+  addBotMessage('Invalid selection. Try again.');
+}
+
 function handleHelp() {
   if (state.boxes.length === 0) {
     addBotMessage(
@@ -1412,16 +1654,24 @@ function handleHelp() {
     var lines = [
       'Here\'s what you can do:',
       '_"New box"_ — start a new box',
+      '_"Add item"_ — add an item to the active box',
       '_"Review items"_ — list items in the active box, then type a number to view item detail',
       '_"Review all boxes"_ — summary of every box',
       '_"Review by fate"_ — review all items of a given fate across every box',
+      '_"Rename <box number>"_ — rename a box',
       '_"Move <location>"_ — move the active box to a new location',
+      '_"Delete <box number>"_ — delete an empty box',
       '_"Nest box"_ — put the active box inside another',
       '_"Dump into..."_ — transfer all items to another box',
-      '_"Done with this box"_ — finish and summarise',
-      '_"Remove <name or number>"_ — remove an item',
-      '_"Import json"_ — load a saved inventory',
+      '_"Trash <name or number>"_ — mark an item for deletion',
+      '_"Remove <name or number>"_ — remove an item from the active box',
       '_"Move to box"_ — from item detail view, move an item to another box',
+      '_"Done with this box"_ — finish sorting this box',
+      '_"Done for now"_ — end session and see summary',
+      '_"Import JSON"_ — load a saved inventory',
+      '_"Import CSV"_ — load items from a CSV file',
+      '_"Export JSON"_ — download your inventory as JSON',
+      '_"Export CSV"_ — download your inventory as CSV',
       '↑ / ↓ arrow keys — recall previous commands'
     ];
     addBotMessage(lines.join('\n'));
@@ -1846,7 +2096,8 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
 
 function setBoxOpenChips() {
   var box = activeBox();
-  var extra = box && box.items.length > 0 ? 'Dump into...' : 'Delete box';
+  var hasActiveItems = box && activeItems(box).length > 0;
+  var extra = hasActiveItems ? 'Dump into...' : 'Delete this box';
   setChips(['Add item', 'Review items', 'Move box', 'Nest box', extra, 'Review by fate', 'Done with this box']);
 }
 
@@ -1863,9 +2114,10 @@ function handleDeleteBox() {
     setBoxOpenChips();
     return;
   }
-  if (box.items.length > 0) {
+  var activeCount = activeItems(box).length;
+  if (activeCount > 0) {
     addBotMessage(
-      '**"' + box.name + '"** still has ' + box.items.length + ' item(s).' +
+      '**"' + box.name + '"** still has ' + activeCount + ' item(s).' +
       ' Empty the box first, or use _"dump into <box name>"_ to transfer all items to another box.'
     );
     setChips(['Review items', 'Dump into...', 'Done with this box']); // box has items
@@ -1915,7 +2167,8 @@ function dumpChipLabel(source, target) {
 function handleDump(text) {
   var box = activeBox();
   if (!box) { addBotMessage('No active box to dump. Open a box first.'); return; }
-  if (box.items.length === 0) { addBotMessage('"' + box.name + '" is already empty — nothing to dump.'); return; }
+  var activeCount = activeItems(box).length;
+  if (activeCount === 0) { addBotMessage('"' + box.name + '" is already empty — nothing to dump.'); return; }
 
   // Parse target from "dump into <name>" or "dump <name>"
   var command = text.toLowerCase().trim();
@@ -1935,7 +2188,7 @@ function handleDump(text) {
     }
     var chips = others.map(function(b){ return dumpChipLabel(box, b); });
     addBotMessage(
-      'Dump all ' + box.items.length + ' item(s) from **"' + box.name + '"** into which box?' +
+      'Dump all ' + activeCount + ' item(s) from **"' + box.name + '"** into which box?' +
       ' Type a new name to create one.'
     );
     setChips(chips);
@@ -1976,7 +2229,7 @@ function handleDumpTarget(text) {
     state.boxes.push(newBox);
     target = newBox;
     // Transfer items to new box, then ask for its location
-    var count = source.items.length;
+    var count = activeItems(source).length;
     source.items.forEach(function(item) { target.items.push(item); });
     source.items = [];
     // Set new box as active and ask for location
@@ -1989,7 +2242,7 @@ function handleDumpTarget(text) {
     return;
   }
 
-  var count = source.items.length;
+  var count = activeItems(source).length;
   source.items.forEach(function(item) { target.items.push(item); });
   source.items = [];
   // Re-parent direct children of source to target (preserving deeper ancestry)
@@ -3149,6 +3402,9 @@ if (typeof module !== 'undefined') {
     handleImportCSV,
     handleHelp,
     saveState,
+    setBoxOpenChips,
+    updateContextBar,
+    activeItems,
     escapeCSV,
     exportCSV,
     parseCSV,

@@ -27,6 +27,10 @@ var handleDeleteBox        = app.handleDeleteBox;
 var handleDeleteBoxConfirm = app.handleDeleteBoxConfirm;
 var handleDump             = app.handleDump;
 var handleDumpTarget       = app.handleDumpTarget;
+var setBoxOpenChips        = app.setBoxOpenChips;
+var updateContextBar       = app.updateContextBar;
+var activeItems            = app.activeItems;
+var doneWithBox            = app.doneWithBox;
 
 // ── HARNESS ───────────────────────────────────────────────────────────────────
 var passed = 0, failed = 0;
@@ -252,6 +256,71 @@ processInput('dump into dining room · Top Shelf', []);
 assert('items transferred via prefixed label', dst.items.length === 1);
 assert('source empty', src.items.length === 0);
 
+// ── SOFT-DELETE BUG FIX TESTS ──────────────────────────────────────────────────
+console.log('\n21. Soft-deleted items do not count as active: setBoxOpenChips decision');
+reset();
+box = makeBox('Test Box', 'bedroom');
+makeItem(box, 'Item A', 'keep');
+state.activeBoxId = box.id;
+setBoxOpenChips();
+assert('has items: shows Dump into... chip', lastChips.indexOf('Dump into...') !== -1);
+// Soft-delete the item
+box.items[0].deleted_at = new Date().toISOString();
+setBoxOpenChips();
+assert('only soft-deleted items: shows Delete this box chip', lastChips.indexOf('Delete this box') !== -1);
+assert('no Dump into... chip when only soft-deleted', lastChips.indexOf('Dump into...') === -1);
+
+console.log('\n22. Soft-deleted items do not block delete: handleDeleteBox guard');
+reset();
+box = makeBox('Test Box', 'bedroom');
+makeItem(box, 'Item A', 'keep');
+state.activeBoxId = box.id;
+processInput('delete box', []);
+assertIncludes('guard rejects delete with active items', lastBotMessage, 'still has 1 item(s)');
+// Soft-delete the item
+box.items[0].deleted_at = new Date().toISOString();
+processInput('delete box', []);
+assert('guard allows delete after soft-delete', state.conversationStage === 'AWAITING_DELETE_BOX_CONFIRM');
+
+console.log('\n23. Soft-deleted items do not block dump: handleDump guard');
+reset();
+box = makeBox('Test Box', 'bedroom');
+var otherBox = makeBox('Other Box', 'kitchen');
+makeItem(box, 'Item A', 'keep');
+state.activeBoxId = box.id;
+handleDump('dump');
+assertIncludes('dump shows target options when active items', lastBotMessage, 'into which box');
+// Soft-delete the item
+box.items[0].deleted_at = new Date().toISOString();
+handleDump('dump');
+assertIncludes('dump blocked when only soft-deleted', lastBotMessage, 'already empty');
+
+console.log('\n24. Item count messages show only active items');
+reset();
+box = makeBox('Test Box', 'bedroom');
+makeItem(box, 'Item A', 'keep');
+makeItem(box, 'Item B', 'keep');
+state.activeBoxId = box.id;
+doneWithBox();
+assertIncludes('shows 2 active items', lastBotMessage, '2');
+// Soft-delete one item
+box.items[0].deleted_at = new Date().toISOString();
+state.activeBoxId = box.id;
+doneWithBox();
+assertIncludes('shows 1 active item after soft-delete', lastBotMessage, '1');
+
+console.log('\n25. Soft-delete: dump target message counts active items only');
+reset();
+var src = makeBox('Source', 'bedroom');
+var dst = makeBox('Destination', 'kitchen');
+makeItem(src, 'Item A', 'keep');
+makeItem(src, 'Item B', 'keep');
+makeItem(src, 'Item C', 'keep');
+state.activeBoxId = src.id;
+// Soft-delete one
+src.items[0].deleted_at = new Date().toISOString();
+handleDump('dump');
+assertIncludes('dump message shows 2 active items', lastBotMessage, '2 item(s)');
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────
 console.log('\n' + (failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed\n');
