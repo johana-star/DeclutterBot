@@ -59,7 +59,7 @@ function makeBox(name, location) {
 }
 
 function makeItem(box, name, fate, notes) {
-  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: notes||'', photos: [], addedAt: '', deleted_at: null };
+  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: notes||'', photos: [], createdAt: '', deleted_at: null };
   box.items.push(item);
   return item;
 }

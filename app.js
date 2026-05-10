@@ -41,7 +41,7 @@ let state = {
   movePositions: null,
   pendingMoveBoxId: null,
 };
-const FATES = ['keep','donate','sell','unsure','trash'];
+const FATES = ['trash','return','sell','keep','donate','unsure'];
 function titleize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
@@ -105,9 +105,19 @@ function loadState() {
   var raw = localStorage.getItem('declutterbot_state');
   if (raw) { try {
     state = JSON.parse(raw);
-    // Normalise parentId: undefined -> null for boxes saved before nesting was added
     for (var i = 0; i < state.boxes.length; i++) {
-      if (state.boxes[i].parentId === undefined) state.boxes[i].parentId = null;
+      var box = state.boxes[i];
+      // Normalise parentId: undefined -> null (added when nesting was introduced)
+      if (box.parentId === undefined) box.parentId = null;
+      // Migrate items: addedAt -> createdAt, remove vestigial photos field
+      for (var j = 0; j < (box.items || []).length; j++) {
+        var item = box.items[j];
+        if (item.addedAt !== undefined && item.createdAt === undefined) {
+          item.createdAt = item.addedAt;
+          delete item.addedAt;
+        }
+        if (item.photos !== undefined) delete item.photos;
+      }
     }
   } catch(e) {} }
 }
@@ -135,62 +145,202 @@ function countFates(box) {
   }, {});
 }
 
+// Location collapse state — persisted in localStorage, not in app state
+var collapsedLocationKeys = (function() {
+  try {
+    var raw = localStorage.getItem('declutterbot_collapsed_locations');
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+})();
+
+// Active location filter — session only
+var activeLocationFilter = null;
+
+function saveCollapsedLocations() {
+  try {
+    localStorage.setItem('declutterbot_collapsed_locations', JSON.stringify(collapsedLocationKeys));
+  } catch(e) {}
+}
+
+function toggleLocationCollapse(locKey) {
+  var idx = collapsedLocationKeys.indexOf(locKey);
+  if (idx === -1) collapsedLocationKeys.push(locKey);
+  else collapsedLocationKeys.splice(idx, 1);
+  saveCollapsedLocations();
+  renderSidebar();
+}
+
+function setLocationFilter(locKey) {
+  if (activeLocationFilter === locKey) {
+    clearLocationFilter();
+  } else {
+    activeLocationFilter = locKey;
+    renderSidebar();
+  }
+}
+
+function clearLocationFilter() {
+  activeLocationFilter = null;
+  renderSidebar();
+}
+
 function renderSidebar() {
   var el = document.getElementById('sidebar-content');
   var cnt = document.getElementById('box-count');
+  var inventoryLabel = document.getElementById('inventory-label');
+  var filterBadge = document.getElementById('filter-badge');
+
   cnt.textContent = state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '');
-  if (state.boxes.length===0) {
+  if (state.boxes.length === 0) {
     el.innerHTML = '<div class="empty-sidebar">No boxes yet.<br/>Start chatting to<br/>begin sorting.</div>';
+    if (inventoryLabel) inventoryLabel.className = 'inventory-label';
+    if (filterBadge) filterBadge.style.display = 'none';
     return;
   }
-  el.innerHTML = renderBoxTree(null, 0, collapsedBoxIds);
+
+  // Group top-level boxes by normalized location, preserving order
+  var topLevel = state.boxes.filter(function(b) { return (b.parentId == null); });
+  var locationOrder = [];
+  var locationGroups = {};
+  topLevel.forEach(function(box) {
+    var locKey = (box.location || '').toLowerCase().trim() || 'no location';
+    if (!locationGroups[locKey]) {
+      locationGroups[locKey] = { display: box.location || 'no location', boxes: [] };
+      locationOrder.push(locKey);
+    }
+    locationGroups[locKey].boxes.push(box);
+  });
+
+  // Update sidebar header
+  var isFiltered = activeLocationFilter !== null && locationGroups[activeLocationFilter];
+  if (inventoryLabel) {
+    inventoryLabel.className = 'inventory-label' + (isFiltered ? ' inventory-label-filtered' : '');
+    inventoryLabel.onclick = isFiltered ? clearLocationFilter : null;
+  }
+  if (filterBadge) {
+    if (isFiltered) {
+      var filteredCount = locationGroups[activeLocationFilter].boxes.length;
+      filterBadge.style.display = 'inline-flex';
+      filterBadge.innerHTML = escHtml(locationGroups[activeLocationFilter].display)
+        + ' <span class="filter-badge-x" onclick="clearLocationFilter()">&#x2715;</span>';
+      cnt.innerHTML = '<span class="count-filtered">' + filteredCount + '</span> of ' + state.boxes.length;
+    } else {
+      filterBadge.style.display = 'none';
+      cnt.textContent = state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '');
+    }
+  }
+
+  var html = '';
+  locationOrder.forEach(function(locKey) {
+    var group = locationGroups[locKey];
+    var isMulti = group.boxes.length > 1;
+    var isLocCollapsed = collapsedLocationKeys.indexOf(locKey) !== -1;
+    var isFiltering = activeLocationFilter !== null;
+    var isFilteredOut = isFiltering && activeLocationFilter !== locKey;
+    var isFilteredIn = isFiltering && activeLocationFilter === locKey;
+    // Suppress box-active highlight when dimmed; filter-active always wins
+    var hasActiveBox = group.boxes.some(function(b) { return b.id === state.activeBoxId; });
+    var showActive = isFilteredIn || (!isFilteredOut && hasActiveBox);
+
+    var activeClass = showActive ? ' loc-active' : '';
+    var dimClass = isFilteredOut ? ' loc-dimmed' : '';
+
+    if (isMulti) {
+      var caretChar = isLocCollapsed ? '&#9654;' : '&#9660;';
+      var collapsedTags = '';
+      if (isLocCollapsed) {
+        var totals = {};
+        group.boxes.forEach(function(b) {
+          var fc = countFates(b);
+          FATES.forEach(function(f) {
+            if (fc[f]) totals[f] = (totals[f] || 0) + fc[f];
+          });
+        });
+        FATES.forEach(function(f) {
+          if (totals[f]) {
+            collapsedTags += '<span class="tag tag-' + f + '">' + f + ' ' + totals[f] + '</span>';
+          }
+        });
+      }
+      html += '<div class="location-header' + activeClass + dimClass + '" onclick="setLocationFilter(\'' + escAttr(locKey) + '\')">'
+        + '<div class="location-header-top">'
+        + '<button class="location-caret" onclick="event.stopPropagation();toggleLocationCollapse(\'' + escAttr(locKey) + '\')">' + caretChar + '</button>'
+        + '<span class="location-label">' + escHtml(group.display) + '</span>'
+        + '<span class="location-count">' + group.boxes.length + ' boxes</span>'
+        + '</div>'
+        + (collapsedTags ? '<div class="location-tags">' + collapsedTags + '</div>' : '')
+        + '</div>';
+    } else {
+      html += '<div class="location-header single' + activeClass + dimClass + '" onclick="setLocationFilter(\'' + escAttr(locKey) + '\')">'
+        + '<div class="location-header-top">'
+        + '<span class="location-label-spacer"></span>'
+        + '<span class="location-label">' + escHtml(group.display) + '</span>'
+        + '<span class="location-count">1 box</span>'
+        + '</div>'
+        + '</div>';
+    }
+
+    // Show boxes unless this location is filtered out, or multi+collapsed
+    if (!isFilteredOut && (!isMulti || !isLocCollapsed)) {
+      group.boxes.forEach(function(box) {
+        html += renderBoxCard(box, 0, collapsedBoxIds);
+      });
+    }
+  });
+
+  el.innerHTML = html;
+}
+
+
+
+function renderBoxCard(box, depth, collapsedIds) {
+  var fates = countFates(box);
+  var tags = '';
+  for (var fi = 0; fi < FATES.length; fi++) {
+    var f = FATES[fi];
+    if (fates[f] > 0) tags += '<span class="tag tag-' + f + '">' + f + ' ' + fates[f] + '</span>';
+  }
+  var total = _.reject(box.items, function(it) { return it.deleted_at; }).length;
+  var kidBoxes = state.boxes.filter(function(b) { return b.parentId === box.id; });
+  var hasKids = kidBoxes.length > 0;
+  var isCollapsed = collapsedIds && collapsedIds.indexOf(box.id) !== -1;
+  var ac = box.id === state.activeBoxId ? ' active' : '';
+  var indent = depth * 16;
+  var caret = hasKids
+    ? '<button class="sidebar-caret" onclick="event.stopPropagation();toggleCollapse(\'' + box.id + '\')">'
+      + (isCollapsed ? '&#9654;' : '&#9660;') + '</button>'
+    : '<span class="sidebar-caret-spacer"></span>';
+  var metaParts = [];
+  if (total > 0) metaParts.push(total + ' item' + (total !== 1 ? 's' : ''));
+  if (hasKids) metaParts.push(kidBoxes.length + ' box' + (kidBoxes.length !== 1 ? 'es' : ''));
+  if (metaParts.length === 0) metaParts.push('empty');
+  var html = '<div class="box-card' + ac + '" draggable="true" data-box-id="' + box.id + '"'
+    + ' style="margin-left:' + indent + 'px" onclick="selectBox(\'' + box.id + '\')">'
+    + '<div class="box-card-header">' + caret
+    + '<div class="box-card-body">'
+    + '<div class="box-card-text">'
+    + '<div class="box-name">' + escHtml(box.name) + '</div>'
+    + '<div class="box-meta">' + metaParts.join(', ') + '</div>'
+    + '</div>'
+    + (tags ? '<div class="box-counts">' + tags + '</div>' : '')
+    + '</div></div></div>';
+  if (!isCollapsed) {
+    html += renderBoxTree(box.id, depth + 1, collapsedIds);
+  }
+  return html;
 }
 
 function renderBoxTree(boxId, depth, collapsedIds) {
   var html = '';
-  // Treat undefined parentId same as null — boxes created before parentId was added
-  var children = state.boxes.filter(function(b){
-    var pid = (b.parentId == null) ? null : b.parentId;
-    return pid === boxId;
+  var children = state.boxes.filter(function(b) {
+    return (b.parentId == null ? null : b.parentId) === boxId;
   });
-  for (var i = 0; i < children.length; i++) {
-    var box = children[i];
-    var fates = countFates(box);
-    var tags = '';
-    for (var j = 0; j < FATES.length; j++) {
-      var f = FATES[j];
-      if (fates[f] > 0) tags += '<span class="tag tag-' + f + '">' + f + ' ' + fates[f] + '</span>';
-    }
-    var total = _.reject(box.items, function(it) { return it.deleted_at; }).length;
-    var kidBoxes = state.boxes.filter(function(b){ return b.parentId === box.id; });
-    var hasKids = kidBoxes.length > 0;
-    var isCollapsed = collapsedIds && collapsedIds.indexOf(box.id) !== -1;
-    var ac = box.id === state.activeBoxId ? ' active' : '';
-    var indent = depth * 16;
-    var caret = hasKids
-      ? '<button class="sidebar-caret" onclick="event.stopPropagation();toggleCollapse(\'' + box.id + '\')">'
-        + (isCollapsed ? '&#9654;' : '&#9660;') + '</button>'
-      : '<span class="sidebar-caret-spacer"></span>';
-    // Meta line: show own items + child box count if any
-    var metaParts = [];
-    if (total > 0) metaParts.push(total + ' item' + (total !== 1 ? 's' : ''));
-    if (hasKids) metaParts.push(kidBoxes.length + ' box' + (kidBoxes.length !== 1 ? 'es' : ''));
-    if (metaParts.length === 0) metaParts.push('empty');
-    var metaStr = escHtml(box.location || 'location unknown') + ' &middot; ' + metaParts.join(', ');
-    html += '<div class="box-card' + ac + '" draggable="true" data-box-id="' + box.id + '"'
-      + ' style="margin-left:' + indent + 'px" onclick="selectBox(\'' + box.id + '\')">'
-      + '<div class="box-card-header">' + caret
-      + '<div class="box-card-body">'
-      + '<div class="box-name">' + escHtml(box.name) + '</div>'
-      + '<div class="box-meta">' + metaStr + '</div>'
-      + (tags ? '<div class="box-counts">' + tags + '</div>' : '')
-      + '</div></div></div>';
-    if (!isCollapsed) {
-      html += renderBoxTree(box.id, depth + 1, collapsedIds);
-    }
+  for (var ci = 0; ci < children.length; ci++) {
+    html += renderBoxCard(children[ci], depth, collapsedIds);
   }
   return html;
 }
+
 
 function selectBox(id) {
   state.activeBoxId = id;
@@ -247,6 +397,9 @@ function updateBudgetDisplay(recalculating) {
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+function escAttr(s) {
+  return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
 function renderMarkdown(s) {
   return s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>').replace(/\n/g,'<br/>');
 }
@@ -287,7 +440,7 @@ function _setChipsImpl(chips) {
   for (var i=0;i<chips.length;i++) {
     var c=chips[i];
     var fc = FATES.indexOf(c.toLowerCase())!==-1?' fate-'+c.toLowerCase():'';
-    html += '<button class="chip'+fc+'" onclick="chipClick(\'' + escHtml(c) + '\')">'+escHtml(c)+'</button>';
+    html += '<button class="chip'+fc+'" onclick="chipClick(\'' + escAttr(c) + '\')">'+escHtml(c)+'</button>';
   }
   el.innerHTML = html;
 }
@@ -397,7 +550,7 @@ function handleBoxOpen(command, photos) {
 
 function handleAddItem() {
   if (!activeBox()) {
-    addBotMessage('No active box — open a box first, or start a new one.');
+    addBotMessage('No active box. Open one first, or start a new one.');
     setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
   } else {
     state.conversationStage = 'BOX_OPEN';
@@ -444,7 +597,8 @@ function tryGlobalIntercept(command, photos) {
   if (command === 'keep...')   { handleEllipticalAction('Keep',   group => group.fate !== 'keep');   return true; }
   if (command === 'sell...')   { handleEllipticalAction('Sell',   group => group.fate !== 'sell');   return true; }
   if (command === 'trash...')  { handleEllipticalAction('Trash',  group => group.fate !== 'trash');  return true; }
-  if (command === 'unsure...') { handleEllipticalAction('Unsure', group => group.fate !== 'unsure'); return true; }
+  if (command === 'unsure...')  { handleEllipticalAction('Unsure',  group => group.fate !== 'unsure');  return true; }
+  if (command === 'return...') { handleEllipticalAction('Return', group => group.fate !== 'return'); return true; }
 
   // handleFateReview
   if (['review donate', 'review keep', 'review sell', 'review trash', 'review unsure'].includes(command)) {
@@ -463,39 +617,38 @@ function tryGlobalIntercept(command, photos) {
 
   // handleItemViewAction
   if (command === 'back to list') { handleItemViewAction('back to list'); return true; }
+  if (command.startsWith('back to ')) { handleItemViewAction(command); return true; }
 
   // handleNest
   if (['nest box', 'put inside'].includes(command)) { handleNest(command); return true; }
 
-  // import
+  // import — typed commands set format then trigger the shared file input
   if (['import', 'import json'].includes(command)) {
-    const importEl = document.getElementById('import-input');
-    if (importEl) importEl.click();
-    // Both button click and 'import' command trigger the same file input,
-    // which fires onchange → handleImportJSON(). This ensures button and command
-    // behave identically. There is a potential edge case where the command is not
-    // intercepted correctly, which is why the default fallback encourages the user
-    // to use the button path.
-    else addBotMessage('Use the ↑ Import JSON button in the header to import a file.');
+    if (typeof setFormat === 'function') setFormat('json');
+    if (typeof triggerImport === 'function') triggerImport();
+    else addBotMessage('Use the ↑ Import button in the header to import a file.');
     return true;
   }
 
-  // import csv
   if (['import csv'].includes(command)) {
-    const importCSVEl = document.getElementById('import-csv-input');
-    if (importCSVEl) importCSVEl.click();
-    // Both button click and 'import csv' command trigger the same file input,
-    // which fires onchange → handleImportCSV(). This ensures button and command
-    // behave identically. There is a potential edge case where the command is not
-    // intercepted correctly, which is why the default fallback encourages the user
-    // to use the button path.
-    else addBotMessage('Use the ↑ Import CSV button in the header to import a file.');
+    if (typeof setFormat === 'function') setFormat('csv');
+    if (typeof triggerImport === 'function') triggerImport();
+    else addBotMessage('Use the ↑ Import button in the header to import a file.');
     return true;
   }
 
-  // export csv
-  if (['export csv', 'export'].includes(command)) {
-    exportCSV();
+  // export — typed commands set format then export
+  if (['export csv'].includes(command)) {
+    if (typeof setFormat === 'function') setFormat('csv');
+    if (typeof triggerExport === 'function') triggerExport();
+    else exportCSV();
+    return true;
+  }
+
+  if (['export', 'export json'].includes(command)) {
+    if (typeof setFormat === 'function') setFormat('json');
+    if (typeof triggerExport === 'function') triggerExport();
+    else exportJSON();
     return true;
   }
 
@@ -542,6 +695,29 @@ function tryGlobalIntercept(command, photos) {
 
   // dump variants
   if (command.split(' ')[0] === 'dump') { handleDump(command); return true; }
+
+  // fate N chips — keep N, donate N, sell N, unsure N, return N, trash N, delete N
+  if (/^(keep|donate|sell|unsure|return) \d+$/.test(command)) {
+    var fateMatch = command.match(/^(\w+) (\d+)$/);
+    var fateWord = fateMatch[1];
+    var fateNum = parseInt(fateMatch[2], 10);
+    var fateBox = activeBox();
+    if (fateBox) {
+      var fateGroups = groupItems(fateBox.items);
+      if (fateNum >= 1 && fateNum <= fateGroups.length) {
+        var fateGroup = fateGroups[fateNum - 1];
+        fateBox.items.forEach(function(it) {
+          if (it.name === fateGroup.name && it.fate === fateGroup.fate && !it.deleted_at) {
+            it.fate = fateWord;
+          }
+        });
+        commitState();
+        addBotMessage('**' + fateGroup.name + '** \u2192 ' + fateWord + '.');
+        reviewBox();
+      }
+    }
+    return true;
+  }
 
   // trash N / delete N
   if (/^trash \d+$/.test(command)) {
@@ -623,6 +799,7 @@ function routeToHandler(stage, command, photos) {
     case 'AWAITING_BOX_RENAME':          handleBoxRenameConfirm(command);      break;
     case 'AWAITING_RENAME_ELLIPTICAL':   handleEllipticalRenameConfirm(command); break;
     case 'AWAITING_MOVE_LOCATION_REVIEW': handleMoveLocationConfirm(command);  break;
+    case 'AWAITING_RESET_CONFIRM':         handleResetConfirm(command);          break;
     case 'AWAITING_MOVE_ELLIPTICAL':     handleEllipticalMoveConfirm(command); break;
     case 'FINISHED':                     handleFinished(command);              break;
     default:                             handleFreeform(command, photos);
@@ -753,12 +930,12 @@ function isReservedCommand(text) {
   // Elliptical commands (with ...)
   if (/\.\.\.$/.test(cmd)) {
     var base = cmd.replace(/\.\.\.$/, '');
-    var reserved = ['delete', 'rename', 'move', 'donate', 'keep', 'sell', 'trash', 'unsure', 'review', 'dump'];
+    var reserved = ['delete', 'rename', 'move', 'donate', 'keep', 'sell', 'trash', 'unsure', 'return', 'review', 'dump'];
     if (reserved.includes(base)) return true;
   }
 
-  // Number-based commands: delete 1, move 5, rename 3, trash 2, etc.
-  if (/^(delete|rename|move|trash)\s+\d+$/.test(cmd)) return true;
+  // Number-based commands: delete 1, move 5, rename 3, trash 2, keep 1, donate 2, etc.
+  if (/^(delete|rename|move|trash|keep|donate|sell|unsure|return)\s+\d+$/.test(cmd)) return true;
 
   // Review commands with numbers (review keep (3), etc.)
   if (/^review\s+(keep|donate|trash|sell|unsure)(\s*\(\d+\))?$/.test(cmd)) return true;
@@ -786,7 +963,7 @@ function executeReviewAllActionByNumber(command, pattern, positionsArray, handle
 function startNewBox() {
   state.activeBoxId=null; state.activeItemId=null;
   state.conversationStage='AWAITING_BOX_NAME';
-  addBotMessage('Starting a new box. What would you like to call it?');
+  addBotMessage('New box. What\'s it called?');
 }
 // ── SINGULARIZER ─────────────────────────────────────────────────────────────
 function singularize(word) {
@@ -856,10 +1033,9 @@ function handleBoxName(text) {
   var box = {id:uid(),name:raw,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
   state.boxes.push(box); state.activeBoxId=box.id;
   state.conversationStage='AWAITING_LOCATION';
-  addBotMessage(
-    'Got it \u2014 **"' + raw + '"**.\n\nWhere is this box located?' +
-    ' (e.g. "spare bedroom", "garage shelf 2", "storage unit A")'
-  );
+  var locP = locationPrompt('**"' + raw + '"** \u2014 good name.');
+  addBotMessage(locP.message);
+  setChips(locP.chips);
 }
 
 function handleBoxBatchConfirm(text) {
@@ -875,7 +1051,9 @@ function handleBoxBatchConfirm(text) {
     };
     state.boxes.push(box); state.activeBoxId=box.id;
     state.conversationStage='AWAITING_LOCATION';
-    addBotMessage('Just the one **"'+batch.baseName+'"** then.\n\nWhere is this box located?');
+    var bsLocP = locationPrompt('Just the one **"'+batch.baseName+'"** then.');
+    addBotMessage(bsLocP.message);
+    setChips(bsLocP.chips);
     return;
   }
   if (command.includes('change') || command.includes('quantity')) {
@@ -888,10 +1066,9 @@ function handleBoxBatchConfirm(text) {
   var qty = numMatch ? parseInt(numMatch[0], 10) : batch.qty;
   batch.qty = qty;
   state.conversationStage = 'AWAITING_BOX_BATCH_LOCATION';
-  addBotMessage(
-    'Where are all ' + qty + ' **' + batch.baseName + '** boxes located?' +
-    ' (They\'ll share the same location)'
-  );
+  var bmLocP = locationPrompt('Where are all ' + qty + ' **' + batch.baseName + '** boxes located? (They\'ll share the same location)');
+  addBotMessage(bmLocP.message);
+  setChips(bmLocP.chips);
 }
 
 function handleBoxBatchQty(text) {
@@ -936,12 +1113,86 @@ function handleBoxBatchLocation(text) {
   setChips(['Skip to next box','Review items','Done']);
 }
 
+// Returns up to 3 most-recently-created distinct locations (normalized lowercase),
+// preserving the display form of the most recent box at each location.
+function recentLocations() {
+  var seen = {};
+  var result = [];
+  for (var i = state.boxes.length - 1; i >= 0; i--) {
+    var loc = (state.boxes[i].location || '').trim();
+    if (!loc || loc === 'unspecified') continue;
+    var key = loc.toLowerCase();
+    if (!seen[key]) {
+      seen[key] = true;
+      result.push(loc);
+      if (result.length === 3) break;
+    }
+  }
+  return result;
+}
+
+// Returns { message, chips } for the location prompt, context-aware.
+function locationPrompt(boxLabel) {
+  var recent = recentLocations();
+  var allLocs = [];
+  var seenAll = {};
+  for (var i = state.boxes.length - 1; i >= 0; i--) {
+    var loc = (state.boxes[i].location || '').trim();
+    if (!loc || loc === 'unspecified') continue;
+    var k = loc.toLowerCase();
+    if (!seenAll[k]) { seenAll[k] = true; allLocs.push(loc); }
+  }
+
+  var msg;
+  if (recent.length === 0) {
+    msg = (boxLabel ? boxLabel + '\n\n' : '') +
+      'Where is this box located? (e.g. "spare bedroom", "garage shelf 2", "storage unit A")';
+  } else {
+    var examples = recent.map(function(l) { return '"' + l + '"'; }).join(', ');
+    msg = (boxLabel ? boxLabel + '\n\n' : '') +
+      'Where is this box located? (e.g. ' + examples + ')';
+  }
+
+  var chips = recent.slice();
+  chips.push('New location');
+  if (allLocs.length >= 4) chips.push('List all locations');
+  return { message: msg, chips: chips };
+}
+
 function handleLocation(text) {
-  var box=activeBox(); box.location=text.trim()||'unspecified';
-  state.conversationStage='BOX_OPEN';
+  var command = text.toLowerCase().trim();
+
+  // "List all locations" chip
+  if (command === 'list all locations') {
+    var allLocs = [];
+    var seenAll = {};
+    for (var i = state.boxes.length - 1; i >= 0; i--) {
+      var loc = (state.boxes[i].location || '').trim();
+      if (!loc || loc === 'unspecified') continue;
+      var k = loc.toLowerCase();
+      if (!seenAll[k]) { seenAll[k] = true; allLocs.push(loc); }
+    }
+    var prompt = locationPrompt();
+    addBotMessage('All locations:\n\n' + allLocs.map(function(l) { return '- ' + l; }).join('\n') +
+      '\n\n' + prompt.message);
+    setChips(prompt.chips);
+    return;
+  }
+
+  // "New location" chip — just re-prompt with empty input so user can type freely
+  if (command === 'new location') {
+    var prompt2 = locationPrompt();
+    addBotMessage('Type the new location name:');
+    setChips(prompt2.chips.filter(function(c) { return c !== 'New location'; }));
+    return;
+  }
+
+  var box = activeBox();
+  box.location = text.trim() || 'unspecified';
+  state.conversationStage = 'BOX_OPEN';
   addBotMessage(
-    'Perfect. Box **"' + box.name + '"** is in _' + box.location + '_.' +
-    '\n\nNow let\'s sort through it. Tell me about the **first item** you pick up \u2014 what is it?'
+    '**"' + box.name + '"** in the _' + box.location + '_.' +
+    '\n\nFirst item?'
   );
   setChips(['Skip to next box','Review items','Done']);
 }
@@ -1013,7 +1264,6 @@ function handleItemName(text, photos) {
     state.pendingBatch= {
       qty: parsed.qty,
       itemName: parsed.itemName,
-      photos: photos || []
     };
     state.conversationStage = 'AWAITING_BATCH_CONFIRM';
     addBotMessage('I see **' + parsed.qty + ' \u00d7 ' + parsed.itemName + '**. Should I log ' + parsed.qty +
@@ -1028,14 +1278,13 @@ function handleItemName(text, photos) {
     description: '',
     fate: 'unsure',
     notes: '',
-    photos: photos || [],
-    addedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
     deleted_at: null
   };
   addItem(box, item);
   state.activeItemId = item.id;
   state.conversationStage = 'AWAITING_FATE';
-  addBotMessage('**' + name + '** \u2014 noted.\n\nWhat should we do with it?');
+  addBotMessage('**' + name + '.** Keep it, sell it, or out it goes?');
   setChips(FATE_TITLES);
 }
 
@@ -1053,12 +1302,12 @@ function handleBatchConfirm(text, photos) {
     var box = activeBox();
     var item = {
       id: uid(), name: batch.itemName, description: '', fate: 'unsure',
-      notes: '', photos: batch.photos, addedAt: new Date().toISOString(),
+      notes: '', createdAt: new Date().toISOString(),
       deleted_at: null
     };
     addItem(box, item); state.activeItemId = item.id;
     state.conversationStage = 'AWAITING_FATE';
-    addBotMessage('Just the one **' + batch.itemName + '** then. What should we do with it?');
+    addBotMessage('Just the one **' + batch.itemName + '**. What should we do with it?');
     setChips(FATE_TITLES);
     return;
   }
@@ -1066,7 +1315,7 @@ function handleBatchConfirm(text, photos) {
       command.indexOf('confirm') !== -1 || command.match(/^\d+$/)) {
     var nm = command.match(/\d+/);
     var qty = nm ? parseInt(nm[0],10) : batch.qty;
-    commitBatch(qty, batch.itemName, batch.photos); return;
+    commitBatch(qty, batch.itemName); return;
   }
   addBotMessage('Log **' + batch.qty + ' \u00d7 ' + batch.itemName + '** as separate entries?');
   setChips(['Yes, log ' + batch.qty,'No, just 1','Change quantity']);
@@ -1086,7 +1335,7 @@ function handleBatchQty(text) {
   setChips(['Yes, log '+qty,'No, just 1']);
 }
 
-function commitBatch(qty, itemName, photos) {
+function commitBatch(qty, itemName) {
   var box = activeBox();
   var now = new Date().toISOString();
   var firstId = uid();
@@ -1097,8 +1346,7 @@ function commitBatch(qty, itemName, photos) {
       description: '',
       fate: 'unsure',
       notes: '',
-      photos: i === 0 ? photos : [],
-      addedAt:now,
+      createdAt: now,
       deleted_at: null
     });
   }
@@ -1112,7 +1360,7 @@ function commitBatch(qty, itemName, photos) {
 function handleBatchFate(text, photos) {
   var box=activeBox(); var t=text.toLowerCase().trim();
   if (t.indexOf('mixed')!==-1) {
-    addBotMessage('No problem \u2014 I\'ll ask about each one individually.');
+    addBotMessage('Just the one, then. What should we do with it?');
     state.conversationStage='AWAITING_FATE'; setChips(FATE_TITLES);
     return;
   }
@@ -1125,7 +1373,7 @@ function handleBatchFate(text, photos) {
   var anchor=activeItem();
   if (anchor) {
     for (var i = 0; i < box.items.length; i++) {
-      if (box.items[i].name === anchor.name && box.items[i].addedAt === anchor.addedAt) {
+      if (box.items[i].name === anchor.name && box.items[i].createdAt === anchor.createdAt) {
         box.items[i].fate = matched;
       }
     }
@@ -1161,11 +1409,12 @@ function handleFate(text, photos) {
   }
   item.fate=matched;
   var fm = {
-    keep:   '\u2705 **Keep** \u2014 going back home.',
-    donate: '\uD83D\uDC99 **Donate** \u2014 someone will love this.',
-    trash:  '\uD83D\uDDD1 **Trash** \u2014 out it goes.',
-    sell:   '\uD83D\uDCB0 **Sell** \u2014 make some money!',
-    unsure: '\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit it.'
+    keep:   '\u2705 **Keep.** Back it goes.',
+    donate: '\uD83D\uDC99 **Donate.** Someone else\'s treasure.',
+    trash:  '\uD83D\uDDD1 **Trash.** Gone.',
+    sell:   '\uD83D\uDCB0 **Sell.** Worth something to someone.',
+    unsure: '\uD83E\uDD37 **Unsure.** We\'ll come back to it.',
+    return: '\uD83D\uDCE6 **Return.** Noted\u2026 someone\'s waiting for this.'
   };
   if (matched === 'trash') {
     var boxPref = activeBox() ? boxTrashPreferences[activeBox().id] : null;
@@ -1192,8 +1441,7 @@ function handleFate(text, photos) {
   }
   state.conversationStage='AWAITING_ITEM_NOTES';
   addBotMessage(
-    fm[matched] + '\n\nAny notes about this one? (condition, value, destination)' +
-    ' \u2014 or say _"next"_ to move on.'
+    fm[matched] + '\n\nAnything to note? (condition, value, where it\'s going) \u2014 or just say _"next"_.'
   );
   setChips(['Next item','No notes','Done with this box']);
 }
@@ -1203,7 +1451,7 @@ function handleItemNotes(text) {
   if(item&&t!=='next'&&t!=='next item'&&t!=='no notes'&&text.trim()) item.notes=text.trim();
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   var box=activeBox();
-  addBotMessage('Got it. **'+activeItems(box).length+'** item(s) logged in "'+box.name+'".\n\nWhat\'s the next item?');
+  addBotMessage('**' + activeItems(box).length + ' in the box.** What\'s next?');
   setBoxOpenChips();
 }
 
@@ -1215,8 +1463,7 @@ function doneWithBox() {
   if (box) delete boxTrashPreferences[box.id];
   state.activeBoxId=null; state.activeItemId=null; state.conversationStage='FINISHED';
   addBotMessage(
-    'Nice work on **"' + box.name + '"**!\n\nSummary: ' + summary +
-    '.\n\nReady to tackle another box, or are you done for now?'
+    '**"' + box.name + '"** \u2014 done.\n\n' + summary + '.\n\nAnother box, or done for now?'
   );
   setChips(['New box','Done for now','Review all boxes','Review by fate']);
 }
@@ -1346,8 +1593,7 @@ function handleFinished(text) {
       var activeItems = _.reject(state.boxes[i].items, (item) => item.deleted_at);
       total += activeItems.length;
     };
-    addBotMessage('Great session! You\'ve sorted **' + state.boxes.length + '** box(es) with **' + total +
-      '** items total.\n\nYou can download your data anytime with the buttons at the top. 📦');
+    addBotMessage('Good work. **' + state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '') + '**, **' + total + ' item' + (total !== 1 ? 's' : '') + '** sorted.\n\nExport any time with the buttons above.');
     setChips(['Start new box', 'Review by fate']);
   } else if(command.indexOf('review all') !==- 1) {
     // Set stage to FINISHED so all review-all commands route back to handleFinished
@@ -1645,7 +1891,7 @@ function handleEllipticalMoveConfirm(command) {
 function handleHelp() {
   if (state.boxes.length === 0) {
     addBotMessage(
-      'Hello! I\'m **DeclutterBot**, your sorting companion.\n\nTell me what to call your first box to get started.'
+      'What\'s the first box called?'
     );
     state.conversationStage = 'AWAITING_BOX_NAME';
     setChips(['Start sorting']);
@@ -1689,18 +1935,18 @@ function handleFreeform(text, photos) {
   var greetings = ['hi','hello','hey','help','?','list boxes','inventory','start'];
   if (greetings.indexOf(command) !== -1 || !activeBox()) {
     if (state.boxes.length === 0) {
-      addBotMessage('Hello! Ready to start sorting? Tell me what to call your first box.');
+      addBotMessage('What\'s the first box called?');
       state.conversationStage = 'AWAITING_BOX_NAME';
       setChips(['Start sorting']);
     } else {
-      addBotMessage('Welcome back! You have **' + state.boxes.length + '** box(es). What would you like to do?');
+      addBotMessage('Back at it. **' + state.boxes.length + '** box' + (state.boxes.length !== 1 ? 'es' : '') + ' in play. Pick up where you left off?');
       state.conversationStage = 'FINISHED';
       setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     }
     return;
   }
   addBotMessage(
-    'I\'m not sure what you mean \u2014 try: _"New box"_, _"Add item"_, _"Done with this box"_, or _"Review items"_.'
+    'Not sure what you mean. Try: _"New box"_, _"Add item"_, _"Done with this box"_, or _"Review items"_.'
   );
   setBoxOpenChips();
 }
@@ -1712,7 +1958,6 @@ function exportJSON() {
     for(var j=0;j<box.items.length;j++){
       var it=box.items[j];
       var exported = Object.assign({},it);
-      delete exported.photos;
       items.push(exported);
     }
     data.boxes.push(Object.assign({},box,{items:items}));
@@ -1731,7 +1976,7 @@ function escapeCSV(field) {
 }
 
 function exportCSV() {
-  var header = ['location,box name,item name,fate,notes'];
+  var header = ['location,box name,item name,fate,notes,box id,item id'];
   var rows = state.boxes.reduce(function(acc, box) {
     var boxRows = box.items.map(function(item) {
       return [
@@ -1739,7 +1984,9 @@ function exportCSV() {
         escapeCSV(box.name),
         escapeCSV(item.name),
         escapeCSV(item.fate),
-        escapeCSV(item.notes || '')
+        escapeCSV(item.notes || ''),
+        escapeCSV(box.id || ''),
+        escapeCSV(item.id || '')
       ].join(',');
     });
     return acc.concat(boxRows);
@@ -1765,29 +2012,36 @@ function parseCSV(text) {
   var headerLine = lines[0];
   var headers = parseCSVLine(headerLine);
 
-  var expectedHeaders = ['location', 'box name', 'item name', 'fate', 'notes'];
-  var headerMatch = JSON.stringify(headers) === JSON.stringify(expectedHeaders);
-  if (!headerMatch) {
+  var legacyHeaders = ['location', 'box name', 'item name', 'fate', 'notes'];
+  var fullHeaders   = ['location', 'box name', 'item name', 'fate', 'notes', 'box id', 'item id'];
+  var isLegacy = JSON.stringify(headers) === JSON.stringify(legacyHeaders);
+  var isFull   = JSON.stringify(headers) === JSON.stringify(fullHeaders);
+
+  if (!isLegacy && !isFull) {
     addBotMessage(
-      'CSV format error: expected columns in order: location, box name, item name, fate, notes'
+      'CSV format error: expected columns in order: location, box name, item name, fate, notes' +
+      ' (optionally followed by box id, item id)'
     );
     return null;
   }
 
+  var expectedCols = isFull ? 7 : 5;
   var rows = [];
   for (var i = 1; i < lines.length; i++) {
     if (lines[i].trim() === '') continue; // skip empty lines
     var values = parseCSVLine(lines[i]);
-    if (values.length !== 5) {
-      addBotMessage('CSV format error on line ' + (i + 1) + ': expected 5 columns, got ' + values.length);
+    if (values.length !== expectedCols) {
+      addBotMessage('CSV format error on line ' + (i + 1) + ': expected ' + expectedCols + ' columns, got ' + values.length);
       return null;
     }
     rows.push({
       location: values[0] || '',
-      boxName: values[1],
+      boxName:  values[1],
       itemName: values[2],
-      fate: values[3],
-      notes: values[4] || ''
+      fate:     values[3],
+      notes:    values[4] || '',
+      boxId:    isFull ? (values[5] || '') : '',
+      itemId:   isFull ? (values[6] || '') : ''
     });
   }
   return rows;
@@ -1829,74 +2083,157 @@ function importCSV(text) {
     return;
   }
 
-  // Confirm if existing data would be overwritten
-  if (state.boxes.length > 0) {
-    if (!confirm(
-      'Import will replace your current inventory (' + state.boxes.length + ' box(es)).' +
-      ' This cannot be undone. Continue?'
-    )) return;
-  }
-
-  // Clear existing inventory
-  state.boxes = [];
-  state.activeBoxId = null;
-  state.activeItemId = null;
-
-  // Group rows by (location, boxName)
+  // Group incoming rows by boxId (if present) or by (location|boxName) key
   var boxMap = {};
+  var boxOrder = [];
   rows.forEach(function(row) {
-    var boxKey = row.location + '|' + row.boxName;
+    // Prefer id-based key so re-exports of the same box always merge correctly;
+    // fall back to name+location for legacy/hand-edited CSVs.
+    var boxKey = row.boxId ? ('id:' + row.boxId) : (row.location + '|' + row.boxName);
     if (!boxMap[boxKey]) {
       boxMap[boxKey] = {
+        id:       row.boxId || '',
         location: row.location,
-        name: row.boxName,
-        items: []
+        name:     row.boxName,
+        items:    []
       };
+      boxOrder.push(boxKey);
     }
     boxMap[boxKey].items.push({
+      id:   row.itemId || '',
       name: row.itemName,
       fate: FATES.indexOf(row.fate) !== -1 ? row.fate : 'unsure',
       notes: row.notes
     });
   });
 
-  // Create boxes
-  Object.keys(boxMap).forEach(function(boxKey) {
-    var boxData = boxMap[boxKey];
-    var box = {
-      id: uid(),
-      name: boxData.name,
-      location: boxData.location,
-      notes: '',
-      parentId: null,
-      createdAt: new Date().toISOString(),
-      items: boxData.items.map(function(item) {
-        return {
-          id: uid(),
-          name: item.name,
-          description: '',
-          fate: item.fate,
-          notes: item.notes,
-          photos: [],
-          addedAt: new Date().toISOString(),
-          deleted_at: null
-        };
-      })
-    };
-    state.boxes.push(box);
+  // Build lookups of existing boxes by id and by (location|name)
+  var existingById   = {};
+  var existingByName = {};
+  state.boxes.forEach(function(box) {
+    if (box.id) existingById[box.id] = box;
+    existingByName[(box.location || '') + '|' + box.name] = box;
   });
 
-  sessionDeletedCount = 0;
-  sessionTrashPreference = null;
-  boxTrashPreferences = {};
+  // Also build a set of all existing item IDs for fast lookup
+  var existingItemIds = {};
+  state.boxes.forEach(function(box) {
+    box.items.forEach(function(item) {
+      if (item.id) existingItemIds[item.id] = true;
+    });
+  });
+
+  var newBoxCount      = 0;
+  var newItemCount     = 0;
+  var nearDupItems     = []; // { boxName, itemName } — same props, different id
+  var nearDupBoxes     = []; // box names that matched by name only (no id match)
+
+  boxOrder.forEach(function(boxKey) {
+    var boxData     = boxMap[boxKey];
+    var existingBox = null;
+
+    // 1. Try id match first (definitive)
+    if (boxData.id && existingById[boxData.id]) {
+      existingBox = existingById[boxData.id];
+    }
+    // 2. Fall back to name+location match
+    if (!existingBox) {
+      var nameKey = (boxData.location || '') + '|' + boxData.name;
+      if (existingByName[nameKey]) {
+        existingBox = existingByName[nameKey];
+        // If incoming had an id but it didn't match, note as near-dup box
+        if (boxData.id && existingBox.id && boxData.id !== existingBox.id) {
+          nearDupBoxes.push(boxData.name);
+        }
+      }
+    }
+
+    if (existingBox) {
+      // Merge items into existing box
+      boxData.items.forEach(function(incomingItem) {
+        // 1. ID match → true duplicate, skip silently
+        if (incomingItem.id && existingItemIds[incomingItem.id]) return;
+
+        // 2. Near-duplicate: same name+fate+notes but different/no id
+        var isNearDup = existingBox.items.some(function(existItem) {
+          return existItem.deleted_at === null &&
+            existItem.name  === incomingItem.name &&
+            existItem.fate  === incomingItem.fate &&
+            (existItem.notes || '') === (incomingItem.notes || '');
+        });
+        if (isNearDup) {
+          nearDupItems.push({ boxName: existingBox.name, itemName: incomingItem.name });
+          return;
+        }
+
+        // 3. Genuinely new item
+        var newItem = {
+          id:          incomingItem.id || uid(),
+          name:        incomingItem.name,
+          description: '',
+          fate:        incomingItem.fate,
+          notes:       incomingItem.notes,
+          createdAt:     new Date().toISOString(),
+          deleted_at:  null
+        };
+        existingBox.items.push(newItem);
+        existingItemIds[newItem.id] = true;
+        newItemCount++;
+      });
+    } else {
+      // Create new box, retaining incoming IDs
+      var box = {
+        id:        boxData.id || uid(),
+        name:      boxData.name,
+        location:  boxData.location,
+        notes:     '',
+        parentId:  null,
+        createdAt: new Date().toISOString(),
+        items:     boxData.items.map(function(item) {
+          return {
+            id:          item.id || uid(),
+            name:        item.name,
+            description: '',
+            fate:        item.fate,
+            notes:       item.notes,
+            createdAt:     new Date().toISOString(),
+            deleted_at:  null
+          };
+        })
+      };
+      state.boxes.push(box);
+      newBoxCount++;
+      newItemCount += box.items.length;
+    }
+  });
 
   commitState();
 
-  var totalItems = state.boxes.reduce(function(sum, b) { return sum + b.items.length; }, 0);
-  addBotMessage(
-    '✅ Imported ' + state.boxes.length + ' box(es) with ' + totalItems + ' item(s).' +
-    '\n\nReady to continue organizing?'
-  );
+  var parts = [];
+  if (newBoxCount  > 0) parts.push(newBoxCount  + ' new box'  + (newBoxCount  !== 1 ? 'es' : ''));
+  if (newItemCount > 0) parts.push(newItemCount + ' new item' + (newItemCount !== 1 ? 's' : ''));
+  var summary = parts.length > 0
+    ? parts.join(' and ') + ' merged in.'
+    : 'No new items to import (all already present).';
+
+  var warnings = [];
+  if (nearDupBoxes.length > 0) {
+    warnings.push('\n\n⚠️ **Possible duplicate box' + (nearDupBoxes.length !== 1 ? 'es' : '') + '** (same name/location, different id): ' +
+      nearDupBoxes.map(function(n) { return '**' + n + '**'; }).join(', ') + '. Items were merged into the existing box.');
+  }
+  if (nearDupItems.length > 0) {
+    var grouped = {};
+    nearDupItems.forEach(function(d) {
+      if (!grouped[d.boxName]) grouped[d.boxName] = [];
+      grouped[d.boxName].push(d.itemName);
+    });
+    var details = Object.keys(grouped).map(function(boxName) {
+      return '**' + boxName + '**: ' + grouped[boxName].join(', ');
+    }).join('; ');
+    warnings.push('\n\n⚠️ **Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '** skipped (same name/fate/notes, no id match): ' + details + '.');
+  }
+
+  addBotMessage('\u2705 ' + summary + warnings.join('') + '\n\nReady to continue organizing?');
   state.conversationStage = 'BOX_OPEN';
   setChips(['New box', 'Review all boxes', 'Review by fate']);
 }
@@ -1910,36 +2247,138 @@ function importJSON(data) {
     );
     return;
   }
-  // Confirm if existing data would be overwritten
-  if (state.boxes.length > 0) {
-    if (!confirm(
-      'Import will replace your current inventory (' + state.boxes.length + ' box(es)).' +
-      ' This cannot be undone. Continue?'
-    )) return;
-  }
-  // Normalise and load
-  var boxes = data.boxes;
-  for (var i = 0; i < boxes.length; i++) {
-    var box = boxes[i];
+
+  // Normalise incoming boxes
+  var incomingBoxes = data.boxes;
+  for (var i = 0; i < incomingBoxes.length; i++) {
+    var box = incomingBoxes[i];
     if (box.parentId === undefined) box.parentId = null;
     if (!Array.isArray(box.items)) box.items = [];
     for (var j = 0; j < box.items.length; j++) {
       var it = box.items[j];
-      if (!it.photos) it.photos = [];
-      if (!it.notes)  it.notes  = '';
-      if (!it.fate)   it.fate   = 'unsure';
+      if (!it.notes)               it.notes     = '';
+      if (!it.fate)                it.fate      = 'unsure';
+      if (it.deleted_at === undefined) it.deleted_at = null;
     }
   }
-  state.boxes           = boxes;
+
+  // Build lookups of existing boxes by id and by (location|name)
+  var existingById   = {};
+  var existingByName = {};
+  state.boxes.forEach(function(box) {
+    if (box.id) existingById[box.id] = box;
+    existingByName[(box.location || '') + '|' + box.name] = box;
+  });
+
+  // Build set of all existing item IDs
+  var existingItemIds = {};
+  state.boxes.forEach(function(box) {
+    box.items.forEach(function(item) {
+      if (item.id) existingItemIds[item.id] = true;
+    });
+  });
+
+  var newBoxCount  = 0;
+  var newItemCount = 0;
+  var nearDupItems = [];
+  var nearDupBoxes = [];
+
+  incomingBoxes.forEach(function(incomingBox) {
+    var existingBox = null;
+
+    // 1. Try id match first
+    if (incomingBox.id && existingById[incomingBox.id]) {
+      existingBox = existingById[incomingBox.id];
+    }
+    // 2. Fall back to name+location match
+    if (!existingBox) {
+      var nameKey = (incomingBox.location || '') + '|' + incomingBox.name;
+      if (existingByName[nameKey]) {
+        existingBox = existingByName[nameKey];
+        if (incomingBox.id && existingBox.id && incomingBox.id !== existingBox.id) {
+          nearDupBoxes.push(incomingBox.name);
+        }
+      }
+    }
+
+    if (existingBox) {
+      // Merge items
+      incomingBox.items.forEach(function(incomingItem) {
+        // 1. ID match → true duplicate, skip silently
+        if (incomingItem.id && existingItemIds[incomingItem.id]) return;
+
+        // 2. Near-duplicate: same name+fate+notes, different/no id
+        var isNearDup = existingBox.items.some(function(existItem) {
+          return existItem.deleted_at === null &&
+            existItem.name  === incomingItem.name &&
+            existItem.fate  === incomingItem.fate &&
+            (existItem.notes || '') === (incomingItem.notes || '');
+        });
+        if (isNearDup) {
+          nearDupItems.push({ boxName: existingBox.name, itemName: incomingItem.name });
+          return;
+        }
+
+        // 3. Genuinely new item — retain incoming id or mint a fresh one
+        var newItem = Object.assign({}, incomingItem, {
+          id:         incomingItem.id || uid(),
+          deleted_at: null
+        });
+        existingBox.items.push(newItem);
+        existingItemIds[newItem.id] = true;
+        newItemCount++;
+      });
+    } else {
+      // New box — retain incoming id or mint a fresh one
+      incomingBox.id = incomingBox.id || uid();
+      incomingBox.items = incomingBox.items.map(function(item) {
+        return Object.assign({}, item, {
+          id:         item.id || uid(),
+          deleted_at: item.deleted_at || null
+        });
+      });
+      state.boxes.push(incomingBox);
+      newBoxCount++;
+      newItemCount += incomingBox.items.filter(function(it) { return !it.deleted_at; }).length;
+    }
+  });
+
   state.activeBoxId     = null;
   state.activeItemId    = null;
   state.conversationStage = 'FINISHED';
   commitState();
-  document.getElementById('chat-messages').innerHTML = '';
-  document.getElementById('quick-replies').innerHTML = '';
-  var totalItems = boxes.reduce(function(acc, b) { return acc + b.items.length; }, 0);
-  addBotMessage('Imported **' + boxes.length + '** box(es) and **' + totalItems + '** item(s).' +
+  if (typeof document !== 'undefined' && document.getElementById('chat-messages')) {
+    document.getElementById('chat-messages').innerHTML = '';
+    document.getElementById('quick-replies').innerHTML = '';
+  }
+
+  var parts = [];
+  if (newBoxCount  > 0) parts.push('**' + newBoxCount  + '** new box'  + (newBoxCount  !== 1 ? 'es' : ''));
+  if (newItemCount > 0) parts.push('**' + newItemCount + '** new item' + (newItemCount !== 1 ? 's' : ''));
+  var summary = parts.length > 0
+    ? parts.join(' and ') + ' merged in'
+    : 'No new items to import (all already present)';
+
+  var warnings = [];
+  if (nearDupBoxes.length > 0) {
+    warnings.push('\n\n\u26a0\ufe0f **Possible duplicate box' + (nearDupBoxes.length !== 1 ? 'es' : '') + '** (same name/location, different id): ' +
+      nearDupBoxes.map(function(n) { return '**' + n + '**'; }).join(', ') + '. Items were merged into the existing box.');
+  }
+  if (nearDupItems.length > 0) {
+    var grouped = {};
+    nearDupItems.forEach(function(d) {
+      if (!grouped[d.boxName]) grouped[d.boxName] = [];
+      grouped[d.boxName].push(d.itemName);
+    });
+    var details = Object.keys(grouped).map(function(boxName) {
+      return '**' + boxName + '**: ' + grouped[boxName].join(', ');
+    }).join('; ');
+    warnings.push('\n\n\u26a0\ufe0f **Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '** skipped (same name/fate/notes, no id match): ' + details + '.');
+  }
+
+  addBotMessage(summary + '.' +
     (data.exportedAt ? ' Exported ' + new Date(data.exportedAt).toLocaleDateString() + '.' : '') +
+    warnings.join('') +
     '\n\nWhat would you like to do?');
   setChips(['Review all boxes', 'Continue last box', 'New box']);
 }
@@ -1974,29 +2413,71 @@ function handleImportCSV(event) {
 
 
 const WELCOME_MSG =
-  'Hello! I\'m **DeclutterBot**, your decluttering companion. \uD83D\uDCE6\n\n' +
-  'I\'ll walk you through your boxes one by one \u2014 naming each item and deciding its fate:' +
-  ' **keep, donate, trash, sell,** or **unsure**.' +
-  ' Add notes and export your inventory when you\'re done.\n\n' +
-  'Ready to start? Tell me what to call your first box.';
+  'Let\'s sort through this together.\n\n' +
+  'Pick up a box, give it a name, and we\'ll go item by item \u2014' +
+  ' **keep, donate, sell, trash, return,** or **unsure**.' +
+  ' Add notes and export everything when you\'re done.\n\n' +
+  'What\'s the first box called?';
 
 function clearAll() {
-  if(state.boxes.length>0&&!confirm('Reset all data? This cannot be undone.')) return;
+  // Immediately wipe if there is nothing to lose
+  if (state.boxes.length === 0) { _doReset(); return; }
+  // Otherwise ask for typed confirmation before wiping anything
+  var boxCount = state.boxes.length;
+  var itemCount = state.boxes.reduce(function(sum, b) {
+    return sum + b.items.filter(function(it) { return !it.deleted_at; }).length;
+  }, 0);
+  state.conversationStage = 'AWAITING_RESET_CONFIRM';
+  addBotMessage(
+    '⚠️ This clears everything — **' + boxCount + ' box' + (boxCount !== 1 ? 'es' : '') +
+    '** and **' + itemCount + ' item' + (itemCount !== 1 ? 's' : '') + '**, gone. Export first if you want a record.' +
+    '\n\nType **yes** to confirm reset, or **no** to cancel.'
+  );
+  setChips(['Yes', 'No']);
+}
+
+function handleResetConfirm(command) {
+  if (command === 'yes') {
+    _doReset();
+  } else {
+    state.conversationStage = 'BOX_OPEN';
+    addBotMessage('Cancelled. Everything\'s still here.');
+    setBoxOpenChips();
+  }
+}
+
+function _doReset() {
   localStorage.removeItem('declutterbot_state');
-  state = {
-    boxes: [], activeBoxId: null, activeItemId: null,
-    pendingBatch: null, pendingBoxBatch: null, pendingDeleteBoxId: null,
-    pendingNest: null, activeItemViewGroup: null, pendingFateReview: null,
-    conversationStage: 'WELCOME', storageFull: false
-  };
-  sessionDeletedCount=0; sessionTrashPreference=null; boxTrashPreferences={};
-  document.getElementById('chat-messages').innerHTML='';
-  document.getElementById('quick-replies').innerHTML='';
+  // Mutate state in-place so exported references remain valid
+  state.boxes              = [];
+  state.activeBoxId        = null;
+  state.activeItemId       = null;
+  state.pendingBatch       = null;
+  state.pendingBoxBatch    = null;
+  state.pendingDeleteBoxId = null;
+  state.pendingNest        = null;
+  state.activeItemViewGroup = null;
+  state.pendingFateReview  = null;
+  state.conversationStage  = 'WELCOME';
+  state.storageFull        = false;
+  state.emptyBoxesForDelete = null;
+  state.emptyBoxPositions  = null;
+  state.renamePositions    = null;
+  state.pendingRenameBoxId = null;
+  state.movePositions      = null;
+  state.pendingMoveBoxId   = null;
+  sessionDeletedCount = 0; sessionTrashPreference = null; boxTrashPreferences = {};
+  if (typeof document !== 'undefined') {
+    var chatEl = document.getElementById('chat-messages');
+    var repliesEl = document.getElementById('quick-replies');
+    if (chatEl)    chatEl.innerHTML    = '';
+    if (repliesEl) repliesEl.innerHTML = '';
+  }
   commitState();
-  setTimeout(function(){
+  setTimeout(function() {
     addBotMessage(WELCOME_MSG);
-    state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
-  },100);
+    state.conversationStage = 'AWAITING_BOX_NAME'; setChips(['Start sorting']);
+  }, 100);
 }
 
 // Init — only runs in browser, not in Node test environment
@@ -2063,9 +2544,8 @@ if(state.boxes.length===0){
   var _i=0; for(var _j=0;_j<state.boxes.length;_j++) _i+=state.boxes[_j].items.length;
   setTimeout(function(){
     addBotMessage(
-      'Welcome back! You have **' + _b + ' box' + (_b !== 1 ? 'es' : '') + '**' +
-      ' and **' + _i + ' item' + (_i !== 1 ? 's' : '') + '** logged so far.' +
-      '\n\nPick up where you left off, or start a new box.'
+      'Back at it. **' + _b + ' box' + (_b !== 1 ? 'es' : '') + '**, **' + _i + ' item' + (_i !== 1 ? 's' : '') + '** so far.' +
+      '\n\nPick up where you left off?'
     );
     state.conversationStage=state.activeBoxId?'BOX_OPEN':'FINISHED';
     setChips(['New box','Continue last box','Review all boxes']);
@@ -2418,6 +2898,56 @@ function handleNestParent(text) {
 // ── UPDATED DUMP WITH CHILDREN ────────────────────────────────────────────────
 // (handleDumpTarget patched below)
 
+function promoteItemToBox(item, parentBox) {
+  // Check for name collision — a box with this name already exists at this location
+  var locKey = (parentBox.location || '').toLowerCase();
+  var collision = state.boxes.some(function(b) {
+    return b.name.toLowerCase() === item.name.toLowerCase()
+      && (b.location || '').toLowerCase() === locKey
+      && b.id !== parentBox.id;
+  });
+  if (collision) {
+    addBotMessage(
+      'A box called **"' + item.name + '"** already exists in _' + (parentBox.location || 'this location') + '_.' +
+      ' Rename the item first, then promote it.'
+    );
+    return;
+  }
+
+  // Build the new box, retaining the item's id and data
+  var newBox = {
+    id:        item.id,
+    name:      item.name,
+    location:  parentBox.location,
+    parentId:  parentBox.id,
+    fate:      item.fate,
+    notes:     item.description
+      ? item.notes + (item.notes ? '\n' : '') + item.description
+      : item.notes,
+    createdAt: item.createdAt || new Date().toISOString(),
+    items:     []
+  };
+
+  // Soft-delete the item from its parent box
+  item.deleted_at = new Date().toISOString();
+
+  // Add the new box and select it
+  state.boxes.push(newBox);
+  state.activeBoxId = newBox.id;
+  state.activeItemId = null;
+  state.activeItemViewGroup = null;
+  state.conversationStage = 'BOX_OPEN';
+  commitState();
+
+  var notesLine = newBox.notes ? '\n\nNotes carried over: "' + newBox.notes + '".' : '';
+  addBotMessage(
+    '**"' + newBox.name + '"** is now a box inside **"' + parentBox.name + '"**.' +
+    notesLine +
+    '\n\nAdd its contents when you\'re ready.'
+  );
+  setChips(['Add item', 'Review items', 'Back to ' + parentBox.name]);
+}
+
 function showItemDetail(group, groupIndex) {
   var box = activeBox();
   var lines = [];
@@ -2429,7 +2959,10 @@ function showItemDetail(group, groupIndex) {
   state.activeItemViewGroup = groupIndex;
   addBotMessage(lines.join('\n'));
   var actionChip = (group && group.fate === 'trash') ? 'Delete' : 'Trash';
-  setChips(['Change fate', 'Edit notes', actionChip, 'Move to box', 'Back to list']);
+  var chips = ['Change fate', 'Edit notes', actionChip, 'Move to box'];
+  if (group && group.count === 1) chips.push('Make it a box');
+  chips.push('Back to list');
+  setChips(chips);
 }
 
 function handleItemViewByNumber(num) {
@@ -2455,6 +2988,26 @@ function handleItemViewAction(text) {
     state.conversationStage = 'BOX_OPEN';
     state.activeItemViewGroup = null;
     reviewBox();
+    return;
+  }
+  if (command.startsWith('back to ')) {
+    // Find the named box and select it
+    var targetName = text.trim().slice(8); // preserve case
+    var targetBox = state.boxes.find(function(b) {
+      return b.name.toLowerCase() === targetName.toLowerCase();
+    });
+    if (targetBox) {
+      state.activeBoxId = targetBox.id;
+      state.activeItemId = null;
+      state.activeItemViewGroup = null;
+      state.conversationStage = 'BOX_OPEN';
+      commitState();
+      reviewBox();
+    } else {
+      state.conversationStage = 'BOX_OPEN';
+      state.activeItemViewGroup = null;
+      reviewBox();
+    }
     return;
   }
   if (command === 'trash' || command === 'delete') {
@@ -2499,6 +3052,22 @@ function handleItemViewAction(text) {
     setChips(['Clear notes', 'Cancel']);
     return;
   }
+  if (command === 'make it a box') {
+    if (!group || group.count !== 1) { state.conversationStage = 'BOX_OPEN'; return; }
+    // Find the single item object for this group
+    var itemToPromote = null;
+    for (var pi = 0; pi < box.items.length; pi++) {
+      if (box.items[pi].name === group.name && box.items[pi].fate === group.fate
+          && !box.items[pi].deleted_at) {
+        itemToPromote = box.items[pi];
+        break;
+      }
+    }
+    if (!itemToPromote) { state.conversationStage = 'BOX_OPEN'; return; }
+    promoteItemToBox(itemToPromote, box);
+    return;
+  }
+
   // Fallback
   state.conversationStage = 'BOX_OPEN';
   state.activeItemViewGroup = null;
@@ -2967,6 +3536,7 @@ function fateReviewChips(fate) {
 function fateReviewBulkChips(fate) {
   switch (fate) {
     case 'trash':  return ['Delete all', 'Move all to unsure', 'Cancel'];
+    case 'return': return ['Mark all keep', 'Mark all unsure', 'Cancel'];
     case 'unsure': return ['Mark all keep', 'Mark all donate', 'Mark all trash', 'Mark all sell', 'Cancel'];
     case 'sell':   return ['Mark all donate', 'Cancel'];
     case 'donate': return ['Mark all sell', 'Cancel'];
@@ -2995,7 +3565,7 @@ function handleFateReviewMenu() {
     }
   }
   var chips = [];
-  var fateOrder = ['unsure', 'trash', 'sell', 'donate', 'keep'];
+  var fateOrder = ['unsure', 'trash', 'return', 'sell', 'donate', 'keep'];
   for (var f = 0; f < fateOrder.length; f++) {
     var fate = fateOrder[f];
     if (counts[fate]) chips.push('Review ' + fate + ' (' + counts[fate] + ')');
@@ -3207,7 +3777,7 @@ function handleFateReviewItem(text) {
     state.activeBoxId = entry.boxId;
     state.conversationStage = 'AWAITING_FATE';
     addBotMessage('What should we do with **' + item.name + '**?');
-    setChips(['Keep', 'Donate', 'Trash', 'Sell', 'Unsure']);
+    setChips(['Trash', 'Return', 'Sell', 'Keep', 'Donate', 'Unsure']);
     state.pendingFateReview._resumeAfterFate = true;
     return;
   }
@@ -3230,10 +3800,12 @@ function handleFateReviewBulk(text) {
   if (command === 'cancel') { showFateReviewList(review); return; }
 
   var newFate = null;
-  if (command === 'mark all keep')   newFate = 'keep';
-  if (command === 'mark all donate') newFate = 'donate';
-  if (command === 'mark all trash')  newFate = 'trash';
-  if (command === 'mark all sell')   newFate = 'sell';
+  if (command === 'mark all keep')    newFate = 'keep';
+  if (command === 'mark all donate')  newFate = 'donate';
+  if (command === 'mark all trash')   newFate = 'trash';
+  if (command === 'mark all sell')    newFate = 'sell';
+  if (command === 'mark all return')  newFate = 'return';
+  if (command === 'mark all unsure')  newFate = 'unsure';
 
   if (newFate) {
     var updateCount = 0;
@@ -3377,11 +3949,13 @@ if (typeof module !== 'undefined') {
     commitBatch, handleFate, handleItemNotes, handleItemName,
     handleBoxName, handleBoxBatchConfirm, handleBoxBatchQty, handleBoxBatchLocation,
     singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox,
+    recentLocations, locationPrompt,
     handleDeleteBox, handleDeleteBoxConfirm, handleDump, handleDumpTarget,
     groupItems, boxSummaryLine,
     handleNest, handleNestParent, getDescendantIds, childBoxes,
     renderBoxTree, groupItems, sameProximity, locSegments,
     handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail,
+    promoteItemToBox,
     handleItemMoveTarget,
     addItem, removeItem,
     getBudgetItems: function(){ return _budgetItems; },
@@ -3393,10 +3967,13 @@ if (typeof module !== 'undefined') {
     maybeMantraOnItem,
     setMantrasEnabled: function(v){ _mantrasEnabled = v; },
     getMantrasEnabled: function(){ return _mantrasEnabled; },
-    selectBox, toggleCollapse,
+    selectBox, toggleCollapse, toggleLocationCollapse,
+    setLocationFilter, clearLocationFilter,
+    renderBoxCard,
     inputHistory, historyDraft, getHistoryIndex: function(){ return historyIndex; },
     setHistoryIndex: function(v){ historyIndex = v; },
     handleKey,
+    clearAll, handleResetConfirm, _doReset,
     importJSON,
     importCSV,
     handleImportCSV,
@@ -3411,6 +3988,7 @@ if (typeof module !== 'undefined') {
     parseCSVLine,
     importCSV,
     handleImportCSV,
+    escAttr,
     disposalPrompt, deletionLog, deleteActiveItem,
     trashAllItems, deleteAllItems, handleTrashAll, handleTrashAllConfirm, handleDeleteTrashedConfirm, handleDeleteBoxAfterTrashAllConfirm,
     handleTrashDelete, handleDisposal, handleTrashByNumber, handleDeleteByNumber,

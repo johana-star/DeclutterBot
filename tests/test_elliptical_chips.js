@@ -54,7 +54,7 @@ function makeBox(name, location) {
 }
 
 function makeItem(box, name, fate) {
-  var item = { id: uid(), name: name, fate: fate, description: '', notes: '', addedAt: '' };
+  var item = { id: uid(), name: name, fate: fate, description: '', notes: '', createdAt: '' };
   box.items.push(item);
   return item;
 }
@@ -310,7 +310,7 @@ assert('reminder excludes item 2', lastBotMessage.indexOf('2') === -1);
 
 
 // ── Chip order ────────────────────────────────────────────────────────────────
-console.log('\n22. Action chips appear in order: Keep, Donate, Sell, Unsure, Trash, Delete');
+console.log('\n22. Action chips appear in FATES order: Trash, Return, Sell, Keep, Donate, Unsure, Delete');
 reset();
 var box22 = makeBox('Box', 'room');
 makeItem(box22, 'Lamp', 'keep');
@@ -319,17 +319,17 @@ makeItem(box22, 'Chair', 'sell');
 makeItem(box22, 'Table', 'unsure');
 makeItem(box22, 'Broken fan', 'trash');
 reviewBox();
+var trashIdx  = lastChips.findIndex(c => c.startsWith('Trash'));
+var sellIdx   = lastChips.findIndex(c => c.startsWith('Sell'));
 var keepIdx   = lastChips.findIndex(c => c.startsWith('Keep'));
 var donateIdx = lastChips.findIndex(c => c.startsWith('Donate'));
-var sellIdx   = lastChips.findIndex(c => c.startsWith('Sell'));
 var unsureIdx = lastChips.findIndex(c => c.startsWith('Unsure'));
-var trashIdx  = lastChips.findIndex(c => c.startsWith('Trash'));
 var deleteIdx = lastChips.findIndex(c => c.startsWith('Delete'));
+assert('Trash before Sell', trashIdx < sellIdx);
+assert('Sell before Keep', sellIdx < keepIdx);
 assert('Keep before Donate', keepIdx < donateIdx);
-assert('Donate before Sell', donateIdx < sellIdx);
-assert('Sell before Unsure', sellIdx < unsureIdx);
-assert('Unsure before Trash', unsureIdx < trashIdx);
-assert('Trash before Delete', trashIdx < deleteIdx);
+assert('Donate before Unsure', donateIdx < unsureIdx);
+assert('Unsure before Delete', unsureIdx < deleteIdx);
 
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────

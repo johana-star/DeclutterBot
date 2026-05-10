@@ -82,7 +82,7 @@ function makeBox(name) {
   return box;
 }
 function makeItem(box, name, fate) {
-  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: '', photos: [], addedAt: '', deleted_at: null };
+  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: '', photos: [], createdAt: '', deleted_at: null };
   box.items.push(item);
   state.activeItemId = item.id;
   return item;

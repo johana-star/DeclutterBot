@@ -64,7 +64,7 @@ function makeBox(name, location) {
   return box;
 }
 function makeItem(box, name, fate, notes) {
-  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: notes||'', photos: [], addedAt: new Date().toISOString(), deleted_at: null };
+  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: notes||'', photos: [], createdAt: new Date().toISOString(), deleted_at: null };
   box.items.push(item);
   return item;
 }
@@ -162,8 +162,8 @@ console.log('\n9. Editing notes updates all items in group');
 reset();
 box = makeBox('Test Box', 'bedroom');
 var now = new Date().toISOString();
-box.items.push({ id: uid(), name: 'Roll', fate: 'keep', notes: '', photos: [], addedAt: now });
-box.items.push({ id: uid(), name: 'Roll', fate: 'keep', notes: '', photos: [], addedAt: now });
+box.items.push({ id: uid(), name: 'Roll', fate: 'keep', notes: '', photos: [], createdAt: now });
+box.items.push({ id: uid(), name: 'Roll', fate: 'keep', notes: '', photos: [], createdAt: now });
 handleItemViewByNumber(1);
 handleItemViewAction('edit notes');
 handleItemViewNotes('fragile, handle with care');
@@ -194,7 +194,7 @@ reset();
 box = makeBox('Test Box', 'bedroom');
 var now2 = new Date().toISOString();
 for (var i = 0; i < 5; i++) {
-  box.items.push({ id: uid(), name: 'Paper towel roll', fate: 'keep', notes: '', photos: [], addedAt: now2 });
+  box.items.push({ id: uid(), name: 'Paper towel roll', fate: 'keep', notes: '', photos: [], createdAt: now2 });
 }
 handleItemViewByNumber(1);
 assertIncludes('shows batch count', lastBotMessage, '5 \u00d7');
@@ -269,7 +269,7 @@ console.log('\naddItem: pushes item to box and decrements budget');
 reset();
 var box = makeBox('Box', 'room');
 var before = getBudgetItems();
-var item = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], addedAt: '' };
+var item = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], createdAt: '' };
 addItem(box, item);
 assert('item pushed to box', box.items.length === 1);
 assert('item is correct', box.items[0].name === 'Lamp');
@@ -278,14 +278,14 @@ assert('budget decremented', getBudgetItems() === before - 1);
 console.log('\naddItem: returns the item');
 reset();
 var box2 = makeBox('Box', 'room');
-var item2 = { id: uid(), name: 'Chair', fate: 'keep', description: '', notes: '', photos: [], addedAt: '' };
+var item2 = { id: uid(), name: 'Chair', fate: 'keep', description: '', notes: '', photos: [], createdAt: '' };
 var returned = addItem(box2, item2);
 assert('returns item', returned === item2);
 
 console.log('\nremoveItem: removes item by id and increments budget');
 reset();
 var box3 = makeBox('Box', 'room');
-var item3 = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], addedAt: '' };
+var item3 = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], createdAt: '' };
 addItem(box3, item3);
 var afterAdd = getBudgetItems();
 var removed = removeItem(box3, item3.id);
@@ -296,7 +296,7 @@ assert('budget incremented', getBudgetItems() === afterAdd + 1);
 console.log('\nremoveItem: returns 0 and leaves budget unchanged for unknown id');
 reset();
 var box4 = makeBox('Box', 'room');
-var item4 = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], addedAt: '' };
+var item4 = { id: uid(), name: 'Lamp', fate: 'keep', description: '', notes: '', photos: [], createdAt: '' };
 addItem(box4, item4);
 var beforeRemove = getBudgetItems();
 var removedCount = removeItem(box4, 'nonexistent-id');

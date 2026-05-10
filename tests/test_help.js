@@ -79,7 +79,7 @@ console.log('\nHelp Command Tests\n');
 console.log('1. "hi" with no boxes prompts for first box name');
 reset();
 processInput('hi', []);
-assertIncludes('mentions DeclutterBot', lastBotMessage, 'DeclutterBot');
+assertIncludes('prompts for box name', lastBotMessage, 'box');
 assert('stage set to AWAITING_BOX_NAME', state.conversationStage === 'AWAITING_BOX_NAME');
 assert('Start sorting chip shown', lastChips.indexOf('Start sorting') !== -1);
 

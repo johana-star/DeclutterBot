@@ -59,7 +59,7 @@ function makeBox(name, location) {
   return box;
 }
 function makeItem(box, name, fate) {
-  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: '', photos: [], addedAt: new Date().toISOString() };
+  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: '', photos: [], createdAt: new Date().toISOString() };
   box.items.push(item);
   return item;
 }

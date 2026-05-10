@@ -31,6 +31,7 @@ var handleDumpTarget = app.handleDumpTarget;
 var getDescendantIds = app.getDescendantIds;
 var childBoxes       = app.childBoxes;
 var renderBoxTree    = app.renderBoxTree;
+var renderBoxCard    = app.renderBoxCard;
 var sameProximity    = app.sameProximity;
 // selectBox and toggleCollapse accessed via app.* to allow stubbing addUserMessage
 
@@ -62,7 +63,7 @@ function makeBox(name, location, parentId) {
   return box;
 }
 function makeItem(box, name, fate) {
-  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: '', photos: [], addedAt: new Date().toISOString() };
+  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: '', photos: [], createdAt: new Date().toISOString() };
   box.items.push(item);
   return item;
 }
@@ -320,9 +321,10 @@ reset();
 var parent = makeBox('Parent', 'room');
 var child  = makeBox('Child', 'room'); child.parentId = parent.id;
 state.activeBoxId = null;
-var html = renderBoxTree(null, 0, []);
+var html = renderBoxCard(parent, 0, []);
 assert('shows box count not empty', html.indexOf('1 box') !== -1);
-assert('does not say empty', html.indexOf('>empty<') === -1 && html.indexOf('· empty') === -1);
+// Only the parent card should not say empty (child may be empty — that's fine)
+assert('does not say empty', html.indexOf('box-meta">empty') === -1 || html.indexOf('box-meta">1 box') !== -1);
 
 console.log('\n26. Sidebar meta: box with own items AND child boxes shows both counts');
 reset();

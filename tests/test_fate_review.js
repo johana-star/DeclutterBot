@@ -77,7 +77,7 @@ function makeBox(name, location, parentId) {
   return box;
 }
 function makeItem(box, name, fate, notes) {
-  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: notes||'', photos: [], addedAt: '' };
+  var item = { id: uid(), name: name, fate: fate||'unsure', description: '', notes: notes||'', photos: [], createdAt: '' };
   box.items.push(item);
   return item;
 }
@@ -417,12 +417,12 @@ assert('trash chips include Unsure', trashChips.indexOf('Unsure') !== -1);
 assert('trash chips include Delete', trashChips.indexOf('Delete') !== -1);
 
 var actualSellChips   = JSON.stringify(fateReviewChips('sell'));
-var expectedSellChips = JSON.stringify(['Keep', 'Donate', 'Unsure', 'Trash', 'Add selling notes', 'Skip']);
+var expectedSellChips = JSON.stringify(['Trash', 'Return', 'Keep', 'Donate', 'Unsure', 'Add selling notes', 'Skip']);
 console.log('\n32b. Sell review chips match expected set');
 assert('sell chips correct', actualSellChips === expectedSellChips);
 
 var actualDonateChips   = JSON.stringify(fateReviewChips('donate'));
-var expectedDonateChips = JSON.stringify(['Keep', 'Sell', 'Unsure', 'Trash', 'Add donation destination', 'Skip']);
+var expectedDonateChips = JSON.stringify(['Trash', 'Return', 'Sell', 'Keep', 'Unsure', 'Add donation destination', 'Skip']);
 console.log('\n32c. Donate review chips match expected set');
 assert('donate chips correct', actualDonateChips === expectedDonateChips);
 

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Pre-commit hook — runs the full test suite before every commit.
 # If any test fails, the commit is aborted.
+# Also regenerates tree.txt (project file listing) and stages it automatically.
 #
 # Setup (one-time, per developer):
 #   git config core.hooksPath .githooks
@@ -19,3 +20,7 @@ if [ $? -ne 0 ]; then
   echo "   To bypass: git commit --no-verify"
   exit 1
 fi
+
+echo "Updating tree.txt..."
+git ls-files --others --cached --exclude-standard | sort > tree.txt
+git add tree.txt

@@ -19,6 +19,10 @@ global.chipClick = function() {};
 global.escHtml = function(s) { return String(s||''); };
 global.renderMarkdown = function(s) { return s; };
 global.localStorage = { getItem: function() { return null; }, setItem: function() {}, removeItem: function() {} };
+global.dlBlob = function() {};  // stub — overridden per-test where needed
+global.document = { createElement: function() { return { click: function(){}, href:'', download:'' }; }, getElementById: function() { return null; } };
+global.URL = { createObjectURL: function() { return ''; }, revokeObjectURL: function() {} };
+global.Blob = function(parts) { global._lastCSV = parts[0]; };  // default capture
 global.confirm = function() { confirmCalled = true; return confirmAnswer; };
 
 var app = require('../app.js');
@@ -27,6 +31,7 @@ var uid = app.uid;
 var parseCSV = app.parseCSV;
 var parseCSVLine = app.parseCSVLine;
 var importCSV = app.importCSV;
+var exportCSV = app.exportCSV;
 var FATES = app.FATES;
 
 // ── HARNESS ───────────────────────────────────────────────────────────────────
@@ -96,24 +101,27 @@ importCSV(csv);
 assert('no confirm needed for empty state', confirmCalled === false);
 assert('import proceeds', state.boxes.length === 1);
 
-console.log('\n9. importCSV: existing data prompts for confirmation');
+console.log('\n9. importCSV: existing data is merged, not replaced');
 reset();
 state.boxes.push({ id: 'old', name: 'Old box', location: '', notes: '', parentId: null, createdAt: '', items: [] });
-confirmCalled = false;
 csv = 'location,box name,item name,fate,notes\nkitchen,Kitchen,Bowl,keep,';
 importCSV(csv);
-assert('confirm called', confirmCalled === true);
-assert('old data cleared on confirm', state.boxes[0].name === 'Kitchen');
+assert('no confirm needed', confirmCalled === false);
+assert('old box preserved', state.boxes.some(function(b) { return b.name === 'Old box'; }));
+assert('new box added', state.boxes.some(function(b) { return b.name === 'Kitchen'; }));
+assert('total 2 boxes', state.boxes.length === 2);
 
-console.log('\n10. importCSV: existing data not imported on cancel');
+console.log('\n10. importCSV: items merged into existing matching box');
 reset();
-var oldBox = { id: 'old', name: 'Old box', location: '', notes: '', parentId: null, createdAt: '', items: [] };
-state.boxes.push(oldBox);
-confirmAnswer = false;
-confirmCalled = false;
+state.boxes.push({ id: 'existing', name: 'Kitchen', location: 'kitchen', notes: '', parentId: null, createdAt: '', items: [
+  { id: 'i1', name: 'Mug', fate: 'keep', notes: '', deleted_at: null, description: '', photos: [], createdAt: '' }
+] });
 csv = 'location,box name,item name,fate,notes\nkitchen,Kitchen,Bowl,keep,';
 importCSV(csv);
-assert('import cancelled', state.boxes.length === 1 && state.boxes[0].name === 'Old box');
+assert('still 1 box (merged)', state.boxes.length === 1);
+assert('original item kept', state.boxes[0].items.some(function(i) { return i.name === 'Mug'; }));
+assert('new item added', state.boxes[0].items.some(function(i) { return i.name === 'Bowl'; }));
+assert('2 items total', state.boxes[0].items.length === 2);
 
 console.log('\n11. importCSV: single item');
 reset();
@@ -189,8 +197,8 @@ console.log('\n19. importCSV: summary message');
 reset();
 csv = 'location,box name,item name,fate,notes\nkitchen,Kitchen,Bowl,keep,\nkitchen,Kitchen,Plate,donate,\nbedroom,Bedroom,Lamp,unsure,';
 importCSV(csv);
-assert('summary shows boxes', lastBotMessage.includes('2 box'));
-assert('summary shows items', lastBotMessage.includes('3 item'));
+assert('summary shows new boxes', lastBotMessage.includes('2 new box'));
+assert('summary shows new items', lastBotMessage.includes('3 new item'));
 
 console.log('\n20. importCSV: all FATES values preserved');
 reset();
@@ -207,6 +215,109 @@ assert('all fates present',
   state.boxes[0].items[2].fate === 'sell' &&
   state.boxes[0].items[3].fate === 'unsure' &&
   state.boxes[0].items[4].fate === 'trash');
+
+console.log('\n21. importCSV: duplicate items are skipped on merge');
+reset();
+state.boxes.push({ id: 'b1', name: 'Kitchen', location: 'kitchen', notes: '', parentId: null, createdAt: '', items: [
+  { id: 'i1', name: 'Bowl', fate: 'keep', notes: 'chipped', deleted_at: null, description: '', photos: [], createdAt: '' }
+] });
+csv = 'location,box name,item name,fate,notes\nkitchen,Kitchen,Bowl,keep,chipped';
+importCSV(csv);
+assert('duplicate skipped, still 1 item', state.boxes[0].items.length === 1);
+assert('no-new-items message', lastBotMessage.includes('No new items'));
+
+console.log('\n22. importCSV: phone-to-computer sync scenario');
+reset();
+// Computer has Kitchen with Mug; phone added Bowl to same box + new Bedroom box
+state.boxes.push({ id: 'b1', name: 'Kitchen', location: 'kitchen', notes: '', parentId: null, createdAt: '', items: [
+  { id: 'i1', name: 'Mug', fate: 'keep', notes: '', deleted_at: null, description: '', photos: [], createdAt: '' }
+] });
+csv = 'location,box name,item name,fate,notes\nkitchen,Kitchen,Mug,keep,\nkitchen,Kitchen,Bowl,donate,\nbedroom,Bedroom,Lamp,unsure,needs bulb';
+importCSV(csv);
+assert('2 boxes total', state.boxes.length === 2);
+assert('Kitchen has 2 items (Mug deduped, Bowl added)', state.boxes[0].items.length === 2);
+assert('Bowl added', state.boxes[0].items.some(function(i) { return i.name === 'Bowl'; }));
+assert('Mug still present', state.boxes[0].items.some(function(i) { return i.name === 'Mug'; }));
+assert('Bedroom created', state.boxes[1].name === 'Bedroom');
+assert('summary: 1 new box', lastBotMessage.includes('1 new box'));
+assert('summary: 2 new items', lastBotMessage.includes('2 new item'));
+
+
+console.log('\n23. parseCSV: accepts 7-column header with ids');
+reset();
+csv = 'location,box name,item name,fate,notes,box id,item id\nkitchen,Kitchen,Bowl,keep,chipped,b1,i1';
+rows = parseCSV(csv);
+assert('7-col header accepted', rows !== null && rows.length === 1);
+assert('boxId parsed', rows[0].boxId === 'b1');
+assert('itemId parsed', rows[0].itemId === 'i1');
+
+console.log('\n24. parseCSV: legacy 5-column CSV still accepted');
+reset();
+csv = 'location,box name,item name,fate,notes\nkitchen,Kitchen,Bowl,keep,';
+rows = parseCSV(csv);
+assert('legacy header accepted', rows !== null);
+assert('boxId empty string', rows[0].boxId === '');
+assert('itemId empty string', rows[0].itemId === '');
+
+console.log('\n25. exportCSV: includes box id and item id columns');
+reset();
+state.boxes = [{
+  id: 'box1', name: 'Kitchen', location: 'kitchen', notes: '', parentId: null, createdAt: '',
+  items: [{ id: 'itm1', name: 'Bowl', fate: 'keep', notes: '', deleted_at: null, description: '', photos: [], createdAt: '' }]
+}];
+global._lastCSV = '';
+exportCSV();
+var exportLines = global._lastCSV.split('\n');
+assert('header has 7 columns', exportLines[0] === 'location,box name,item name,fate,notes,box id,item id');
+assert('data row has box id', exportLines[1].includes('box1'));
+assert('data row has item id', exportLines[1].includes('itm1'));
+
+console.log('\n26. importCSV: item id dedup — same id skipped silently');
+reset();
+state.boxes.push({ id: 'b1', name: 'Kitchen', location: 'kitchen', notes: '', parentId: null, createdAt: '', items: [
+  { id: 'i1', name: 'Bowl', fate: 'keep', notes: '', deleted_at: null, description: '', photos: [], createdAt: '' }
+] });
+csv = 'location,box name,item name,fate,notes,box id,item id\nkitchen,Kitchen,Bowl,keep,,b1,i1';
+importCSV(csv);
+assert('id-matched item skipped', state.boxes[0].items.length === 1);
+assert('no near-dup warning', !lastBotMessage.includes('⚠'));
+
+console.log('\n27. importCSV: box id dedup — same box id, new item added correctly');
+reset();
+state.boxes.push({ id: 'b1', name: 'Kitchen', location: 'kitchen', notes: '', parentId: null, createdAt: '', items: [
+  { id: 'i1', name: 'Mug', fate: 'keep', notes: '', deleted_at: null, description: '', photos: [], createdAt: '' }
+] });
+csv = 'location,box name,item name,fate,notes,box id,item id\nkitchen,Kitchen,Bowl,keep,,b1,i2';
+importCSV(csv);
+assert('matched by box id, merged', state.boxes.length === 1);
+assert('new item added', state.boxes[0].items.length === 2);
+assert('new item has correct id', state.boxes[0].items.some(function(i) { return i.id === 'i2'; }));
+
+console.log('\n28. importCSV: near-dup item warning — same name/fate/notes, no id match');
+reset();
+state.boxes.push({ id: 'b1', name: 'Kitchen', location: 'kitchen', notes: '', parentId: null, createdAt: '', items: [
+  { id: 'i1', name: 'Bowl', fate: 'keep', notes: 'chipped', deleted_at: null, description: '', photos: [], createdAt: '' }
+] });
+// Incoming has no item id, so can't confirm identity — should warn
+csv = 'location,box name,item name,fate,notes,box id,item id\nkitchen,Kitchen,Bowl,keep,chipped,b1,';
+importCSV(csv);
+assert('item not added (near-dup)', state.boxes[0].items.length === 1);
+assert('near-dup warning shown', lastBotMessage.includes('\u26a0'));
+assert('near-dup warning mentions item name', lastBotMessage.includes('Bowl'));
+
+console.log('\n29. importCSV: IDs retained on new items');
+reset();
+csv = 'location,box name,item name,fate,notes,box id,item id\nkitchen,Kitchen,Bowl,keep,,newbox1,newitem1';
+importCSV(csv);
+assert('box id retained', state.boxes[0].id === 'newbox1');
+assert('item id retained', state.boxes[0].items[0].id === 'newitem1');
+
+console.log('\n30. importCSV: missing ids get generated');
+reset();
+csv = 'location,box name,item name,fate,notes,box id,item id\nkitchen,Kitchen,Bowl,keep,,, ';
+importCSV(csv);
+assert('box gets generated id', state.boxes[0].id.length > 0);
+assert('item gets generated id', state.boxes[0].items[0].id.length > 0);
 
 // ── SUMMARY ────────────────────────────────────────────────────────────────
 console.log('\n────────────────────────────────────────');

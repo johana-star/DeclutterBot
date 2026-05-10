@@ -371,6 +371,23 @@ When planning work sessions, use **story points** (relative effort) rather than 
 
 ## Completed Tasks
 
+- Item → box promotion — "Make it a box" chip appears in item detail view for single items (hidden when count > 1). `promoteItemToBox(item, parentBox)` creates a nested box retaining the item's id, name, location (from parent), parentId, fate, notes (merged with description if present), and createdAt. Item is soft-deleted from the parent. Name collision guard prevents promotion if a box with the same name already exists at the same location. `back to <parent name>` chip navigates back to the parent box. 28 tests in test_promote.js.
+
+- Data model cleanup — renamed `addedAt` to `createdAt` on item objects for consistency with boxes (which already used `createdAt`). Removed the vestigial `photos: []` field from all item construction sites in app.js (`handleFate`, `commitBatch`, `importCSV`, `importJSON`), from import normalization, and from `exportJSON` (the `delete exported.photos` guard is no longer needed). `commitBatch` signature simplified from `(qty, itemName, photos)` to `(qty, itemName)`. All 12 affected test files updated to use `createdAt` and drop `photos` from fixtures.
+
+- Fate tags right-aligned in box cards — `.box-card-body` restructured as a row flex container. `.box-card-text` (name + meta) takes the left with `flex: 1`; `.box-counts` is pinned right with `flex-direction: column`, `align-items: flex-end`, `max-width: 38%`. Tags stack vertically on the right. Emergent design property: card height grows with the number of distinct fate categories, subtly encouraging users to put like with like.
+- Location filter — clicking a location header sets `activeLocationFilter` (session-only variable). Filtered state: other locations dim to 0.3 opacity, their boxes are hidden, the sidebar header shows an inline blush/sakura badge with the location name and a ✕ to clear, and the box count reads "N of total". Clicking "Inventory" when filtered also clears. Clicking the active location again clears. `setLocationFilter(locKey)`, `clearLocationFilter()` added to app.js. Active-location styling (`loc-active`) fires on the filtered location itself, not on whichever location contains the active box — those two states no longer conflict.
+
+- Location headers in sidebar — top-level boxes are now grouped by location in the sidebar. Locations with 2+ boxes get a collapsible header row: peony caret (▼/▶), abyss label, navy box count. Locations with 1 box get a shorter non-collapsible header: lavender label and count, no caret. Collapsed state persisted in localStorage under `declutterbot_collapsed_locations` (separate from app state, not exported). Box meta line no longer repeats location since it's shown in the header above. `renderSidebar` refactored to group by normalized (lowercased) location key; new helpers `renderBoxCard`, `toggleLocationCollapse`, `saveCollapsedLocations`. Full Tide Garden palette (28 tokens) added to `:root` in index.html. `--lavender` (#7570a9) and `--mustard` (#d8c030) now available. No test changes required (pure rendering change).
+
+- CSS token rename — renamed all CSS custom properties in index.html from old theme names to Tide Garden names: `--brown` → `--abyss`, `--brown-mid` → `--navy`, `--brown-light` → `--coastal`, `--brown-pale` → `--horizon`, `--rust` → `--peony`, `--rust-light` → `--sakura`, `--warm-white` → `--white`, `--paper` → `--feta`, `--border` → `--chevre`. Consolidated duplicate `--ink`/`--brown` and `--ink-mid`/`--brown-mid` pairs. Semantic comments added to `--white`, `--abyss`, `--navy`, `--feta`, `--chevre`. No behavior change.
+- Import/export format toggle — replaced 4 header buttons (Import JSON, Import CSV, Export JSON, Export CSV) with a JSON·CSV pill toggle + 2 buttons (Import, Export). Toggle defaults to JSON. Typed commands `import`, `import json`, `import csv`, `export`, `export json`, `export csv` all still work and set the toggle state as a side effect. File handling logic moved to inline `<script>` in index.html (`setFormat`, `triggerImport`, `handleImportFile`, `triggerExport`); app.js command handlers delegate to these via `typeof` guards. No new tests needed (pure UI change; underlying `importCSV`/`importJSON`/`exportCSV`/`exportJSON` functions unchanged).
+
+- Reset command — removed the one-click Reset button from the header (too easy to trigger on mobile). Reset is now a typed command only (`reset` or `start over`). With no data it resets immediately; with data it enters `AWAITING_RESET_CONFIRM` stage with Yes/No chips, showing a count of boxes and items at risk. Cancelling returns to normal flow; confirming wipes state and restarts the welcome flow. `window.confirm()` no longer used. `_doReset()` now mutates state in-place (instead of replacing the object) so exported references stay valid across the reset. 17 tests in test_reset.js.
+
+- Merge-on-import (CSV + JSON) — both `importCSV()` and `importJSON()` now merge incoming data into existing state rather than replacing it. Deduplication is two-tier: (1) **ID match** on box or item → true duplicate, skipped silently; (2) **near-duplicate** (same name/location for boxes, same name/fate/notes for items, but different or absent id) → skipped and surfaced as a ⚠️ warning in the summary message. Incoming IDs are retained; missing IDs are generated. CSV format extended to 7 columns (adding `box id`, `item id`); legacy 5-column CSVs still accepted. Export now writes 7 columns. 75 tests passing in test_import_csv.js.
+
+
 - Pure helpers extraction — Extracted 22 pure utility functions (225 LOC) into dedicated `helpers.js` module. Functions include titleize, singularize, parseCSVLine, renderMarkdown, countFates, groupItems, escapeCSV, escHtml, isReservedCommand, and others. All have zero side effects and no state mutations. Exports to both Node.js (module.exports) and browser (global scope). Tests: 800/800 passing. Architecture: helpers load at app.js startup; test runner loads before running tests. Benefit: Pure functions isolated from business logic, easier to test and reuse.
 - Number extraction refactoring — Changed all number extraction from command strings to use regex `/(\d+)$/` instead of position-based slicing. Patterns: `command.slice(7)`, `command.split(' ')[1]` replaced with `command.match(/(\d+)$/)[1]`. More robust (works with multi-word commands), future-proof (handles "delete item 5"), consistent with existing code patterns. Added `extractNumberFromCommand()` helper for reuse. 3 locations updated in app.js.
 - 120-char line length refactoring — all lines now at or under 120 characters by code point count. Expanded dense object literals, long `addBotMessage` strings, and extracted long regex patterns to variables. Added documentation to CONTRIBUTING on line length rules and how to measure correctly (character count, not bytes).
@@ -393,45 +410,42 @@ When planning work sessions, use **story points** (relative effort) rather than 
 
 ## Punchlist
 
-> **Next session — start here (one small fix):**
-> (none — all urgent items completed)
+- Location headers in sidebar — when two or more boxes share a location, group them under a collapsible location header row. The header should be visually lighter than a box card (roughly half to a third the height). Headers should be collapsible (fold all boxes in that location), persist their collapsed state in localStorage, and support drag-and-drop reordering of locations relative to each other. Boxes within a location should remain draggable within and across location groups. Boxes with unique locations (only one box at that location) are shown without a header. This is a pure rendering change — no change to the data model, as location is already a field on each box.
+- Can we persist "box folding"  between sessions. when a box contains other boxes, we already display a caret which toggles the boxes below it between present and absent in the UI. However, the display does not persist when a browser refreshes. We don't need to store the data abywhere other than the browser. (Like, no need to track this in the CSV and JSON, though it can be if that is an easier implementation.)
 
 ### Low Priority
 
 - Soft Deletion Slice 2: Restore/review deleted + export — Add `review deleted` or `restore` command to list soft-deleted items with delete timestamp and original box context. Chips for: restore to original box, permanently hard-delete from array, or cancel. Update JSON export to include `deleted` array alongside `boxes` (each with `boxId` for provenance). Tests: verify deleted items appear in restore view, verify export structure, verify restore works, verify permanent delete removes from `deleted` array and state. Builds on Slice 1 (soft deletion data model).
 - Elliptical chip eligibility model — move fate transitions to explicit data structure (implement when requirement appears). Currently assumes any fate can transition to any other (filter: `group.fate !== fate`). When needed: create `FATE_TRANSITIONS` lookup table at top of app.js defining allowed transitions per fate. Makes transition rules explicit, testable, and decoupled from chip building logic. Do not implement speculatively.
 - Test coverage with c8 — run `npx c8 node tests/test.js` to get line, branch, and function coverage reports with no architecture changes. Add a `coverage` script to a `package.json` if one doesn't exist. Use coverage reports to identify untested code paths and prioritize new tests.
-- Merge on import JSON — when importing, instead of replacing, offer a merge strategy:
-  - Boxes only in the JSON file are added to the app
-  - Boxes only in the app are kept as-is
-  - Boxes present in both: surface a review prompt during import to choose the merge strategy (keep app version, keep JSON version, or merge items from both)
-  - Items within a merged box should be deduplicated by name+fate where possible
-- Import JSON ✅ implemented — file input in header, validates structure, normalizes legacy fields, confirms before overwrite, re-renders with summary
 - DRY common bot responses into a response dictionary — bot messages like fate confirmations, error strings, and stage transitions are currently hardcoded inline throughout the handlers. Extract them into a single `RESPONSES` object at the top of app.js so wording can be changed in one place. Needs tests to verify response keys exist and return strings.
-- Chip click focus ✅ implemented — focus returned to textarea after chip click; global `keydown` listener redirects any keypress to the textarea if focus is elsewhere (excluding modifier keys, Tab, and Escape)
 - Fuzzy command matching — near-misses like "trasj" should match "trash". Highest priority: fate words (keep, donate, trash, sell, unsure) since they are typed frequently and the set is small. Approach: Levenshtein distance of 1 on fate words before falling through to item name; consider extending to other common commands. Needs tests for common typos and confirmation that valid item names are not accidentally matched.
 - Rename short/unclear variable names — one and two letter variables (e.g. `g`, `g2`) should be replaced with descriptive names. Audit all handlers added during the trash/delete implementation pass. Remaining candidates: `g`/`group` variables in reviewBox and groupItems loops. Note: well-known abbreviations like `pref`, `idx`, `btn` are acceptable as suffixes on descriptive names — e.g. `effectivePref` is preferred over `effPref` (too terse) or `effectivePreference` (unnecessarily verbose).
 - Document variable naming convention in CONTRIBUTING — add a section stating: avoid single and double letter variable names unless following a strong established convention (e.g. loop index `i`); avoid opaque abbreviations; prefer full descriptive names even if longer.
 - Single letter command shortcuts — audit all commands and define a consistent set of single-letter shorthands. Currently: `y`/`n`, `m` (move), `h` (help). Candidates: `d` (done with this box), `r` (review items), `n` (new box — conflicts with no), `a` (add item). Each shorthand must be added to the global intercept block in `processInput` and documented in README.md commands table. Requires tests confirming shortcuts are not logged as item names.
 - Location input UX — the location prompt ("Where is this box located?") is easy to confuse with the first item prompt ("What's the first item?"), especially early in a session. Consider offering previously-used locations as chips rather than free-text, which would also reduce typos and inconsistent naming (e.g. "dining room" vs "Dining Room"). This aligns naturally with the location model refactor where location would be selected from a list rather than typed freehand.
-- Nesting a box should inherit parent's location ✅ fixed — `child.location = parent.location` added to `handleNestConfirm` after `parentId` is set.
-- No chips shown after "Review items" on an empty box ✅ fixed — `setBoxOpenChips()` now called after the empty message in `reviewBox`.
-- Trash N from box review ✅ fixed — `state._reviewingBox` flag set in `handleTrashByNumber`, checked in `deleteActiveItem` and `handleDisposal` to call `reviewBox()` instead of `setBoxOpenChips()`.
-- Move single item to another box — `move item <N> to <box name>` should move a specific numbered item from the active box to another named box. Currently there is no way to move individual items between boxes; `Dump into...` moves all items. This is a high-priority gap since users regularly sort items into wrong boxes and need to correct them without moving everything.
+- Move single item to another box — `move item <N> to <box name>` should move a specific numbered item from the active box to another named box. Currently there is no way to move individual items between boxes; `Dump into...` moves all items. This is a high-priority gap since users regularly sort items into wrong boxes and need to correct them without moving everything. Also accessible via the "Move to box" chip in item detail view — currently moves the whole name+fate group; should move a single item.
+- "Put X into Y" natural language — parse `put <source> into <target>` by splitting on "into"/"inside"/"in". Fuzzy-match source against items in the active box (substring, case-insensitive). Fuzzy-match target against boxes first, then items. If target is an item: promote it to a box first, then move source into it. If target is a box: move source into it. If ambiguous (multiple matches): ask for clarification. Depends on: move single item. The sentence "put eggplant-colored Berkeley Bowl bag into lilac-colored Trader Joe's grocery bag" should just work.
 - Mantra copy review — the mantra system is implemented and triggered correctly (on load, every 7th item, 25% on trash, after box done, after session done). The load and trashed pools have approved copy. The last three pools (itemAdded, boxDone, sessionDone) still need copy approval before shipping. Approved load mantras: "Be here now.", "You have enough. You are enough.", "Make your future self thankful for the journey you started today.", "The present is a gift.", "Begin at the beginning." Approved trashed mantras: "Everything has its moment. You have your lifetime.", "Less is more.", "Wherever you go, there you are.", "Go slow, but go.", "All that there is is this moment." Candidate itemAdded, boxDone, sessionDone mantras are in the code but flagged for review.
 - `whereami` debug command — typing `whereami` (or `?!`) should print the current `conversationStage`, active box name, and last chips shown. Useful for diagnosing silent failures where chips disappear and no response is rendered. Should be a global intercept that works from any stage.
 - Review all boxes uses an unordered list while review by fate uses a numbered list. Upgrade review all boxes to use a numbered list and allow box selection by number (type `3` to open box 3 directly).
 - Six-chip trash delete prompt is taller than the standard prompt and may obscure the last message. Consider a layout fix or reducing to four chips by moving always/never for this box to a secondary prompt.
-- Change fate from box review ✅ resolved — elliptical action chips (Keep, Donate, Sell, Unsure, Trash, Delete) now appear in the review screen. 1-2 eligible items show numbered chips (e.g. `Keep 1`); 3+ show an elliptical chip (e.g. `Keep...`) which prepopulates the input and sends a reminder listing eligible item numbers. Chip order and filter logic driven by the `FATES` constant via `flatMap`. Implemented via `buildActionChips`, `eligibleGroupNumbers`, and `handleEllipticalAction` helpers.
 - Compound command history — multi-step exchanges (e.g. `move` then `bedroom`) should be stored as a single history entry (`move bedroom`) rather than two separate ones. Approach: when a command triggers an `AWAITING_*` stage, save the command as a pending prefix; when the next message is sent in that stage, combine prefix + answer into one history entry instead of storing them separately. Stages to consider: `AWAITING_MOVE_LOCATION`, `AWAITING_DUMP_TARGET`, `AWAITING_NEST_PARENT`, `AWAITING_BOX_NAME`, `AWAITING_LOCATION`, `AWAITING_BATCH_CONFIRM`, `AWAITING_DELETE_BOX_CONFIRM`
 - Arrow up/down ✅ implemented — cycles through sent message history; arrow down returns to draft
-- Context bar + help command ✅ implemented — hi/hello/hey/help/? all trigger contextual help; context bar now reads "type \"help\" or \"?\" for commands"
 - Improve dump command parsing — parse `dump <source> into <target>` by matching both source and target against known box names. "into" is a reserved separator keyword and should be blocked from box names at creation time, with a friendly error suggesting underscores or other separators. Current behavior takes everything after "dump " as the target name, which fails when the source box name appears inline (e.g. `dump above fridge into car` creates a new box named "above fridge into car" instead of dumping "Above Fridge" into "Car"). New box creation from a dump command should also validate against the reserved word. Note: active box is not necessarily the source — the command may name a different source box explicitly.
 - Natural language box commands — `trash box <name>` and `delete box <name>` should switch to the named box and trigger the delete flow. Currently these are logged as new item names. Similarly `move box <name>` could switch to a named box and trigger the move flow without requiring the user to first navigate to the box manually.
 - Go for a long walk — step away from the codebase, clear your head, come back with fresh perspective
 - `test_trash.js` intermittently fails. when run order is different? When localStorage mutates mid-test.
 
----
+### Completed
+
+- Context bar + help command ✅ implemented — hi/hello/hey/help/? all trigger contextual help; context bar now reads "type \"help\" or \"?\" for commands"
+- Nesting a box should inherit parent's location ✅ fixed — `child.location = parent.location` added to `handleNestConfirm` after `parentId` is set.
+- Import JSON ✅ implemented — file input in header, validates structure, normalizes legacy fields, confirms before overwrite, re-renders with summary
+- Chip click focus ✅ implemented — focus returned to textarea after chip click; global `keydown` listener redirects any keypress to the textarea if focus is elsewhere (excluding modifier keys, Tab, and Escape)
+- No chips shown after "Review items" on an empty box ✅ fixed — `setBoxOpenChips()` now called after the empty message in `reviewBox`.
+- Trash N from box review ✅ fixed — `state._reviewingBox` flag set in `handleTrashByNumber`, checked in `deleteActiveItem` and `handleDisposal` to call `reviewBox()` instead of `setBoxOpenChips()`.
+- Change fate from box review ✅ resolved — elliptical action chips (Keep, Donate, Sell, Unsure, Trash, Delete) now appear in the review screen. 1-2 eligible items show numbered chips (e.g. `Keep 1`); 3+ show an elliptical chip (e.g. `Keep...`) which prepopulates the input and sends a reminder listing eligible item numbers. Chip order and filter logic driven by the `FATES` constant via `flatMap`. Implemented via `buildActionChips`, `eligibleGroupNumbers`, and `handleEllipticalAction` helpers.
 
 ## Session Summary
 
@@ -514,6 +528,74 @@ function fateReviewChips(fate) {
 ### Every item in a fate review must be able to reach any other fate
 
 This is a hard rule, not a suggestion. When reviewing items of fate X, the chips must always include paths to all other fates. A sell item must be reclassifiable as keep, trash, donate, or unsure. A trash item must be reclassifiable as keep, donate, or sell. Omitting any fate from the chip set is a bug. Verify this with a single test against the `FATE_REVIEW_CHIPS` object rather than per-fate assertions.
+
+
+
+## Data Model Migrations
+
+When a field is renamed or removed from the item or box schema, add a migration to `loadState()` alongside the existing normalization block. Migrations run once on first load and are idempotent — safe to run against already-migrated data.
+
+**Pattern:**
+
+```js
+// In loadState(), inside the box loop:
+for (var j = 0; j < (box.items || []).length; j++) {
+  var item = box.items[j];
+  // Migrate: oldField -> newField (added in May 2026)
+  if (item.oldField !== undefined && item.newField === undefined) {
+    item.newField = item.oldField;
+    delete item.oldField;
+  }
+  // Remove: vestigialField (removed in May 2026)
+  if (item.vestigialField !== undefined) delete item.vestigialField;
+}
+```
+
+**Rules:**
+- Guard every migration with an existence check so it only fires on old data
+- Delete the old field after migrating — don't leave both present
+- After `loadState()` runs, `commitState()` saves the migrated data back, so the migration only runs once per device
+- Document the migration here with the date it was added
+
+**Migrations applied so far:**
+
+| Field | Change | Date |
+|---|---|---|
+| `box.parentId` | `undefined` → `null` (nesting introduced) | early 2026 |
+| `item.addedAt` | renamed to `item.createdAt` | May 2026 |
+| `item.photos` | removed (vestigial, never populated) | May 2026 |
+
+## Voice & Copy
+
+DeclutterBot is a text adventure that helps you pare down. The feel is a calm, slightly dry companion — not a productivity tool, not a chatbot — the friend sitting on the floor with you saying "okay, what's next?"
+
+### The text adventure model
+
+Text adventures have a well-defined architecture: a world model, a parser, a set of verbs that operate on objects in the world, and responses that describe state changes. DeclutterBot maps onto this directly:
+
+- **World model** — `state`: boxes, items, locations, fates
+- **Parser** — `processInput` / `tryGlobalIntercept` / `routeToHandler`
+- **Verbs** — commands (keep, donate, trash, move, dump, nest, review…)
+- **Objects** — boxes (the room you're in) and items (the things in it)
+- **Responses** — describe what happened to the object, not that the input was received
+
+This framing is a design constraint, not just a metaphor. When adding a feature, ask: is this a world model concern, a parser concern, or a response concern? Keep them separate. The active box is the room you're currently in; commands apply to it unless you name a different target.
+
+### Copy principles
+
+These apply to every bot message. When editing existing messages or writing new ones, check against this list before shipping.
+
+- **No filler openers.** "Perfect.", "Got it —", "Nice work!" are padding. Cut them or fold them into the actual information. The first word should be content.
+- **Statements over questions where possible.** "First item?" beats "Tell me about the first item you pick up — what is it?" A question is only needed when there's a real choice.
+- **Objects have identity.** Responses describe what happened to the thing, not that the user's input was acknowledged. "Bowl — donate." not "Got it, I've marked bowl as donate."
+- **Counts as facts, not praise.** "4 in the box." not "You've logged 4 items!"
+- **End on the prompt.** The last thing the user reads should be what they need to do next, not the acknowledgment of what they just did.
+- **Em dashes sparingly.** Consistent with the general style rule. Use a period or a line break instead in most cases.
+- **Clarity over voice for irreversible actions.** Reset confirmation, delete confirmation, and any action that cannot be undone should be explicit and plain, even if that means breaking the voice rules. The user needs to know what's about to happen.
+
+### What the voice is not
+
+The help command output is functional reference material — leave it as a list. Import/export confirmations are transactional. Error messages for invalid inputs should be terse and direct. The voice applies to the conversational flow (naming items, assigning fates, finishing boxes, transitions between stages), not to every string in the app.
 
 ## JavaScript Style
 

@@ -68,7 +68,7 @@ console.log('1. Valid import loads boxes into state');
 reset();
 var data = makeValidExport([
   { id: 'b1', name: 'Garage Box', location: 'garage', parentId: null, notes: '', createdAt: new Date().toISOString(),
-    items: [{ id: 'i1', name: 'Lamp', fate: 'keep', notes: '', description: '', addedAt: new Date().toISOString() }] }
+    items: [{ id: 'i1', name: 'Lamp', fate: 'keep', notes: '', description: '', createdAt: new Date().toISOString() }] }
 ]);
 importJSON(data);
 assert('box loaded', state.boxes.length === 1);
@@ -81,7 +81,7 @@ console.log('\n2. Import shows box and item count in confirmation');
 reset();
 var data2 = makeValidExport([
   { id: 'b1', name: 'Box A', location: '', parentId: null, notes: '', createdAt: '', items: [
-    { id: 'i1', name: 'Chair', fate: 'donate', notes: '', description: '', addedAt: '' }
+    { id: 'i1', name: 'Chair', fate: 'donate', notes: '', description: '', createdAt: '' }
   ]},
   { id: 'b2', name: 'Box B', location: '', parentId: null, notes: '', createdAt: '', items: [] }
 ]);
@@ -134,7 +134,7 @@ console.log('\n8. Items missing optional fields get safe defaults');
 reset();
 importJSON({ boxes: [
   { id: 'b1', name: 'Box', location: '', parentId: null, notes: '', createdAt: '',
-    items: [{ id: 'i1', name: 'Thing', addedAt: '' }] } // no fate, no notes
+    items: [{ id: 'i1', name: 'Thing', createdAt: '' }] } // no fate, no notes
 ]});
 assert('fate defaults to unsure', state.boxes[0].items[0].fate === 'unsure');
 assert('notes defaults to empty string', state.boxes[0].items[0].notes === '');
@@ -147,27 +147,25 @@ var box9 = { id: 'b1', name: 'Legacy Box', location: '', notes: '', createdAt: '
 importJSON({ boxes: [box9] });
 assert('parentId normalised to null', state.boxes[0].parentId === null);
 
-// 10. Existing data: confirm returns false — import cancelled
-console.log('\n10. Import cancelled if user declines confirm');
+// 10. Existing data with different name/location — both kept (merge, not replace)
+console.log('\n10. Import merges new box into existing inventory');
 reset();
-state.boxes.push({ id: 'existing', name: 'Old Box', location: '', parentId: null, notes: '', createdAt: '', items: [] });
-confirmResponse = false;
+state.boxes.push({ id: 'existing', name: 'Old Box', location: 'room a', parentId: null, notes: '', createdAt: '', items: [] });
 importJSON(makeValidExport([
-  { id: 'new', name: 'New Box', location: '', parentId: null, notes: '', createdAt: '', items: [] }
+  { id: 'new-id', name: 'New Box', location: 'room b', parentId: null, notes: '', createdAt: '', items: [] }
 ]));
-assert('existing data preserved', state.boxes.length === 1);
-assert('existing box still there', state.boxes[0].name === 'Old Box');
+assert('existing data preserved', state.boxes.some(function(b) { return b.name === 'Old Box'; }));
+assert('new box added', state.boxes.some(function(b) { return b.name === 'New Box'; }));
 
-// 11. Existing data: confirm returns true — import proceeds
-console.log('\n11. Import proceeds if user confirms overwrite');
+// 11. Existing data with same id — true duplicate, not duplicated
+console.log('\n11. Import skips box with matching id (true duplicate)');
 reset();
-state.boxes.push({ id: 'existing', name: 'Old Box', location: '', parentId: null, notes: '', createdAt: '', items: [] });
-confirmResponse = true;
+state.boxes.push({ id: 'same-id', name: 'My Box', location: 'room', parentId: null, notes: '', createdAt: '', items: [] });
 importJSON(makeValidExport([
-  { id: 'new', name: 'New Box', location: '', parentId: null, notes: '', createdAt: '', items: [] }
+  { id: 'same-id', name: 'My Box', location: 'room', parentId: null, notes: '', createdAt: '', items: [] }
 ]));
-assert('new data loaded', state.boxes.length === 1);
-assert('new box present', state.boxes[0].name === 'New Box');
+assert('no duplicate box created', state.boxes.length === 1);
+assert('original box preserved', state.boxes[0].name === 'My Box');
 
 // 12. Empty state imports without confirm prompt
 console.log('\n12. Import with empty state skips confirm');
