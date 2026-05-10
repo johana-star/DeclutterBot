@@ -365,13 +365,13 @@ function updateContextBar() {
   var dot = document.getElementById('context-dot');
   var label = document.getElementById('context-label');
   if (box) {
-    dot.style.background = '#6b8c6b';
+    dot.classList.remove('dot-inactive'); dot.classList.add('dot-active');
     var item = activeItem();
     label.textContent = item
       ? 'Box: '+box.name+'  \u2192  Item: '+item.name
       : 'Active box: '+box.name+'  \u00b7  '+activeItems(box).length+' items';
   } else {
-    dot.style.background = '#c4a882';
+    dot.classList.remove('dot-active'); dot.classList.add('dot-inactive');
     label.textContent = state.boxes.length === 0
       ? 'No active box \u2014 say hi to get started'
       : 'No active box \u2014 type "help" or "?" for commands';
@@ -391,7 +391,7 @@ function updateBudgetDisplay(recalculating) {
   if (el.classList) el.classList.remove('budget-recalculating');
   el.textContent = 'capacity: ' + _budgetItems.toLocaleString() + ' items';
   el.style.opacity = _budgetItems < 1000 ? '1' : '0.6';
-  el.style.color = _budgetItems < 500 ? 'var(--rust)' : '';
+  el.style.color = _budgetItems < 500 ? 'var(--peony)' : '';
 }
 
 function escHtml(s) {
@@ -418,7 +418,10 @@ function addBotMessage(text, photos) {
   if (!msgs) return;
   var div = document.createElement('div');
   div.className = 'msg bot';
-  div.innerHTML = '<div class="msg-avatar">S</div><div class="msg-bubble"><p>'+renderMarkdown(text)+'</p></div>';
+  var isHtml = typeof text === 'string' && text.trimStart().startsWith('<');
+  div.innerHTML = '<div class="msg-avatar">S</div><div class="msg-bubble">'
+    + (isHtml ? text : '<p>' + renderMarkdown(text) + '</p>')
+    + '</div>';
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
@@ -618,6 +621,22 @@ function tryGlobalIntercept(command, photos) {
   // handleItemViewAction
   if (command === 'back to list') { handleItemViewAction('back to list'); return true; }
   if (command.startsWith('back to ')) { handleItemViewAction(command); return true; }
+
+  // open N — open the Nth item in the current review list (child boxes are numbered)
+  if (/^open \d+$/.test(command)) {
+    var openNum = parseInt(command.split(' ')[1], 10);
+    var openBox = activeBox();
+    if (openBox) {
+      var result = renderReviewLines(openBox, 0, 1, []);
+      var match = result.childBoxes.find(function(ob) { return ob.number === openNum; });
+      if (match) {
+        selectBox(match.box.id);
+        return true;
+      }
+    }
+    addBotMessage('No box at position ' + openNum + ' in this list.');
+    return true;
+  }
 
   // handleNest
   if (['nest box', 'put inside'].includes(command)) { handleNest(command); return true; }
@@ -1242,12 +1261,57 @@ function parseQuantity(text) {
   return null;
 }
 
+// Parse a comma-separated item entry.
+// Formats:
+//   name                           → ask fate, then notes
+//   name, fate-or-notes            → fate if recognized (ask notes), else notes (fate=unsure, done)
+//   name, fate, notes              → set both, done
+//   part1, part2, fate, notes      → name="part1, part2", set fate+notes, done
+//   part1, ..., partN, fate, notes → name=joined parts except last two, set fate+notes, done
+function parseItemEntry(text) {
+  var parts = text.split(',').map(function(p) { return p.trim(); });
+  var name, fate, notes, warning;
+
+  if (parts.length === 1) {
+    // Simple name — normal flow
+    return { name: parts[0], fate: null, notes: null, warning: null };
+  }
+
+  if (parts.length === 2) {
+    // name, fate-or-notes
+    var second = parts[1].toLowerCase();
+    if (FATES.indexOf(second) !== -1) {
+      // Recognized fate — ask for notes still
+      return { name: parts[0], fate: second, notes: null, warning: null };
+    } else {
+      // Treat as notes, warn
+      warning = 'Treated **' + parts[1] + '** as a note. '
+        + 'If it\'s part of the name, use: `' + parts[0] + ', ' + parts[1] + ', keep, notes`';
+      return { name: parts[0], fate: 'unsure', notes: parts[1], warning: warning };
+    }
+  }
+
+  // 3+ parts: last two are always fate + notes, everything before is the name
+  var notesPart = parts[parts.length - 1];
+  var fatePart  = parts[parts.length - 2].toLowerCase();
+  var nameParts = parts.slice(0, parts.length - 2);
+  name  = nameParts.join(', ');
+  notes = notesPart;
+
+  if (FATES.indexOf(fatePart) !== -1) {
+    fate = fatePart;
+  } else {
+    fate = 'unsure';
+    warning = '**' + parts[parts.length - 2] + '** isn\'t a fate I recognise — set to unsure. '
+      + 'Valid fates: ' + FATES.join(', ') + '.';
+  }
+
+  return { name: name, fate: fate, notes: notes, warning: warning };
+}
+
 function handleItemName(text, photos) {
   var box = activeBox();
-  if(!box){
-    startNewBox();
-    return;
-  }
+  if (!box) { startNewBox(); return; }
 
   // Guard against reserved command words as item names
   if (isReservedCommand(text)) {
@@ -1259,33 +1323,54 @@ function handleItemName(text, photos) {
     return;
   }
 
-  var parsed=parseQuantity(text);
+  // Batch quantity detection runs on the full text first
+  var parsed = parseQuantity(text);
   if (parsed) {
-    state.pendingBatch= {
-      qty: parsed.qty,
-      itemName: parsed.itemName,
-    };
+    state.pendingBatch = { qty: parsed.qty, itemName: parsed.itemName };
     state.conversationStage = 'AWAITING_BATCH_CONFIRM';
     addBotMessage('I see **' + parsed.qty + ' \u00d7 ' + parsed.itemName + '**. Should I log ' + parsed.qty +
       ' separate entries for these, all with the same fate?');
     setChips(['Yes, log ' + parsed.qty, 'No, just 1', 'Change quantity']);
     return;
   }
-  var name = text.trim() || 'Unknown item';
-  var item = {
-    id: uid(),
-    name: name,
-    description: '',
-    fate: 'unsure',
-    notes: '',
-    createdAt: new Date().toISOString(),
-    deleted_at: null
+
+  var entry = parseItemEntry(text);
+  var name  = entry.name || 'Unknown item';
+  var item  = {
+    id: uid(), name: name, description: '', fate: entry.fate || 'unsure',
+    notes: entry.notes || '', createdAt: new Date().toISOString(), deleted_at: null
   };
   addItem(box, item);
   state.activeItemId = item.id;
-  state.conversationStage = 'AWAITING_FATE';
-  addBotMessage('**' + name + '.** Keep it, sell it, or out it goes?');
-  setChips(FATE_TITLES);
+
+  var warn = entry.warning ? '\n\n_' + entry.warning + '_' : '';
+
+  if (entry.fate !== null && entry.notes !== null) {
+    // Both provided — log and move on
+    state.activeItemId = null;
+    state.conversationStage = 'BOX_OPEN';
+    addBotMessage('**' + name + '.** ' + item.fate + (item.notes ? ' (' + item.notes + ')' : '') + '.' + warn + '\n\n**' + activeItems(box).length + ' in the box.** What\'s next?');
+    setBoxOpenChips();
+  } else if (entry.fate !== null && entry.notes === null) {
+    // Fate provided — skip fate prompt, ask for notes
+    state.conversationStage = 'AWAITING_ITEM_NOTES';
+    addBotMessage(
+      (entry.fate === 'trash' ? '\uD83D\uDDD1' : entry.fate === 'keep' ? '\u2705' : entry.fate === 'donate' ? '\uD83D\uDC99' : entry.fate === 'sell' ? '\uD83D\uDCB0' : entry.fate === 'return' ? '\uD83D\uDCE6' : '\uD83E\uDD37') +
+      ' **' + titleize(item.fate) + '.** ' + warn + 'Anything to note? (condition, value, where it\'s going) \u2014 or just say _"next"_.'
+    );
+    setChips(['Next item', 'No notes', 'Done with this box']);
+  } else if (entry.fate === null && entry.notes !== null) {
+    // Notes provided (2-part, second wasn't a fate) — already logged with unsure, done
+    state.activeItemId = null;
+    state.conversationStage = 'BOX_OPEN';
+    addBotMessage('**' + name + '.** unsure (' + item.notes + ').' + warn + '\n\n**' + activeItems(box).length + ' in the box.** What\'s next?');
+    setBoxOpenChips();
+  } else {
+    // Name only — normal fate prompt
+    state.conversationStage = 'AWAITING_FATE';
+    addBotMessage('**' + name + '.** Keep it, sell it, or out it goes?');
+    setChips(FATE_TITLES);
+  }
 }
 
 function handleBatchConfirm(text, photos) {
@@ -1529,39 +1614,119 @@ function handleEllipticalAction(label, filterFn) {
   }
 }
 
+// Render the review lines for a box, recursing into child boxes.
+// Returns { lines: string, counter: number, childBoxes: [{number, box}] }
+// depth 0 = direct children of active box (show full sub-list)
+// depth 1 = grandchildren (show as stub)
+// Render review list HTML for a box, recursing into child boxes.
+// Returns { html: string, counter: number, childBoxes: [{number, box}] }
+// depth 0 = top level, depth 1 = one level in (full sub-list), depth 2+ = stub
+// Render review list HTML for a box, recursing into child boxes.
+// Returns { html: string, counter: number, childBoxes: [{number, box}] }
+// depth 0 = top level items/boxes; depth 1 = contents of a child box (shown as sub-list)
+// depth 2+ = stub only ("containing N items")
+function renderReviewLines(box, depth, counter, childBoxes) {
+  counter = counter || 1;
+  childBoxes = childBoxes || [];
+  var html = '';
+
+  // Direct items
+  var items = _.reject(box.items, function(it) { return it.deleted_at; });
+  var groups = groupItems(items);
+  for (var i = 0; i < groups.length; i++) {
+    var g = groups[i];
+    var prefix = g.count > 1 ? g.count + ' \u00d7 ' : '';
+    html += '<li value="' + counter + '"><strong>' + escHtml(prefix + g.name) + '</strong>'
+      + ' \u2192 ' + escHtml(g.fate)
+      + (g.notes ? ' <span class="review-note">(' + escHtml(g.notes) + ')</span>' : '')
+      + '</li>';
+    counter++;
+  }
+
+  // Child boxes
+  var children = state.boxes.filter(function(b) { return b.parentId === box.id; });
+  for (var ci = 0; ci < children.length; ci++) {
+    var child = children[ci];
+    var childItems = _.reject(child.items, function(it) { return it.deleted_at; });
+    var childChildren = state.boxes.filter(function(b) { return b.parentId === child.id; });
+    var total = childItems.length + childChildren.length;
+
+    if (depth >= 1) {
+      // Stub -- summarise without expanding
+      html += '<li value="' + counter + '">'
+        + '\uD83D\uDCE6 <strong>' + escHtml(child.name) + '</strong>'
+        + ' \u2192 ' + escHtml(child.fate || 'unsure')
+        + (total > 0 ? ' <span class="review-note">(containing ' + total + ' item' + (total !== 1 ? 's' : '') + ')</span>' : '')
+        + '</li>';
+      counter++;
+    } else {
+      // Box entry -- show its contents as a sub-list
+      html += '<li value="' + counter + '">'
+        + '\uD83D\uDCE6 <strong>' + escHtml(child.name) + '</strong>'
+        + ' \u2192 ' + escHtml(child.fate || 'unsure');
+      childBoxes.push({ number: counter, box: child });
+      counter++;
+
+      if (total > 0) {
+        var sub = renderReviewLines(child, depth + 1, 1, childBoxes);
+        html += '<blockquote class="review-blockquote">'
+          + '<ol class="review-sub">' + sub.html + '</ol></blockquote>';
+      }
+      html += '</li>';
+    }
+  }
+
+  return { html: html, counter: counter, childBoxes: childBoxes };
+}
+
+
+
 function reviewBox() {
-  var box=activeBox();
-  var activeItems = box ? _.reject(box.items, function(it) { return it.deleted_at; }) : [];
-  if (!box || activeItems.length === 0) {
+  var box = activeBox();
+  var directItems = box ? _.reject(box.items, function(it) { return it.deleted_at; }) : [];
+  var childBoxes = box ? state.boxes.filter(function(b) { return b.parentId === box.id; }) : [];
+
+  if (!box || (directItems.length === 0 && childBoxes.length === 0)) {
     addBotMessage('This box has no items logged yet. Add some!');
     setBoxOpenChips();
     return;
   }
-  var groups = groupItems(activeItems);
-  var lines = '';
-  var actionChips = [];
 
-  for (var i = 0; i < groups.length; i++) {
-    var g = groups[i];
-    var prefix = g.count > 1 ? g.count + ' \u00d7 ' : '';
-    lines += (i+1) + '. **' + prefix + g.name + '** \u2192 ' + g.fate + (g.notes ? ' (' + g.notes + ')' : '') + '\n';
-  }
+  var result = renderReviewLines(box, 0, 1, []);
+  var lines = result.html;
+  var openableBoxes = result.childBoxes; // [{number, box}]
 
-  // Action chips — elliptical when 3+ eligible groups, numbered when 1-2.
-  // Order driven by FATES constant: Keep, Donate, Sell, Unsure, Trash, then Delete.
-  const chips = FATES
-    .flatMap(fate => buildActionChips(groups, fate[0].toUpperCase() + fate.slice(1), group => group.fate !== fate))
-    .concat(buildActionChips(groups, 'Delete', group => group.fate === 'trash'));
+  var groups = groupItems(directItems);
 
-  // Only show "Trash All" when there are 2+ items
-  if (activeItems.length >= 2) {
-    chips.push('Trash All');
-  }
+  // Action chips based on direct items only (elliptical/numbered as before)
+  var chips = FATES
+    .flatMap(function(fate) {
+      return buildActionChips(groups, fate[0].toUpperCase() + fate.slice(1), function(g) { return g.fate !== fate; });
+    })
+    .concat(buildActionChips(groups, 'Delete', function(g) { return g.fate === 'trash'; }));
 
-  var header = activeItems.length !== groups.length
-    ? '**Items in "' + box.name + '" (' + activeItems.length + ' items, ' + groups.length + ' unique):**'
-    : '**Items in "' + box.name + '":**';
-  addBotMessage(header + '\n' + lines.trim());
+  if (directItems.length >= 2) chips.push('Trash All');
+
+  // Open N chips for each child box
+  openableBoxes.forEach(function(ob) {
+    chips.push('Open ' + ob.number);
+  });
+
+  // Build header
+  var totalItems = directItems.length;
+  var totalBoxes = childBoxes.length;
+  var parts = [];
+  if (totalItems > 0) parts.push(totalItems + ' item' + (totalItems !== 1 ? 's' : ''));
+  if (totalBoxes > 0) parts.push(totalBoxes + ' box' + (totalBoxes !== 1 ? 'es' : ''));
+  var groups2 = groupItems(directItems);
+  var uniqueNote = (directItems.length > 0 && directItems.length !== groups2.length)
+    ? ', ' + groups2.length + ' unique' : '';
+  var header = '**Items in "' + box.name + '"'
+    + (parts.length ? ' (' + parts.join(', ') + uniqueNote + ')' : '')
+    + ':**';
+
+  var headerText = header.replace(/\*\*/g, '');
+  addBotMessage('<p><strong>' + headerText + '</strong></p><ol class="review-list">' + lines + '</ol>');
   setChips(chips.concat(['Add item', 'Move box', 'Done with this box']));
   state.conversationStage = 'BOX_OPEN';
 }
@@ -2630,13 +2795,23 @@ function handleDeleteBoxConfirm(text) {
   if (idx === -1) { addBotMessage('Could not find that box.'); return; }
 
   var name = state.boxes[idx].name;
+  var parentId = state.boxes[idx].parentId || null;
   state.boxes.splice(idx, 1);
-  if (state.activeBoxId === boxId) {
-    state.activeBoxId = null;
-    state.activeItemId = null;
+  state.activeBoxId = null;
+  state.activeItemId = null;
+  commitState();
+
+  var parentBox = parentId ? state.boxes.find(function(b) { return b.id === parentId; }) : null;
+  if (parentBox) {
+    state.activeBoxId = parentBox.id;
+    state.conversationStage = 'BOX_OPEN';
+    addBotMessage('Deleted **"' + name + '"**. Back in **"' + parentBox.name + '"**.');
+    setBoxOpenChips();
+  } else {
+    state.conversationStage = 'FINISHED';
+    addBotMessage('Deleted **"' + name + '"**. ' + state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '') + ' remaining.');
+    setChips(['New box', 'Review all boxes', 'Done for now', 'Review by fate']);
   }
-  addBotMessage('Deleted **"' + name + '"**. ' + state.boxes.length + ' box(es) remaining.');
-  setChips(['New box', 'Review all boxes', 'Done for now', 'Review by fate']);
 }
 
 function dumpChipLabel(source, target) {
@@ -3946,7 +4121,7 @@ function initSidebarDrag() {
 if (typeof module !== 'undefined') {
   module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, countFates,
     processInput, handleMove, handleBatchConfirm, handleBatchQty,
-    commitBatch, handleFate, handleItemNotes, handleItemName,
+    commitBatch, handleFate, handleItemNotes, handleItemName, parseItemEntry,
     handleBoxName, handleBoxBatchConfirm, handleBoxBatchQty, handleBoxBatchLocation,
     singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox,
     recentLocations, locationPrompt,
@@ -3955,7 +4130,7 @@ if (typeof module !== 'undefined') {
     handleNest, handleNestParent, getDescendantIds, childBoxes,
     renderBoxTree, groupItems, sameProximity, locSegments,
     handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail,
-    promoteItemToBox,
+    promoteItemToBox, renderReviewLines,
     handleItemMoveTarget,
     addItem, removeItem,
     getBudgetItems: function(){ return _budgetItems; },
