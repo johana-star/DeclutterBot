@@ -23,6 +23,7 @@ tests/test_help.js
 tests/test_history.js
 tests/test_import_csv.js
 tests/test_import.js
+tests/test_item_entry.js
 tests/test_item_view.js
 tests/test_mantras.js
 tests/test_move_boxes_commands.js
@@ -31,6 +32,7 @@ tests/test_move_boxes_detect.js
 tests/test_move_boxes_elliptical.js
 tests/test_move.js
 tests/test_nest.js
+tests/test_promote.js
 tests/test_rename_boxes_commands.js
 tests/test_rename_boxes_complete.js
 tests/test_rename_boxes_detect.js
