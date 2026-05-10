@@ -442,7 +442,11 @@ function _setChipsImpl(chips) {
   var html = '';
   for (var i=0;i<chips.length;i++) {
     var c=chips[i];
-    var fc = FATES.indexOf(c.toLowerCase())!==-1?' fate-'+c.toLowerCase():'';
+    // Extract the fate word from chip labels like "Trash 4", "Keep...", "Return 2"
+    var chipWord = c.toLowerCase().replace(/[\.\s\d]+$/, '').trim();
+    // "Delete" gets its own distinct style (cayenne dotted border)
+    var fc = chipWord === 'delete' ? ' fate-delete'
+           : FATES.indexOf(chipWord) !== -1 ? ' fate-' + chipWord : '';
     html += '<button class="chip'+fc+'" onclick="chipClick(\'' + escAttr(c) + '\')">'+escHtml(c)+'</button>';
   }
   el.innerHTML = html;
