@@ -266,12 +266,12 @@
     letter-spacing: 0.05em;
     font-weight: 500;
   }
-  .tag-trash   { background: #fceef5; color: #883060; }  /* blush / cherry */
-  .tag-return  { background: #f6edde; color: #b24c19; }  /* turmeric / cayenne */
-  .tag-sell    { background: #faf5c0; color: #6a5800; }  /* butter / molasses */
-  .tag-keep    { background: #e8f4ea; color: #2a5a32; }  /* mint / pine */
-  .tag-donate  { background: #d1e5f0; color: #4a5472; }  /* horizon / navy */
-  .tag-unsure  { background: #e7e6f0; color: #494573; }  /* lilac / iris */
+  .tag-trash   { background: var(--blush); color: var(--cherry); }  /* blush / cherry */
+  .tag-return  { background: var(--turmeric); color: var(--cayenne); }  /* turmeric / cayenne */
+  .tag-sell    { background: var(--butter); color: var(--molasses); }  /* butter / molasses */
+  .tag-keep    { background: var(--mint); color: var(--pine); }  /* mint / pine */
+  .tag-donate  { background: var(--horizon); color: var(--navy); }  /* horizon / navy */
+  .tag-unsure  { background: var(--lilac); color: var(--iris); }  /* lilac / iris */
 
   .chat-area {
     flex: 1;
@@ -338,7 +338,7 @@
     max-width: 580px;
   }
   .msg.bot  .msg-bubble { background: var(--white); border: 1px solid var(--chevre); color: var(--abyss); }
-  .msg.user .msg-bubble { background: var(--peony); color: #fff; }
+  .msg.user .msg-bubble { background: var(--peony); color: var(--white); }
   .msg-bubble p { margin-bottom: 8px; }
   .msg-bubble p:last-child { margin-bottom: 0; }
   .msg-bubble strong { font-weight: 700; }
@@ -367,12 +367,13 @@
     white-space: nowrap;
   }
   .chip:hover { border-color: var(--peony); color: var(--peony); background: var(--cream); }
-  .chip.fate-trash  { border-color: #e8a0c0; color: #883060; }  /* sakura / cherry */
-  .chip.fate-return { border-color: #dcb288; color: #b24c19; }  /* ginger / cayenne */
-  .chip.fate-sell   { border-color: #d8c030; color: #6a5800; }  /* mustard / molasses */
-  .chip.fate-keep   { border-color: #7aaa82; color: #2a5a32; }  /* sage / pine */
-  .chip.fate-donate { border-color: #88bcd8; color: #4a5472; }  /* coastal / navy */
-  .chip.fate-unsure { border-color: #7570a9; color: #494573; }  /* lavender / iris */
+  .chip.fate-trash  { border-color: var(--sakura); color: var(--cherry); }  /* sakura / cherry */
+  .chip.fate-return { border-color: var(--ginger); color: var(--cayenne); }  /* ginger / cayenne */
+  .chip.fate-sell   { border-color: var(--mustard); color: var(--molasses); }  /* mustard / molasses */
+  .chip.fate-keep   { border-color: var(--sage); color: var(--pine); }  /* sage / pine */
+  .chip.fate-donate { border-color: var(--coastal); color: var(--navy); }  /* coastal / navy */
+  .chip.fate-unsure { border-color: var(--lavender); color: var(--iris); }  /* lavender / iris */
+  .chip.fate-delete:hover { border: 1.5px dotted var(--cayenne); color: var(--cherry); background: var(--cream); }  /* saffron dotted on hover — permanent action */
 
   .chat-input-area {
     padding: 14px 20px;
@@ -407,7 +408,7 @@
     border-radius: 4px;
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    color: #fff;
+    color: var(--white);
     flex-shrink: 0;
     transition: background 0.15s;
   }
