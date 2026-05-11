@@ -247,11 +247,11 @@ if (typeof module !== 'undefined' && module.exports) {
     eligibleGroupNumbers, nestChipLabel, dumpChipLabel, isReservedCommand,
     maybeMantraOnItem, mantra, extractNumberFromCommand, activeItems
   };
-  
+
   // Make available globally
   if (typeof global !== 'undefined') {
     Object.assign(global, exports);
   }
-  
+
   module.exports = exports;
 }

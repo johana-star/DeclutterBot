@@ -574,6 +574,7 @@
     </div>
     <button class="btn btn-outline" onclick="triggerImport()">&#8593; Import</button>
     <button class="btn btn-outline" onclick="triggerExport()">&#8595; Export</button>
+    <button class="btn btn-primary" onclick="openNewTab('https://github.com/johana-star/DeclutterBot/issues')">🐛📑</button>
   </div>
 </header>
 
@@ -651,6 +652,10 @@
   function triggerExport() {
     if (_importFormat === 'json') exportJSON();
     else exportCSV();
+  }
+
+  function openNewTab(uri) {
+    window.open(uri, '_blank');
   }
 </script>
 <script src="app.js"></script>
