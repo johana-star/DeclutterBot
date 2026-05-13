@@ -86,28 +86,30 @@ assert('name', r4.name === 'bowl');
 assert('fate keep', r4.fate === 'keep');
 assert('notes', r4.notes === 'chipped rim');
 
-console.log('\n5. Four parts: name+comma, fate, notes');
-var r5 = parseItemEntry('bowl, ceramic, keep, chipped rim');
-assert('name with comma', r5.name === 'bowl, ceramic');
+console.log('\n5. Four parts: name, fate, notes joined (commas in notes)');
+var r5 = parseItemEntry('bowl, keep, chipped, hand-painted');
+assert('name', r5.name === 'bowl');
 assert('fate keep', r5.fate === 'keep');
-assert('notes', r5.notes === 'chipped rim');
+assert('notes joined with comma', r5.notes === 'chipped, hand-painted');
 
-console.log('\n6. Trailing comma (empty notes)');
-var r6 = parseItemEntry('bowl, ceramic, keep,');
-assert('name with comma', r6.name === 'bowl, ceramic');
+console.log('\n6. Three parts: trailing comma gives empty notes');
+var r6 = parseItemEntry('bowl, keep,');
+assert('name', r6.name === 'bowl');
 assert('fate keep', r6.fate === 'keep');
 assert('notes empty string', r6.notes === '');
 
-console.log('\n7. Five parts: name+two commas, fate, notes');
-var r7 = parseItemEntry('bowl, ceramic, blue, donate, from grandma');
-assert('name', r7.name === 'bowl, ceramic, blue');
+console.log('\n7. Five parts: name, fate, notes with multiple commas');
+var r7 = parseItemEntry('bowl, donate, blue, ceramic, from grandma');
+assert('name', r7.name === 'bowl');
 assert('fate donate', r7.fate === 'donate');
-assert('notes', r7.notes === 'from grandma');
+assert('notes all joined', r7.notes === 'blue, ceramic, from grandma');
 
-console.log('\n8. Unrecognized fate in 3-part');
-var r8 = parseItemEntry('bowl, ceramic, badFate');
-assert('fate unsure', r8.fate === 'unsure');
-assert('warning', !!r8.warning);
+console.log('\n8. Unrecognized fate in position 2 -> unsure + warning');
+var r8 = parseItemEntry('bowl, ceramic, some notes');
+assert('name', r8.name === 'bowl');
+assert('fate unsure (ceramic not a fate)', r8.fate === 'unsure');
+assert('notes', r8.notes === 'some notes');
+assert('warning mentions ceramic', r8.warning && r8.warning.includes('ceramic'));
 
 console.log('\nhandleItemName integration\n');
 
@@ -139,19 +141,19 @@ assert('stage BOX_OPEN', state.conversationStage === 'BOX_OPEN');
 assert('fate keep', activeBox().items[0].fate === 'keep');
 assert('notes', activeBox().items[0].notes === 'chipped rim');
 
-console.log('\n13. 4-part (comma in name) -> BOX_OPEN');
+console.log('\n13. Notes with commas: name, fate, note1, note2 -> BOX_OPEN');
 reset(); makeBox('Kitchen');
-handleItemName('bowl, ceramic, donate, from goodwill');
+handleItemName('bowl, donate, hand-painted, from goodwill');
 assert('stage BOX_OPEN', state.conversationStage === 'BOX_OPEN');
-assert('name bowl, ceramic', activeBox().items[0].name === 'bowl, ceramic');
+assert('name bowl', activeBox().items[0].name === 'bowl');
 assert('fate donate', activeBox().items[0].fate === 'donate');
-assert('notes', activeBox().items[0].notes === 'from goodwill');
+assert('notes joined', activeBox().items[0].notes === 'hand-painted, from goodwill');
 
 console.log('\n14. Trailing comma (empty notes) -> BOX_OPEN');
 reset(); makeBox('Kitchen');
-handleItemName('bowl, ceramic, sell,');
+handleItemName('bowl, sell,');
 assert('stage BOX_OPEN', state.conversationStage === 'BOX_OPEN');
-assert('name bowl, ceramic', activeBox().items[0].name === 'bowl, ceramic');
+assert('name bowl', activeBox().items[0].name === 'bowl');
 assert('fate sell', activeBox().items[0].fate === 'sell');
 assert('notes empty', activeBox().items[0].notes === '');
 
@@ -162,6 +164,67 @@ FATES.forEach(function(fate) {
   assert(fate + ' accepted', activeBox().items[0].fate === fate);
 });
 
-console.log('\n' + String.fromCharCode(8212).repeat(40));
-console.log('\u2705 ' + passed + ' passed, ' + failed + ' failed');
+
+console.log('\n--- Semicolon mode ---');
+
+console.log('\n16. Semicolon: name; fate -> AWAITING_ITEM_NOTES');
+var r16 = parseItemEntry('bowl; keep');
+assert('name', r16.name === 'bowl');
+assert('fate keep', r16.fate === 'keep');
+assert('notes null', r16.notes === null);
+assert('no warning', !r16.warning);
+
+console.log('\n17. Semicolon: name; fate; notes -> all set');
+var r17 = parseItemEntry('bowl; keep; chipped, hand-painted');
+assert('name', r17.name === 'bowl');
+assert('fate keep', r17.fate === 'keep');
+assert('notes with comma', r17.notes === 'chipped, hand-painted');
+assert('no warning', !r17.warning);
+
+console.log('\n18. Semicolon: commas free in name too');
+var r18 = parseItemEntry('bowl, ceramic; donate; from goodwill, used');
+assert('name with comma', r18.name === 'bowl, ceramic');
+assert('fate donate', r18.fate === 'donate');
+assert('notes with comma', r18.notes === 'from goodwill, used');
+
+console.log('\n19. Semicolon: unrecognized fate -> unsure + warning');
+var r19 = parseItemEntry('bowl; notafate; some notes');
+assert('fate unsure', r19.fate === 'unsure');
+assert('notes preserved', r19.notes === 'some notes');
+assert('warning shown', !!r19.warning);
+assert('warning mentions notafate', r19.warning.includes('notafate'));
+
+console.log('\n20. Semicolon: second part not a fate -> notes, fate unsure');
+var r20 = parseItemEntry('bowl; chipped rim');
+assert('fate unsure', r20.fate === 'unsure');
+assert('notes chipped rim', r20.notes === 'chipped rim');
+assert('warning shown', !!r20.warning);
+
+console.log('\n21. Semicolon: extra semicolons joined back into notes');
+var r21 = parseItemEntry('bowl; keep; note one; note two');
+assert('fate keep', r21.fate === 'keep');
+assert('notes joined', r21.notes === 'note one; note two');
+
+console.log('\n22. Semicolon: all six fates recognized');
+FATES.forEach(function(fate) {
+  var r = parseItemEntry('widget; ' + fate);
+  assert(fate + ' recognized', r.fate === fate && r.notes === null);
+});
+
+console.log('\n23. Semicolon mode via handleItemName: name; fate; notes -> BOX_OPEN');
+reset(); makeBox('Kitchen');
+handleItemName('bowl, ceramic; keep; chipped, hand-painted from Mexico');
+assert('stage BOX_OPEN', state.conversationStage === 'BOX_OPEN');
+assert('name with comma', activeBox().items[0].name === 'bowl, ceramic');
+assert('fate keep', activeBox().items[0].fate === 'keep');
+assert('notes with comma', activeBox().items[0].notes === 'chipped, hand-painted from Mexico');
+
+console.log('\n24. Semicolons take priority over commas when both present');
+var r24 = parseItemEntry('a, b; keep; c, d');
+assert('uses semicolons', r24.name === 'a, b');
+assert('fate keep', r24.fate === 'keep');
+assert('notes c, d', r24.notes === 'c, d');
+
+console.log('\n' + '\u2500'.repeat(40));
+console.log((failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed');
 if (failed > 0) process.exit(1);

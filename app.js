@@ -1265,53 +1265,80 @@ function parseQuantity(text) {
   return null;
 }
 
-// Parse a comma-separated item entry.
-// Formats:
-//   name                           → ask fate, then notes
-//   name, fate-or-notes            → fate if recognized (ask notes), else notes (fate=unsure, done)
-//   name, fate, notes              → set both, done
-//   part1, part2, fate, notes      → name="part1, part2", set fate+notes, done
-//   part1, ..., partN, fate, notes → name=joined parts except last two, set fate+notes, done
+// Parse an item entry. Two separator modes:
+//
+// SEMICOLON mode — if any semicolon present, semicolons are the separators.
+//   Commas are free in all fields.
+//   name; fate           → set fate, ask for notes
+//   name; fate; notes    → set all three, done
+//   name; non-fate       → fate=unsure, treat as notes, done
+//
+// COMMA mode — no semicolons present. Position 2 is always fate:
+//   name                 → ask fate, then notes
+//   name, fate           → set fate, ask for notes
+//   name, fate, notes    → set all three; notes=p3
+//   name, fate, p3, p4   → name=p1, fate=p2, notes="p3, p4" (everything after fate joined as notes)
+//
+// Use semicolons when commas appear in the item name.
+
+// Returns { fate, warning } — resolves a candidate string to a known fate or 'unsure'.
+const resolveFate = (candidate, raw) => {
+  if (FATES.includes(candidate)) return { fate: candidate, warning: null };
+  return {
+    fate: 'unsure',
+    warning: `**${raw}** isn't a recognized fate — set to unsure. Valid fates: ${FATES.join(', ')}.`
+  };
+};
+
+// Handles the two-part case: second part is either a fate (ask notes) or a note (done, unsure).
+const parseTwoParts = (name, second, hintForNotes) => {
+  const fateLower = second.toLowerCase();
+  if (FATES.includes(fateLower)) return { name, fate: fateLower, notes: null, warning: null };
+  return {
+    name, fate: 'unsure', notes: second,
+    warning: `Treated **${second}** as a note. ${hintForNotes}`
+  };
+};
+
 function parseItemEntry(text) {
-  var parts = text.split(',').map(function(p) { return p.trim(); });
-  var name, fate, notes, warning;
+  if (text.includes(';')) {
+    // Semicolon mode — commas are free everywhere
+    const parts = text.split(';').map(p => p.trim());
+    const name  = parts[0] || 'Unknown item';
 
-  if (parts.length === 1) {
-    // Simple name — normal flow
-    return { name: parts[0], fate: null, notes: null, warning: null };
-  }
+    if (parts.length === 1) return { name, fate: null, notes: null, warning: null };
 
-  if (parts.length === 2) {
-    // name, fate-or-notes
-    var second = parts[1].toLowerCase();
-    if (FATES.indexOf(second) !== -1) {
-      // Recognized fate — ask for notes still
-      return { name: parts[0], fate: second, notes: null, warning: null };
-    } else {
-      // Treat as notes, warn
-      warning = 'Treated **' + parts[1] + '** as a note. '
-        + 'If it\'s part of the name, use: `' + parts[0] + ', ' + parts[1] + ', keep, notes`';
-      return { name: parts[0], fate: 'unsure', notes: parts[1], warning: warning };
+    if (parts.length === 2) {
+      return parseTwoParts(name, parts[1],
+        `Valid fates: ${FATES.join(', ')}.`);
     }
-  }
 
-  // 3+ parts: last two are always fate + notes, everything before is the name
-  var notesPart = parts[parts.length - 1];
-  var fatePart  = parts[parts.length - 2].toLowerCase();
-  var nameParts = parts.slice(0, parts.length - 2);
-  name  = nameParts.join(', ');
-  notes = notesPart;
+    // 3+ parts: name ; fate ; notes (extra semicolon-parts joined back into notes)
+    const fatePart        = parts[1].toLowerCase();
+    const notes           = parts.slice(2).join('; ');
+    const { fate, warning } = resolveFate(fatePart, parts[1]);
+    return { name, fate, notes, warning };
 
-  if (FATES.indexOf(fatePart) !== -1) {
-    fate = fatePart;
   } else {
-    fate = 'unsure';
-    warning = '**' + parts[parts.length - 2] + '** isn\'t a fate I recognise — set to unsure. '
-      + 'Valid fates: ' + FATES.join(', ') + '.';
-  }
+    // Comma mode — original behavior
+    const parts = text.split(',').map(p => p.trim());
 
-  return { name: name, fate: fate, notes: notes, warning: warning };
+    if (parts.length === 1) return { name: parts[0], fate: null, notes: null, warning: null };
+
+    if (parts.length === 2) {
+      return parseTwoParts(parts[0], parts[1],
+        `If it's part of the name, use semicolons: \`${parts[0]}; keep; your notes here\``);
+    }
+
+    // 3+ parts: parts[0]=name, parts[1]=fate, parts[2+]=notes (joined with ', ')
+    const name            = parts[0];
+    const fatePart        = parts[1].toLowerCase();
+    const notes           = parts.slice(2).join(', ');
+    const { fate, warning } = resolveFate(fatePart, parts[1]);
+    return { name, fate, notes, warning };
+  }
 }
+
 
 function handleItemName(text, photos) {
   var box = activeBox();
