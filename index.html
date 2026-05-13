@@ -422,32 +422,6 @@
   }
   .send-btn:hover { background: var(--sakura); }
   .send-btn svg { width: 18px; height: 18px; }
-  .rotate-hint { display: none; } /* hidden on desktop, shown only on mobile */
-  /* pointer: coarse + hover: none targets touch-only devices (phones).
-     This combination excludes desktop users (mouse) and iPads in portrait
-     that happen to be narrower than the width breakpoint. */
-  @media (max-width: 1024px) and (pointer: coarse) and (hover: none) {
-    .rotate-hint { font-size: 16px; display: inline-block; margin-left: 6px; vertical-align: middle; }
-  }
-  .rotate-hint .hint-phone { display: inline-block; }
-  .rotate-hint .hint-thumb { display: none; }
-  @keyframes hint-rotate {
-    0%   { transform: rotate(0deg); }
-    30%  { transform: rotate(-90deg); }
-    50%  { transform: rotate(0deg); }
-    70%  { transform: rotate(-90deg); }
-    85%  { transform: rotate(0deg); }
-    100% { transform: rotate(-90deg); }
-  }
-  @media (orientation: portrait)  {
-    .rotate-hint .hint-phone { animation: hint-rotate 3s ease-in-out 1 forwards; }
-    .rotate-hint .hint-thumb { display: none; }
-  }
-  @media (orientation: landscape) {
-    .rotate-hint .hint-phone { display: none; }
-    .rotate-hint .hint-thumb { display: inline-block; }
-  }
-
 
   .typing-indicator {
     display: none;
@@ -565,7 +539,7 @@
 <body>
 
 <header>
-  <div class="logo">DeclutterBot <span>&#8212; sorting companion</span><span class="rotate-hint"><span class="hint-phone">&#128241;</span><span class="hint-thumb">&#128077;</span></span></div>
+  <div class="logo">DeclutterBot <span>&#8212; sorting companion</span></div>
   <div class="actions">
     <input type="file" id="import-file-input" style="display:none" onchange="handleImportFile(event)"/>
     <div class="format-toggle" id="format-toggle">
