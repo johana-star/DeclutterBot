@@ -3,49 +3,25 @@
 // are expected to be defined globally or stubbed before this file runs.
 // Pure helper functions are also available in helpers.js
 
-// Load and make helpers globally available (for tests and modular usage)
+// In Node.js (tests): load lodash, state.js, and helpers.js
+// In browser: these are already loaded as <script> tags before app.js
 if (typeof require !== 'undefined') {
-  try {
-    require('./helpers.js');
-  } catch(e) {
-    try {
-      require('./tests/helpers.js');
-    } catch(e2) {
-      // helpers.js not available, but that's okay - functions are defined below
-    }
+  try { require('./tests/lodash.js'); } catch(e) {}
+
+  // Load state.js — defines state, FATES, FATE_TITLES, uid, activeBox, activeItem, activeItems
+  try { require('./state.js'); } catch(e) {
+    try { require('./tests/state.js'); } catch(e2) {}
+  }
+
+  // Load helpers.js
+  try { require('./helpers.js'); } catch(e) {
+    try { require('./tests/helpers.js'); } catch(e2) {}
   }
 }
 
 const _ = typeof require !== 'undefined' ? require('./tests/lodash.js') : window._;
 
-// Helper: Filter out soft-deleted items
-function activeItems(box) {
-  return box ? _.reject(box.items, (item) => item.deleted_at) : [];
-}
-
-let state = {
-  boxes: [],
-  activeBoxId: null,
-  activeItemId: null,
-  pendingBatch: null,
-  pendingBoxBatch: null,
-  pendingDeleteBoxId: null,
-  pendingNest: null,
-  activeItemViewGroup: null,
-  pendingFateReview: null,
-  conversationStage: 'WELCOME',
-  emptyBoxesForDelete: null,
-  emptyBoxPositions: null,
-  renamePositions: null,
-  pendingRenameBoxId: null,
-  movePositions: null,
-  pendingMoveBoxId: null,
-};
-const FATES = ['trash','return','sell','keep','donate','unsure'];
-function titleize(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-const FATE_TITLES = FATES.map(titleize);
+// state, FATES, FATE_TITLES, titleize, uid, activeBox, activeItem, activeItems — defined in state.js
 let collapsedBoxIds = [];
 let sessionDeletedCount = 0;
 let sessionTrashPreference = null; // null | 'always' | 'never'
@@ -101,26 +77,7 @@ function saveState() {
     }
   }
 }
-function loadState() {
-  var raw = localStorage.getItem('declutterbot_state');
-  if (raw) { try {
-    state = JSON.parse(raw);
-    for (var i = 0; i < state.boxes.length; i++) {
-      var box = state.boxes[i];
-      // Normalise parentId: undefined -> null (added when nesting was introduced)
-      if (box.parentId === undefined) box.parentId = null;
-      // Migrate items: addedAt -> createdAt, remove vestigial photos field
-      for (var j = 0; j < (box.items || []).length; j++) {
-        var item = box.items[j];
-        if (item.addedAt !== undefined && item.createdAt === undefined) {
-          item.createdAt = item.addedAt;
-          delete item.addedAt;
-        }
-        if (item.photos !== undefined) delete item.photos;
-      }
-    }
-  } catch(e) {} }
-}
+// loadState — defined in state.js
 
 function commitState() {
   saveState();
@@ -128,15 +85,7 @@ function commitState() {
   updateContextBar();
 }
 
-function uid() { return Math.random().toString(36).slice(2,9); }
-function activeBox() {
-  return state.boxes.find(function(box) { return box.id === state.activeBoxId; }) || null;
-}
-function activeItem() {
-  var box = activeBox();
-  if (!box || !state.activeItemId) return null;
-  return box.items.find(function(item) { return item.id === state.activeItemId; }) || null;
-}
+// activeBox, activeItem, activeItems — defined in state.js
 function countFates(box) {
   var activeItems = _.reject(box.items, function(item) { return item.deleted_at; });
   return activeItems.reduce(function(counts, item) {
@@ -2187,26 +2136,30 @@ function handleHelp() {
     var box = activeBox();
     var lines = [
       'Here\'s what you can do:',
-      '_"New box"_ — start a new box',
-      '_"Add item"_ — add an item to the active box',
-      '_"Review items"_ — list items in the active box, then type a number to view item detail',
-      '_"Review all boxes"_ — summary of every box',
-      '_"Review by fate"_ — review all items of a given fate across every box',
-      '_"Rename <box number>"_ — rename a box',
-      '_"Move <location>"_ — move the active box to a new location',
-      '_"Delete <box number>"_ — delete an empty box',
-      '_"Nest box"_ — put the active box inside another',
-      '_"Dump into..."_ — transfer all items to another box',
-      '_"Trash <name or number>"_ — mark an item for deletion',
-      '_"Remove <name or number>"_ — remove an item from the active box',
-      '_"Move to box"_ — from item detail view, move an item to another box',
-      '_"Done with this box"_ — finish sorting this box',
-      '_"Done for now"_ — end session and see summary',
-      '_"Import JSON"_ — load a saved inventory',
-      '_"Import CSV"_ — load items from a CSV file',
-      '_"Export JSON"_ — download your inventory as JSON',
-      '_"Export CSV"_ — download your inventory as CSV',
-      '↑ / ↓ arrow keys — recall previous commands'
+      '_"New box"_ \u2014 start a new box',
+      '_"Add item"_ \u2014 add an item to the active box',
+      '_"Review items"_ \u2014 list items in the active box, then type a number to view item detail',
+      '_"Review all boxes"_ \u2014 summary of every box',
+      '_"Review by fate"_ \u2014 review all items of a given fate across every box',
+      '_"Rename <box number>"_ \u2014 rename a box',
+      '_"Move <location>"_ \u2014 move the active box to a new location',
+      '_"Delete <box number>"_ \u2014 delete an empty box',
+      '_"Nest box"_ \u2014 put the active box inside another',
+      '_"Convert location <name>"_ \u2014 promote a location to a box',
+      '_"Dump into..."_ \u2014 transfer all items to another box',
+      '_"Trash <name or number>"_ \u2014 mark an item for deletion',
+      '_"Remove <name or number>"_ \u2014 remove an item from the active box',
+      '_"Move to box"_ \u2014 from item detail view, move an item to another box',
+      '_"Done with this box"_ \u2014 finish sorting this box',
+      '_"Done for now"_ \u2014 end session and see summary',
+      '_"Reset"_ \u2014 clear all data (asks for confirmation)',
+      '_"Import JSON"_ \u2014 merge a saved inventory into current',
+      '_"Import CSV"_ \u2014 load items from a CSV file',
+      '_"Export JSON"_ \u2014 download your inventory as JSON',
+      '_"Export CSV"_ \u2014 download your inventory as CSV',
+      'Item entry: _name, fate, notes_ or use semicolons: _name; fate; notes_',
+      'Multiline: Shift+Enter for new line, Enter to submit',
+      '\u2191 / \u2193 arrow keys \u2014 recall previous commands'
     ];
     addBotMessage(lines.join('\n'));
     if (box) {

@@ -123,7 +123,7 @@
 <main>
   <div class="intro">
     <h2>How a sorting session works</h2>
-    <p>DeclutterBot guides you through your boxes one at a time. For each box you name a location, then work through its contents item by item — deciding the fate of each one before moving on. When a box is done you can start the next, or finish your session and export your inventory.</p>
+    <p>DeclutterBot guides you through your boxes one at a time. For each box you name a location, then work through its contents item by item — deciding the fate of each one (keep, donate, sell, trash, return, or unsure) before moving on. When a box is done you can start the next, or finish your session and export your inventory.</p>
   </div>
 
   <div class="legend">
@@ -173,12 +173,14 @@ flowchart TD
     FATE --> DONATE([Donate])
     FATE --> TRASH([Trash])
     FATE --> SELL([Sell])
+    FATE --> RETURN([Return])
     FATE --> UNSURE([Unsure — revisit later])
 
     KEEP --> NOTES
     DONATE --> NOTES
     TRASH --> NOTES
     SELL --> NOTES
+    RETURN --> NOTES
     UNSURE --> NOTES
 
     NOTES[Add notes?\ne.g. condition, value, destination] --> MORE_ITEMS{More items\nin this box?}
@@ -189,7 +191,7 @@ flowchart TD
     BOX_DONE --> ANOTHER{Another\nbox to sort?}
 
     ANOTHER -->|Yes| NAME_BOX
-    ANOTHER -->|No| EXPORT[Export inventory\nJSON or ZIP with photos]
+    ANOTHER -->|No| EXPORT[Export inventory\nJSON or CSV]
     EXPORT --> END([Session complete])
 
     style START fill:#d1e5f0,stroke:#88bcd8,color:#1a2244
@@ -198,6 +200,7 @@ flowchart TD
     style DONATE fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
     style TRASH fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
     style SELL fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
+    style RETURN fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
     style UNSURE fill:#e8f4ea,stroke:#7aaa82,color:#2a5a32
     style HAS_BOXES fill:#fceef5,stroke:#e8a0c0,color:#883060
     style CONTINUE fill:#fceef5,stroke:#e8a0c0,color:#883060

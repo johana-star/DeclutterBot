@@ -1,6 +1,6 @@
 # DeclutterBot — Sorting Companion
 
-A browser-based chatbot that guides you through sorting boxes and their contents. Log every item, assign it a fate, attach photos, and export your inventory when you're done.
+A browser-based chatbot that guides you through sorting boxes and their contents. Log every item, assign it a fate, add notes, and export your inventory when you're done.
 
 ---
 
@@ -23,79 +23,63 @@ DeclutterBot walks you through a structured workflow:
 
 1. **Name a box** — give it a label and a location
 2. **Pick up an item** — describe it to the bot
-3. **Assign a fate** — keep, donate, trash, sell, or unsure
+3. **Assign a fate** — keep, donate, trash, sell, return, or unsure
 4. **Add notes** — optional condition, value, or destination
 5. **Repeat** until the box is empty, then move to the next
 
 > Open [flowchart.html](./flowchart.html) in a browser for a visual walkthrough of this workflow.
 
-```mermaid
-flowchart TD
-    START([Start session]) --> HAS_BOXES{Any boxes\nalready logged?}
-
-    HAS_BOXES -->|No| NAME_BOX[Name the box\ne.g. Garage #1]
-    HAS_BOXES -->|Yes| CONTINUE{Continue last box\nor start new one?}
-
-    CONTINUE -->|New box| NAME_BOX
-    CONTINUE -->|Continue| PICK_UP
-
-    NAME_BOX --> SET_LOC[Set location\ne.g. spare bedroom]
-    SET_LOC --> PICK_UP[Pick up an item\nand describe it]
-
-    PICK_UP --> QUANTITY{More than\none of this item?}
-
-    QUANTITY -->|Yes| CONFIRM_QTY[Confirm quantity\ne.g. 11 × paper towel rolls]
-    QUANTITY -->|No| FATE
-
-    CONFIRM_QTY --> BATCH_FATE[Assign fate\nto all at once]
-    BATCH_FATE --> MIXED{Mixed fates?}
-    MIXED -->|Yes| FATE
-    MIXED -->|No| NOTES
-
-    FATE[Assign fate] --> KEEP([Keep])
-    FATE --> DONATE([Donate])
-    FATE --> TRASH([Trash])
-    FATE --> SELL([Sell])
-    FATE --> UNSURE([Unsure — revisit later])
-
-    KEEP --> NOTES
-    DONATE --> NOTES
-    TRASH --> NOTES
-    SELL --> NOTES
-    UNSURE --> NOTES
-
-    NOTES[Add notes?\ne.g. condition, value, destination] --> MORE_ITEMS{More items\nin this box?}
-
-    MORE_ITEMS -->|Yes| PICK_UP
-    MORE_ITEMS -->|No| BOX_DONE[Box summary\nkeep · donate · trash · sell · unsure]
-
-    BOX_DONE --> ANOTHER{Another\nbox to sort?}
-
-    ANOTHER -->|Yes| NAME_BOX
-    ANOTHER -->|No| EXPORT[Export inventory\nJSON or ZIP with photos]
-    EXPORT --> END([Session complete])
-```
-
 ---
 
 ## Commands
 
-Commands can be typed or tapped as suggestion chips. Single-letter shorthands are supported where noted.
+Commands can be typed or tapped as suggestion chips.
 
-| Command | Shorthand | What it does |
-|---------|-----------|--------------|
-| `new box` | — | Start logging a new box |
-| `done with this box` | `done` | Finish the current box, see summary |
-| `skip to next box` | — | Same as done, no summary |
-| `review items` | — | List all items in the current box |
-| `move <location>` | `m <location>` | Move the active box to a new location |
-| `move` | `m` | Prompts for the new location |
-| `remove <name or number>` | `delete <name or number>` | Remove an item from the active box |
-| `remove` | `delete` | Prompts with usage hint |
-| `review all boxes` | — | Summary of every box |
-| `reset` | — | Clear all data (asks for confirmation) |
-| `y` / `n` | — | Shorthand for yes / no at any prompt |
-| ↑ / ↓ arrow keys | — | Cycle through previously sent messages (like a terminal) |
+| Command | What it does |
+|---------|--------------|
+| `new box` | Start logging a new box |
+| `add item` | Add an item to the active box |
+| `review items` | List items in the current box |
+| `review all boxes` | Summary of every box |
+| `review by fate` | Review all items of a given fate across every box |
+| `rename <box number>` | Rename a box |
+| `move <location>` | Move the active box to a new location |
+| `delete <box number>` | Delete an empty box |
+| `nest box` | Put the active box inside another |
+| `convert location <name>` | Promote a location string to a nested box |
+| `dump into...` | Transfer all items from active box to another |
+| `trash <name or number>` | Mark an item for deletion |
+| `remove <name or number>` | Remove an item from the active box |
+| `done with this box` | Finish sorting this box |
+| `done for now` | End session and see summary |
+| `reset` | Clear all data (asks for confirmation) |
+| `import json` | Merge a saved inventory into current |
+| `import csv` | Load items from a CSV file |
+| `export json` | Download your inventory as JSON |
+| `export csv` | Download your inventory as CSV |
+| `y` / `n` | Shorthand for yes / no at any prompt |
+| ↑ / ↓ arrow keys | Cycle through previously sent messages |
+
+---
+
+## Item Entry
+
+When adding items, you can set fate and notes in the same line.
+
+**Comma format** — position 2 is always fate, everything after is notes:
+```
+bowl                          → asks for fate, then notes
+bowl, keep                    → fate set, asks for notes
+bowl, keep, chipped rim       → fate and notes set, done
+bowl, keep, ceramic, chipped  → name="bowl", fate=keep, notes="ceramic, chipped"
+```
+
+**Semicolon format** — use when commas appear in the item name or notes:
+```
+bowl, ceramic; keep; chipped, hand-painted from Mexico
+```
+
+**Multiline entry** — Shift+Enter inserts a newline, Enter submits. Each line is treated as a separate item.
 
 ---
 
@@ -103,10 +87,10 @@ Commands can be typed or tapped as suggestion chips. Single-letter shorthands ar
 
 If you have multiple identical items, say so naturally:
 
-> "eleven paper towel rolls"  
+> "eleven paper towel rolls"
 > "3 old magazines"
 
-DeclutterBot will detect the quantity, ask you to confirm, then log each as a separate entry — all sharing the same fate when you assign it.
+DeclutterBot will detect the quantity, ask you to confirm, then log each as a separate entry.
 
 ---
 
@@ -114,22 +98,27 @@ DeclutterBot will detect the quantity, ask you to confirm, then log each as a se
 
 | Button | Output |
 |--------|--------|
-| **Import JSON** | Load a previously exported `inventory.json` — replaces current inventory |
 | **Export JSON** | Structured inventory — all boxes, items, fates, and notes |
+| **Export CSV** | Flat spreadsheet — one row per item |
+| **Import JSON** | Merge a saved inventory into the current session |
+| **Import CSV** | Load items from a CSV file |
 
 ---
 
 ## File Structure
 
 ```
-index.html          Browser entry point — HTML and CSS only
+index.html          Browser entry point — HTML, CSS, and UI bindings
 app.js              All application logic
-test_move.js        Tests for the move box feature
+helpers.js          Pure utility functions (no side effects)
+tests/              Test suite — run with: node tests/test.js
+  test.js           Auto-discovers and runs all test_*.js files
+  lodash.js         Bundled lodash for tests (no network dependency)
+flowchart.html      Visual process flowchart — open in browser
 CONTRIBUTING.md     Development guide — read before making changes
 README.md           This file
-flowchart.html      Visual process flowchart — open in browser
-.githooks/          Git hooks — run `git config core.hooksPath .githooks` to activate
-  pre-commit        Runs test.js before every commit; aborts on failure
+.githooks/
+  pre-commit        Runs tests and updates tree.txt before every commit
 ```
 
 ---
@@ -151,13 +140,13 @@ After that, `node tests/test.js` will run automatically before every commit. Any
 node tests/test.js
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to add new test files.
-
 To run a single suite:
 
 ```bash
-node tests/test_move.js
+node tests/test_reset.js
 ```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to add new test files.
 
 ---
 
@@ -165,8 +154,8 @@ node tests/test_move.js
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
+- Voice and copy principles
+- Data model and migration patterns
+- The text adventure architecture model
 - How to add features (including the test requirement)
-- The conversation state machine and how to extend it
-- Safari / iOS compatibility rules
-- The update checklist to run after every change
 - The punchlist of planned features
