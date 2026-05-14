@@ -175,12 +175,12 @@ As a general rule, prefer ES5-compatible syntax (`var`, plain functions, string 
 Pure utility functions (with no side effects and no state mutations) have been extracted to `helpers.js`:
 
 ```javascript
-// helpers.js exports 23 pure functions:
+// helpers.js exports 22 pure functions:
 - String utilities: titleize, singularize, singularizeLast, escapeCSV, escHtml
 - Data transformations: parseCSVLine, parseQuantity, renderMarkdown, countFates, groupItems, collectFateItems
 - UI text generation: buildActionChips, fateReviewChips, fateReviewBulkChips, buildFateReviewPath, disposalPrompt
-- Validation: isReservedCommand, extractNumberFromCommand
-- Content: mantra, maybeMantraOnItem, nestChipLabel, dumpChipLabel, eligibleGroupNumbers, executeReviewAllActionByNumber
+- Validation: isReservedCommand
+- Content: mantra, maybeMantraOnItem, nestChipLabel, dumpChipLabel, eligibleGroupNumbers, executeReviewAllActionByNumber, activeItems
 ```
 
 These functions are:
@@ -308,13 +308,6 @@ Regex `/(\d+)$/` is:
 - **Clear:** Pattern explicitly shows what we're matching
 - **Consistent:** Already used throughout handlers for `.match()` patterns
 
-Use the `extractNumberFromCommand()` helper from `helpers.js` as a convenience:
-
-```js
-var num = extractNumberFromCommand(command);
-if (num !== null) { handleTrashByNumber(num); }
-```
-
 ---
 
 ## Running Tests
@@ -440,6 +433,27 @@ When planning work sessions, use **story points** (relative effort) rather than 
 - Document variable naming convention in CONTRIBUTING — add a section stating: avoid single and double letter variable names unless following a strong established convention (e.g. loop index `i`); avoid opaque abbreviations; prefer full descriptive names even if longer.
 - Single letter command shortcuts — audit all commands and define a consistent set of single-letter shorthands. Currently: `y`/`n`, `m` (move), `h` (help). Candidates: `d` (done with this box), `r` (review items), `n` (new box — conflicts with no), `a` (add item). Each shorthand must be added to the global intercept block in `processInput` and documented in README.md commands table. Requires tests confirming shortcuts are not logged as item names.
 - Location input UX — the location prompt ("Where is this box located?") is easy to confuse with the first item prompt ("What's the first item?"), especially early in a session. Consider offering previously-used locations as chips rather than free-text, which would also reduce typos and inconsistent naming (e.g. "dining room" vs "Dining Room"). This aligns naturally with the location model refactor where location would be selected from a list rather than typed freehand.
+- Router refactor — make "every verb produces a world response" structurally enforced rather than a documented convention requiring audits. Currently `tryGlobalIntercept` is a 250-line chain of `if` statements where silent `return true` (no `addBotMessage`) is structurally possible and hard to spot. The fix is to separate routing from responding: handlers return a response string, the router calls `addBotMessage` with it. Silent fallthrough becomes impossible because the shape of the code enforces the contract.
+
+  ```js
+  function routeCommand(command) {
+    if (command === 'reset')        return clearAll;
+    if (command === 'review items') return reviewItems;
+    // ...
+    return null; // unrecognised — falls through to stage handler
+  }
+
+  function tryGlobalIntercept(command) {
+    const handler = routeCommand(command);
+    if (!handler) return false;
+    const response = handler();
+    if (response) addBotMessage(response); // enforced at the router level
+    return true;
+  }
+  ```
+
+  Handlers that currently call `addBotMessage` themselves would be refactored to return strings instead. Estimated 3 points — meaningful refactor touching every handler, but the path is mechanical once the router shape is agreed on.
+
 - Move single item to another box — `move item <N> to <box name>` should move a specific numbered item from the active box to another named box. Currently there is no way to move individual items between boxes; `Dump into...` moves all items. This is a high-priority gap since users regularly sort items into wrong boxes and need to correct them without moving everything. Also accessible via the "Move to box" chip in item detail view — currently moves the whole name+fate group; should move a single item.
 - "Put X into Y" natural language — parse `put <source> into <target>` by splitting on "into"/"inside"/"in". Fuzzy-match source against items in the active box (substring, case-insensitive). Fuzzy-match target against boxes first, then items. If target is an item: promote it to a box first, then move source into it. If target is a box: move source into it. If ambiguous (multiple matches): ask for clarification. Depends on: move single item. The sentence "put eggplant-colored Berkeley Bowl bag into lilac-colored Trader Joe's grocery bag" should just work.
 - Mantra copy review — the mantra system is implemented and triggered correctly (on load, every 7th item, 25% on trash, after box done, after session done). The load and trashed pools have approved copy. The last three pools (itemAdded, boxDone, sessionDone) still need copy approval before shipping. Approved load mantras: "Be here now.", "You have enough. You are enough.", "Make your future self thankful for the journey you started today.", "The present is a gift.", "Begin at the beginning." Approved trashed mantras: "Everything has its moment. You have your lifetime.", "Less is more.", "Wherever you go, there you are.", "Go slow, but go.", "All that there is is this moment." Candidate itemAdded, boxDone, sessionDone mantras are in the code but flagged for review.
@@ -547,6 +561,73 @@ This is a hard rule, not a suggestion. When reviewing items of fate X, the chips
 
 
 
+## File Structure and Load Order
+
+### Current structure
+
+All application logic lives in `app.js`. The other files have clean boundaries:
+
+| File | Responsibility |
+|------|---------------|
+| `app.js` | Everything — world model, render functions, router, handlers |
+| `helpers.js` | Pure utility functions — no side effects, no state mutations, no DOM |
+| `styles.css` | All CSS |
+| `ui.js` | Browser UI glue — import/export button handlers |
+
+Load order in `index.html`:
+```
+lodash.min.js → app.js → ui.js
+```
+
+### Intended structure (not yet implemented — extraction reverted)
+
+The goal is to decompose `app.js` into layers by abstraction level:
+
+| File | Responsibility |
+|------|---------------|
+| `state.js` | World model — `state`, `FATES`, `uid`, `activeBox`, `activeItem`, `activeItems`, `loadState` |
+| `render.js` | DOM output — all functions that read state and write to the DOM |
+| `helpers.js` | Pure utility functions |
+| `app.js` | Orchestration — router, all `handle*` functions |
+| `ui.js` | Browser UI glue |
+
+Intended load order:
+```
+lodash.min.js → state.js → render.js → app.js → ui.js
+```
+
+**Status:** An extraction attempt was made in May 2026 but reverted. `state.js` existed briefly as a separate file but was removed when the browser broke. All state management remains in `app.js` for now.
+
+### Why the extraction hasn't shipped (and was reverted)
+
+An extraction attempt was made and reverted. Tests passed but the browser broke — empty inventory, item count not rendering, keypresses not submitting.
+
+**Root cause: implicit vs explicit dependencies.**
+
+The current codebase runs all `<script>` tags in a shared global scope. Every function defined in `app.js` is available everywhere automatically — no import statements needed. This means dependencies are implicit: a function in `render.js` can call `state` or `FATES` because they happen to be defined by the time it runs, not because the file declares that it needs them. Splitting files breaks these implicit assumptions in ways that are invisible until the browser runs.
+
+Three specific failures:
+
+1. **Global scoping** — functions like `addBotMessage`, `renderSidebar`, `setChips` are referenced as bare names throughout `app.js`. Splitting them into a separate file changes when they're defined relative to when they're called, causing silent `undefined` errors in the browser that don't appear in Node tests.
+
+2. **The Node shim pattern** — `app.js` uses `var` re-declarations to wrap render functions so tests can stub them at runtime. This pattern breaks when the real implementations move to a file that loads before the shim runs — the shim wraps a function that no longer exists in `app.js` scope.
+
+3. **`_addBotMessageImpl`** — the test harness captures the real `addBotMessage` before stubbing. After extraction, the capture happened after the shim had already replaced it with the stub wrapper.
+
+**The correct fix is ES modules (`import`/`export`).** ES modules make dependencies explicit — each file declares exactly what it needs and what it provides. The module system guarantees evaluation order regardless of `<script>` tag order, eliminating load-order fragility. The Node shim pattern becomes unnecessary because tests mock at the import boundary instead. All three failures above go away.
+
+**The blocker** is infrastructure: ES modules require either a bundler (webpack, esbuild, rollup) or a local dev server. They don't work when `index.html` is opened via `file://`. That's a larger architectural decision than a single session — until it's made, `app.js` remains a single file and the intended structure is documented here as intent.
+
+---
+- `render.js` — depends on `state.js`. Reads state, writes DOM. Does not call handlers.
+- `helpers.js` — no dependencies. Pure functions only.
+- `app.js` — depends on all of the above. Orchestrates everything.
+- `ui.js` — depends on `app.js`. Browser-only, called by HTML `onclick` attributes.
+
+### Node.js test shim pattern
+
+Tests stub browser globals (`addBotMessage`, `renderSidebar`, etc.) before requiring `app.js`. The shim block at the top of `app.js` runs after requires and wraps these names to call `global.*` at runtime — so tests can override them. `render.js` only sets a global if it isn't already defined, so test stubs take priority.
+
 ## Data Model Migrations
 
 When a field is renamed or removed from the item or box schema, add a migration to `loadState()` alongside the existing normalization block. Migrations run once on first load and are idempotent — safe to run against already-migrated data.
@@ -603,6 +684,7 @@ These apply to every bot message. When editing existing messages or writing new 
 
 - **No filler openers.** "Perfect.", "Got it —", "Nice work!" are padding. Cut them or fold them into the actual information. The first word should be content.
 - **Statements over questions where possible.** "First item?" beats "Tell me about the first item you pick up — what is it?" A question is only needed when there's a real choice.
+- **Every verb produces a world response.** If the parser accepts input (doesn't reject it as unrecognised), the world must describe what happened — even if nothing changed. "I don't know a location called X" is a valid response. Silent fallthrough — where the parser claims to have handled a command but produces no bot message — breaks the player's mental model and feels like a bug. In `tryGlobalIntercept`, every `return true` must be preceded by an `addBotMessage` call or a delegated handler that guarantees one.
 - **Objects have identity.** Responses describe what happened to the thing, not that the user's input was acknowledged. "Bowl — donate." not "Got it, I've marked bowl as donate."
 - **Counts as facts, not praise.** "4 in the box." not "You've logged 4 items!"
 - **End on the prompt.** The last thing the user reads should be what they need to do next, not the acknowledgment of what they just did.
@@ -704,6 +786,7 @@ When you make a code change, ask yourself:
 - [ ] Did I change existing behavior? → Update or add tests covering the new behavior
 - [ ] Did I complete a punchlist item? → Remove it from the punchlist
 - [ ] Did I change the app's conversation flow? → Update the Mermaid diagram in README.md and flowchart.html
+- [ ] Did I add, remove, or rename a user-facing command? → Update `handleHelp()` in app.js — the two-section structure (always available / inside a box) must stay accurate
 - [ ] Did I identify a new upcoming feature? → Add it to the punchlist
 - [ ] Before adding a punchlist item, did I verify the current behavior? → Check actual output/behavior first; do not add tasks based on assumptions about what the code does. The task may already be done.
 - [ ] Did I add a function to helpers.js? → Export in module.exports and global scope, plus copy to `tests/helpers.js`
@@ -738,6 +821,37 @@ When you make a code change, ask yourself:
 The tasks below no longer need to be reviewed before commiting, as they are automatic.
 
 - Did I add a new test file? → `test.js` auto-discovers any file matching `test_*.js`, no registration needed
+
+---
+
+## `handleHelp()` — keeping the command reference current
+
+`handleHelp()` is the single source of truth for what commands exist and how they work. It is context-aware: it shows a different response depending on whether the user has an active box open.
+
+**Structure:**
+
+```
+── Always available ──        shown in all contexts
+  New box, Review all boxes, Review by fate, Review items,
+  Done for now, Import/Export, Reset, arrow keys
+
+── Inside a box ──            shown only when activeBox() is truthy
+  Add item (with entry syntax), Move, Nest box, Convert location,
+  Dump into..., Trash, Remove, Done with this box,
+  item-detail commands (Move to box, Make it a box)
+
+single-line hint              shown when no active box, instead of the full box section
+  "Open a box to also use Add item, Move, ..."
+```
+
+**Rules:**
+
+- Commands that only work from `FINISHED` (Review all boxes) — such as `Rename <N>`, `Delete <N>`, `Move <N>` — belong in the description of "Review all boxes", not as separate entries. They are not directly typeable from a cold start.
+- Commands that only work from item detail view (`AWAITING_ITEM_VIEW`) — such as `Move to box` and `Make it a box` — must be labeled "From item detail:" so users know they are not always available.
+- Item entry syntax and multiline entry are features of `Add item`, not standalone commands. Document them inline on that line, not as separate entries.
+- Import and Export are paired and can share a line each.
+
+**When to update:** any time a command is added, removed, renamed, or its availability changes (e.g. a box-only command becomes global, or vice versa). Update `handleHelp()` in the same commit as the feature change — treat it like a changelog entry, not optional documentation.
 
 ---
 

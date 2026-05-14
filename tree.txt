@@ -7,7 +7,6 @@ helpers.js
 index.html
 LICENSE
 README.md
-state.js
 styles.css
 tests/lodash.js
 tests/test_box_batch.js

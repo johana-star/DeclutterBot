@@ -25,7 +25,6 @@ global.localStorage = {
   removeItem: function() {}
 };
 
-global.JSZip = function() {};
 
 // Load app.js and pull exports into global scope
 var app = require('../app.js');
