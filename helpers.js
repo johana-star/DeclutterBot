@@ -125,12 +125,6 @@ function collectFateItems(box) {
   return grouped;
 }
 
-// Extract trailing number from command (e.g., "delete 5" → 5, "item 5" → 5)
-function extractNumberFromCommand(command) {
-  var match = command.match(/(\d+)$/);
-  return match ? parseInt(match[1], 10) : null;
-}
-
 function executeReviewAllActionByNumber(command, pattern, positionsArray, handler) {
   var match = command.match(pattern);
   if (match) {
@@ -245,7 +239,7 @@ if (typeof module !== 'undefined' && module.exports) {
     collectFateItems, executeReviewAllActionByNumber, disposalPrompt,
     buildActionChips, fateReviewChips, fateReviewBulkChips, buildFateReviewPath,
     eligibleGroupNumbers, nestChipLabel, dumpChipLabel, isReservedCommand,
-    maybeMantraOnItem, mantra, extractNumberFromCommand, activeItems
+    maybeMantraOnItem, mantra, activeItems
   };
 
   // Make available globally

@@ -2692,35 +2692,6 @@ function importJSON(data) {
   setChips(['Review all boxes', 'Continue last box', 'New box']);
 }
 
-function handleImportJSON(event) {
-  var file = event.target.files[0];
-  event.target.value = ''; // reset so same file can be re-imported
-  if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    var data;
-    try { data = JSON.parse(e.target.result); }
-    catch(err) {
-      addBotMessage('Import failed \u2014 could not parse the file as JSON. Is it a valid inventory export?');
-      return;
-    }
-    importJSON(data);
-  };
-  reader.readAsText(file);
-}
-
-function handleImportCSV(event) {
-  var file = event.target.files[0];
-  event.target.value = ''; // reset so same file can be re-imported
-  if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    importCSV(e.target.result);
-  };
-  reader.readAsText(file);
-}
-
-
 const WELCOME_MSG =
   'Let\'s sort through this together.\n\n' +
   'Pick up a box, give it a name, and we\'ll go item by item \u2014' +
@@ -4412,7 +4383,7 @@ if (typeof module !== 'undefined') {
     handleDeleteBox, handleDeleteBoxConfirm, handleDump, handleDumpTarget,
     groupItems, boxSummaryLine,
     handleNest, handleNestParent, getDescendantIds, childBoxes,
-    renderBoxTree, groupItems, sameProximity, locSegments,
+    renderBoxTree, sameProximity, locSegments,
     handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail,
     promoteItemToBox, renderReviewLines,
     effectiveLocation, promoteLocationToBox, handlePromoteLocation,
@@ -4436,7 +4407,6 @@ if (typeof module !== 'undefined') {
     clearAll, handleResetConfirm, _doReset,
     importJSON,
     importCSV,
-    handleImportCSV,
     handleHelp,
     saveState,
     setBoxOpenChips,
@@ -4446,8 +4416,6 @@ if (typeof module !== 'undefined') {
     exportCSV,
     parseCSV,
     parseCSVLine,
-    importCSV,
-    handleImportCSV,
     escAttr,
     disposalPrompt, deletionLog, deleteActiveItem,
     trashAllItems, deleteAllItems, handleTrashAll, handleTrashAllConfirm, handleDeleteTrashedConfirm, handleDeleteBoxAfterTrashAllConfirm,
