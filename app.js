@@ -1290,6 +1290,12 @@ const resolveFate = (candidate, raw) => {
   };
 };
 
+// Handles the 3+-part case: name is already resolved, fateRaw is the raw fate string, notes already joined.
+const parseThreeParts = (name, fateRaw, notes) => {
+  const { fate, warning } = resolveFate(fateRaw.toLowerCase(), fateRaw);
+  return { name, fate, notes, warning };
+};
+
 // Handles the two-part case: second part is either a fate (ask notes) or a note (done, unsure).
 const parseTwoParts = (name, second, hintForNotes) => {
   const fateLower = second.toLowerCase();
@@ -1301,42 +1307,22 @@ const parseTwoParts = (name, second, hintForNotes) => {
 };
 
 function parseItemEntry(text) {
-  if (text.includes(';')) {
-    // Semicolon mode — commas are free everywhere
-    const parts = text.split(';').map(p => p.trim());
-    const name  = parts[0] || 'Unknown item';
+  const useSemicolon = text.includes(';');
+  const sep          = useSemicolon ? ';' : ',';
+  const parts        = text.split(sep).map(p => p.trim());
+  const name         = parts[0] || 'Unknown item';
 
-    if (parts.length === 1) return { name, fate: null, notes: null, warning: null };
+  if (parts.length === 1) return { name, fate: null, notes: null, warning: null };
 
-    if (parts.length === 2) {
-      return parseTwoParts(name, parts[1],
-        `Valid fates: ${FATES.join(', ')}.`);
-    }
-
-    // 3+ parts: name ; fate ; notes (extra semicolon-parts joined back into notes)
-    const fatePart        = parts[1].toLowerCase();
-    const notes           = parts.slice(2).join('; ');
-    const { fate, warning } = resolveFate(fatePart, parts[1]);
-    return { name, fate, notes, warning };
-
-  } else {
-    // Comma mode — original behavior
-    const parts = text.split(',').map(p => p.trim());
-
-    if (parts.length === 1) return { name: parts[0], fate: null, notes: null, warning: null };
-
-    if (parts.length === 2) {
-      return parseTwoParts(parts[0], parts[1],
-        `If it's part of the name, use semicolons: \`${parts[0]}; keep; your notes here\``);
-    }
-
-    // 3+ parts: parts[0]=name, parts[1]=fate, parts[2+]=notes (joined with ', ')
-    const name            = parts[0];
-    const fatePart        = parts[1].toLowerCase();
-    const notes           = parts.slice(2).join(', ');
-    const { fate, warning } = resolveFate(fatePart, parts[1]);
-    return { name, fate, notes, warning };
+  if (parts.length === 2) {
+    const hint = useSemicolon
+      ? `Valid fates: ${FATES.join(', ')}.`
+      : `If it's part of the name, use semicolons: \`${name}; keep; your notes here\``;
+    return parseTwoParts(name, parts[1], hint);
   }
+
+  // 3+ parts: name, fate, notes (notes joined with the same separator)
+  return parseThreeParts(name, parts[1], parts.slice(2).join(sep + ' '));
 }
 
 
