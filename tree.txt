@@ -31,7 +31,9 @@ tests/test_move_boxes_complete.js
 tests/test_move_boxes_detect.js
 tests/test_move_boxes_elliptical.js
 tests/test_move.js
+tests/test_multiline.js
 tests/test_nest.js
+tests/test_promote_location.js
 tests/test_promote.js
 tests/test_rename_boxes_commands.js
 tests/test_rename_boxes_complete.js

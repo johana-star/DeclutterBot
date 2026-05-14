@@ -431,7 +431,8 @@ function addUserMessage(text, photos) {
   if (!msgs) return;
   var div = document.createElement('div');
   div.className = 'msg user';
-  div.innerHTML = '<div class="msg-avatar">You</div><div class="msg-bubble"><p>'+escHtml(text)+'</p></div>';
+  var displayText = escHtml(text.replace(/\n+/g, ' ↩ '));
+  div.innerHTML = '<div class="msg-avatar">You</div><div class="msg-bubble"><p>'+displayText+'</p></div>';
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
@@ -477,6 +478,11 @@ function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendUserMessage();
+    return;
+  }
+  if (e.key === 'Enter' && e.shiftKey) {
+    // Let the newline insert naturally, then resize
+    setTimeout(function() { autoResize(input); }, 0);
     return;
   }
   if (e.key === 'ArrowUp') {
@@ -528,7 +534,14 @@ async function sendUserMessage() {
   showTyping();
   await new Promise(function(r){setTimeout(r,500);});
   hideTyping();
-  processInput(text, []);
+  var lines = text.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+  var eligibleStage = state.conversationStage === 'AWAITING_ITEM_NAME'
+                   || state.conversationStage === 'BOX_OPEN';
+  if (lines.length > 1 && eligibleStage) {
+    processMultilineItems(lines);
+  } else {
+    processInput(text, []);
+  }
   commitState();
 }
 
@@ -573,7 +586,8 @@ function handleContinueLastBox() {
 
 // Returns true if a global command was handled, false if processInput should continue.
 // Global commands are ones that can be invoked from any stage (reset, done, etc).
-function tryGlobalIntercept(command, photos) {
+function tryGlobalIntercept(command, photos, input) {
+  input = input || command; // original case preserved
   // clearAll
   if (['reset', 'start over'].includes(command)) { clearAll(); return true; }
 
@@ -625,6 +639,35 @@ function tryGlobalIntercept(command, photos) {
   // handleItemViewAction
   if (command === 'back to list') { handleItemViewAction('back to list'); return true; }
   if (command.startsWith('back to ')) { handleItemViewAction(command); return true; }
+
+  // convert location / nest <location-name> — promote a location string to a box
+  if (command.startsWith('convert location ')) {
+    handlePromoteLocation(input);
+    return true;
+  }
+  // nest <name> where name matches a location (not a box) — or nest <name> in <loc>
+  if (command.startsWith('nest ') && !['nest box', 'nest into'].includes(command)) {
+    var nestRest = command.slice(5);
+    // Check if bare 'nest <name>' where name is a known location
+    var inIdx = nestRest.lastIndexOf(' in ');
+    var nestLocName = (inIdx !== -1 ? nestRest.slice(0, inIdx) : nestRest).trim();
+    var isKnownLocation = state.boxes.some(function(b) {
+      return (b.location || '').toLowerCase() === nestLocName;
+    });
+    var isKnownBox = state.boxes.some(function(b) {
+      return b.name.toLowerCase() === nestLocName && !b.deleted_at;
+    });
+    if (isKnownLocation && !isKnownBox) {
+      handlePromoteLocation(input);
+      return true;
+    }
+    if (isKnownLocation && isKnownBox) {
+      // Name matches both a location and a box — use the existing box (option 1)
+      handlePromoteLocation(input);
+      return true;
+    }
+    // Not a location match — fall through to existing nest handler
+  }
 
   // open N — open the Nth item in the current review list (child boxes are numbered)
   if (/^open \d+$/.test(command)) {
@@ -799,6 +842,7 @@ function routeToHandler(stage, command, photos) {
     case 'AWAITING_FATE_REVIEW_ITEM':    handleFateReviewItem(command);        break;
     case 'AWAITING_MOVE_LOCATION':       handleMove(command);                  break;
     case 'AWAITING_NEST_CHILD':          handleNestChild(command);             break;
+    case 'AWAITING_PROMOTE_LOCATION':     handlePromoteLocationConfirm(command); break;
     case 'AWAITING_NEST_PARENT':         handleNestParent(command);            break;
     case 'AWAITING_TRASH_DELETE':        handleTrashDelete(command);           break;
     case 'WELCOME':                      handleWelcome(command, photos);       break;
@@ -836,7 +880,7 @@ function processInput(input, photos) {
   if (command === 'y') { command = 'yes'; }
   if (command === 'n') { command = 'no'; }
 
-  if (tryGlobalIntercept(command, photos)) return;
+  if (tryGlobalIntercept(command, photos, input)) return;
 
   routeToHandler(state.conversationStage, command, photos);
 }
@@ -1325,6 +1369,68 @@ function parseItemEntry(text) {
   return parseThreeParts(name, parts[1], parts.slice(2).join(sep + ' '));
 }
 
+
+// Process multiple item lines submitted at once (Shift+Enter multiline entry).
+// Each line is parsed through parseItemEntry and logged immediately.
+// Lines with warnings (unrecognized fate, etc.) are cached and reported in the summary.
+// Name-only lines are logged as unsure with no notes — no fate/notes prompt.
+function processMultilineItems(lines) {
+  const box = activeBox();
+  if (!box) { startNewBox(); return; }
+
+  const errorLines = [];
+  let added = 0;
+
+  lines = lines.filter(l => l.trim());
+  lines.forEach(line => {
+    // Batch quantity check first
+    const qty = parseQuantity(line);
+    if (qty) {
+      // Expand batch: log qty items all as unsure, no prompt
+      for (let i = 0; i < qty.qty; i++) {
+        const item = {
+          id: uid(), name: qty.itemName, description: '', fate: 'unsure',
+          notes: '', createdAt: new Date().toISOString(), deleted_at: null
+        };
+        addItem(box, item);
+        added++;
+      }
+      return;
+    }
+
+    const entry = parseItemEntry(line);
+    const item = {
+      id: uid(),
+      name: entry.name || 'Unknown item',
+      description: '',
+      fate: entry.fate || 'unsure',
+      notes: entry.notes || '',
+      createdAt: new Date().toISOString(),
+      deleted_at: null
+    };
+    addItem(box, item);
+    added++;
+
+    if (entry.warning) {
+      errorLines.push({ line, warning: entry.warning });
+    }
+  });
+
+  state.activeItemId = null;
+  state.conversationStage = 'BOX_OPEN';
+
+  let msg = `**${added} item${added !== 1 ? 's' : ''} added** to "${box.name}".`;
+
+  if (errorLines.length > 0) {
+    msg += '\n\nThese lines had formatting issues — edit and resubmit:';
+    errorLines.forEach(({ line, warning }) => {
+      msg += `\n- \`${line}\` — ${warning}`;
+    });
+  }
+
+  addBotMessage(msg);
+  setBoxOpenChips();
+}
 
 function handleItemName(text, photos) {
   var box = activeBox();
@@ -2974,6 +3080,145 @@ function nestChipLabel(source, candidate) {
   return candidate.location ? candidate.location + ' · ' + candidate.name : candidate.name;
 }
 
+// Returns the nearest non-null location by walking the parent chain.
+// Boxes directly inside another box have location:null — their location
+// is inherited from the first ancestor that has a location string.
+function effectiveLocation(box) {
+  if (!box) return null;
+  if (box.location) return box.location;
+  var parent = state.boxes.find(function(b) { return b.id === box.parentId; });
+  return parent ? effectiveLocation(parent) : null;
+}
+
+// Promote a location string to a box.
+// Finds all boxes whose location matches locationName (case-insensitive),
+// reparents them under targetBox, and sets their location to null.
+function promoteLocationToBox(locationName, targetBox) {
+  var matched = state.boxes.filter(function(b) {
+    return (b.location || '').toLowerCase() === locationName.toLowerCase();
+  });
+
+  if (matched.length === 0) {
+    addBotMessage('No boxes found with location **"' + locationName + '"**.');
+    return;
+  }
+
+  matched.forEach(function(b) {
+    b.parentId  = targetBox.id;
+    b.location  = null;
+  });
+
+  commitState();
+  addBotMessage(
+    'Moved **' + matched.length + ' box' + (matched.length !== 1 ? 'es' : '') +
+    '** from location _' + locationName + '_ into **"' + targetBox.name + '"**.'
+  );
+  setBoxOpenChips();
+}
+
+// Parse and execute a promote-location command.
+// Accepts:
+//   convert location <name>
+//   convert location <name> to box
+//   nest <name>              (only when name matches a location, not a box)
+//   nest <name> in <loc>
+function handlePromoteLocation(text) {
+  var raw = text.trim();
+  var lower = raw.toLowerCase();
+
+  // Extract location name and optional parent location
+  var locationName, inLocation;
+
+  if (lower.startsWith('convert location ')) {
+    locationName = raw.slice('convert location '.length)
+      .replace(/\s+to\s+box\s*$/i, '').trim();
+  } else if (lower.startsWith('nest ')) {
+    var rest = raw.slice('nest '.length);
+    var inIdx = rest.toLowerCase().lastIndexOf(' in ');
+    if (inIdx !== -1) {
+      locationName = rest.slice(0, inIdx).trim();
+      inLocation   = rest.slice(inIdx + 4).trim();
+    } else {
+      locationName = rest.trim();
+    }
+  }
+
+  if (!locationName) {
+    addBotMessage('What location should I convert? Use: _convert location <name>_ or _nest <name>_.');
+    return;
+  }
+
+  // Check location actually exists
+  var matchedBoxes = state.boxes.filter(function(b) {
+    return (b.location || '').toLowerCase() === locationName.toLowerCase();
+  });
+  if (matchedBoxes.length === 0) {
+    addBotMessage('No boxes found with location **"' + locationName + '"**. Check the spelling.');
+    return;
+  }
+
+  // Find existing box with that name, or create one
+  var targetBox = state.boxes.find(function(b) {
+    return b.name.toLowerCase() === locationName.toLowerCase() && !b.deleted_at;
+  });
+
+  if (targetBox) {
+    // Box already exists — use it, confirm
+    promoteLocationToBox(locationName, targetBox);
+  } else {
+    // Need to create the box — need a location for it
+    var parentLocation = inLocation || null;
+
+    if (!parentLocation) {
+      // Try to infer from existing boxes at that location — use their nearest ancestor's location
+      // Or prompt
+      addBotMessage(
+        'I\'ll create a box called **"' + locationName + '"** and move all ' +
+        matchedBoxes.length + ' box' + (matchedBoxes.length !== 1 ? 'es' : '') + ' into it.\n\n' +
+        'What location should **"' + locationName + '"** be in?'
+      );
+      state.pendingPromoteLocation = { locationName: locationName };
+      state.conversationStage = 'AWAITING_PROMOTE_LOCATION';
+      var locP = locationPrompt();
+      setChips(locP.chips);
+      return;
+    }
+
+    var newBox = {
+      id:        uid(),
+      name:      locationName,
+      location:  parentLocation,
+      parentId:  null,
+      fate:      null,
+      notes:     '',
+      createdAt: new Date().toISOString(),
+      items:     []
+    };
+    state.boxes.push(newBox);
+    promoteLocationToBox(locationName, newBox);
+  }
+}
+
+function handlePromoteLocationConfirm(text) {
+  var pending = state.pendingPromoteLocation;
+  if (!pending) { state.conversationStage = 'BOX_OPEN'; return; }
+
+  var newBox = {
+    id:        uid(),
+    name:      pending.locationName,
+    location:  text.trim() || 'unspecified',
+    parentId:  null,
+    fate:      null,
+    notes:     '',
+    createdAt: new Date().toISOString(),
+    items:     []
+  };
+  state.boxes.push(newBox);
+  state.pendingPromoteLocation = null;
+  state.conversationStage = 'BOX_OPEN';
+  promoteLocationToBox(pending.locationName, newBox);
+}
+
 function handleNest(text) {
   var box = activeBox();
 
@@ -4139,6 +4384,7 @@ if (typeof module !== 'undefined') {
   module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, countFates,
     processInput, handleMove, handleBatchConfirm, handleBatchQty,
     commitBatch, handleFate, handleItemNotes, handleItemName, parseItemEntry,
+    processMultilineItems,
     handleBoxName, handleBoxBatchConfirm, handleBoxBatchQty, handleBoxBatchLocation,
     singularize, singularizeLast, handleLocation, startNewBox, doneWithBox, reviewBox,
     recentLocations, locationPrompt,
@@ -4148,6 +4394,7 @@ if (typeof module !== 'undefined') {
     renderBoxTree, groupItems, sameProximity, locSegments,
     handleItemViewByNumber, handleItemViewAction, handleItemViewNotes, showItemDetail,
     promoteItemToBox, renderReviewLines,
+    effectiveLocation, promoteLocationToBox, handlePromoteLocation,
     handleItemMoveTarget,
     addItem, removeItem,
     getBudgetItems: function(){ return _budgetItems; },
