@@ -175,9 +175,9 @@ As a general rule, prefer ES5-compatible syntax (`var`, plain functions, string 
 Pure utility functions (with no side effects and no state mutations) have been extracted to `helpers.js`:
 
 ```javascript
-// helpers.js exports 22 pure functions:
+// helpers.js exports 21 pure functions:
 - String utilities: titleize, singularize, singularizeLast, escapeCSV, escHtml
-- Data transformations: parseCSVLine, parseQuantity, renderMarkdown, countFates, groupItems, collectFateItems
+- Data transformations: parseCSVLine, parseQuantity, countFates, groupItems, collectFateItems
 - UI text generation: buildActionChips, fateReviewChips, fateReviewBulkChips, buildFateReviewPath, disposalPrompt
 - Validation: isReservedCommand
 - Content: mantra, maybeMantraOnItem, nestChipLabel, dumpChipLabel, eligibleGroupNumbers, executeReviewAllActionByNumber, activeItems
@@ -413,6 +413,11 @@ When planning work sessions, use **story points** (relative effort) rather than 
 
 
 - Remove markdown parser — `renderMarkdown` is called only in `addBotMessage` and handles `**bold**`, `_italic_`, and `\n` → `<br/>`. Now that `addBotMessage` supports raw HTML passthrough (strings starting with `<`), the parser can be removed by converting all `**...**` and `_..._` usage at each call site to inline `<strong>` and `<em>` tags. Audit required: ~30-40 `addBotMessage` call sites. Not a quick session — do as a dedicated cleanup pass.
+
+- CSV export escaping — `escapeCSV()` checks for newlines but doesn't escape them, causing multi-line fields to break `parseCSV()` which uses naive `text.split('\n')`. Fix: replace `\n` with space in `escapeCSV()` before wrapping in quotes. Test with item names containing newlines to verify round-trip import/export works without parse errors.
+
+- Complete helpers.js extraction — `helpers.js` exists and contains 21 pure functions, but is never loaded in the browser (`index.html` doesn't have a `<script src="helpers.js"></script>` tag). All 21 functions are duplicated in `app.js` where they shadow the helpers.js versions in Node tests. Complete the extraction: (1) add `<script src="helpers.js"></script>` to `index.html` before app.js, (2) remove the 21 duplicate function definitions from app.js, (3) verify all 1049 tests still pass, (4) test in browser. This will reduce app.js by ~225 LOC and make the pure helpers truly reusable. Functions to remove from app.js: titleize, singularize, singularizeLast, escapeCSV, escHtml, parseCSVLine, parseQuantity, countFates, groupItems, collectFateItems, executeReviewAllActionByNumber, disposalPrompt, buildActionChips, fateReviewChips, fateReviewBulkChips, buildFateReviewPath, eligibleGroupNumbers, nestChipLabel, dumpChipLabel, isReservedCommand, maybeMantraOnItem, mantra, activeItems.
+
 - Chip position on mobile — on phone, chips display at the bottom of the message box, covering the most recent message. Move chips to the top of the input area (pinned between message list and input bar) so the user can read context before tapping.
 - Header space on mobile — the header takes up too much vertical space on phone. Collapse or hide labels on small screens. Pair with import/export toggle work (fewer buttons = easier to compress).
 - Sidebar landscape breakpoint — box drawer does not appear when the app is in landscape on a phone. The breakpoint needs to be revised down to match phone actual dimensions. Best validated with Xcode simulator.
@@ -826,28 +831,34 @@ The tasks below no longer need to be reviewed before commiting, as they are auto
 
 ## `handleHelp()` — keeping the command reference current
 
-`handleHelp()` is the single source of truth for what commands exist and how they work. It is context-aware: it shows a different response depending on whether the user has an active box open.
+`handleHelp()` is the single source of truth for what commands exist and how they work. It is context-aware: it shows different responses depending on whether the user has an active box and whether they're in item detail view.
 
 **Structure:**
 
 ```
-── Always available ──        shown in all contexts
-  New box, Review all boxes, Review by fate, Review items,
+<h3>Always available</h3>         shown in all contexts
+  New box, Review all boxes, Review by fate,
   Done for now, Import/Export, Reset, arrow keys
 
-── Inside a box ──            shown only when activeBox() is truthy
-  Add item (with entry syntax), Move, Nest box, Convert location,
-  Dump into..., Trash, Remove, Done with this box,
-  item-detail commands (Move to box, Make it a box)
+<h3>Inside a box</h3>             shown only when activeBox() is truthy
+  Add item (with entry syntax), Review items, Move, Nest box, Convert location,
+  Dump into..., Trash, Remove, Done with this box
 
-single-line hint              shown when no active box, instead of the full box section
-  "Open a box to also use Add item, Move, ..."
+<h3>Open a box to use</h3>        shown when no active box, instead of "Inside a box"
+  (brief list of box-only command names)
+
+<h3>From item detail</h3>         shown in all contexts
+  Move to box, Make it a box
+  (expanded with descriptions when in AWAITING_ITEM_VIEW stage)
 ```
+
+Headers use `<h3>` tags directly since `addBotMessage` supports raw HTML passthrough.
 
 **Rules:**
 
 - Commands that only work from `FINISHED` (Review all boxes) — such as `Rename <N>`, `Delete <N>`, `Move <N>` — belong in the description of "Review all boxes", not as separate entries. They are not directly typeable from a cold start.
-- Commands that only work from item detail view (`AWAITING_ITEM_VIEW`) — such as `Move to box` and `Make it a box` — must be labeled "From item detail:" so users know they are not always available.
+- "Review items" is listed in "Inside a box" because it requires an active box — typing it with no active box does nothing.
+- Commands that only work from item detail view (`AWAITING_ITEM_VIEW`) — such as `Move to box` and `Make it a box` — are shown in all contexts under "From item detail". Brief form (just command names) shown normally; expanded form (with descriptions) shown when actually in item detail view.
 - Item entry syntax and multiline entry are features of `Add item`, not standalone commands. Document them inline on that line, not as separate entries.
 - Import and Export are paired and can share a line each.
 

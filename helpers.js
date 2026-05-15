@@ -95,15 +95,6 @@ function parseQuantity(text) {
   return { qty: qty, itemName: match[2] };
 }
 
-function renderMarkdown(text) {
-  if (!text) return '';
-  var html = escHtml(text)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\_(.+?)\_/g, '<em>$1</em>')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>');
-  return html;
-}
-
 function countFates(box) {
   var activeItems = _.reject(box.items, function(item) { return item.deleted_at; });
   return activeItems.reduce(function(counts, item) {
@@ -235,7 +226,7 @@ function activeItems(box) {
 if (typeof module !== 'undefined' && module.exports) {
   const exports = {
     titleize, singularize, singularizeLast, escapeCSV, escHtml,
-    parseCSVLine, parseQuantity, renderMarkdown, countFates, groupItems,
+    parseCSVLine, parseQuantity, countFates, groupItems,
     collectFateItems, executeReviewAllActionByNumber, disposalPrompt,
     buildActionChips, fateReviewChips, fateReviewBulkChips, buildFateReviewPath,
     eligibleGroupNumbers, nestChipLabel, dumpChipLabel, isReservedCommand,

@@ -414,6 +414,10 @@ function escHtml(s) {
 function escAttr(s) {
   return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 }
+// TODO: Remove this function — scheduled for deletion in markdown removal pass.
+// Now that addBotMessage supports raw HTML passthrough (strings starting with '<'),
+// all call sites should be converted to inline <strong> and <em> tags.
+// See CONTRIBUTING.md punchlist for details.
 function renderMarkdown(s) {
   return s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>').replace(/\n/g,'<br/>');
 }
@@ -2193,43 +2197,54 @@ function handleEllipticalMoveConfirm(command) {
 function handleHelp() {
   if (state.boxes.length === 0) {
     addBotMessage(
-      'What\'s the first box called?'
+      'What\'s the first box called? <em>(This command will show a help menu once you have input some data.)</em>'
     );
     state.conversationStage = 'AWAITING_BOX_NAME';
     setChips(['Start sorting']);
   } else {
     var box = activeBox();
+    var inItemDetail = state.conversationStage === 'AWAITING_ITEM_VIEW' ||
+                       state.conversationStage === 'AWAITING_ITEM_VIEW_NOTES';
+
     var always = [
-      'Here\'s what you can do:',
-      '',
-      '\u2500\u2500 Always available \u2500\u2500',
-      '_"New box"_ \u2014 start a new box',
-      '_"Review all boxes"_ \u2014 summary of every box; from there you can rename, move, or delete empty boxes',
-      '_"Review by fate"_ \u2014 review all items of a given fate across every box',
-      '_"Review items"_ \u2014 list items in the active box; type a number to view item detail',
-      '_"Done for now"_ \u2014 end session and see summary',
-      '_"Import JSON"_ / _"Import CSV"_ \u2014 merge a saved inventory into current',
-      '_"Export JSON"_ / _"Export CSV"_ \u2014 download your inventory',
-      '_"Reset"_ \u2014 clear all data (asks for confirmation)',
-      '\u2191 / \u2193 arrow keys \u2014 recall previous commands',
+      '<p>Here\'s what you can do:</p>',
+      '<h3>Always available</h3>',
+      '<p><em>"New box"</em> — start a new box<br/>',
+      '<em>"Review all boxes"</em> — summary of every box; from there you can rename, move, or delete empty boxes<br/>',
+      '<em>"Review by fate"</em> — review all items of a given fate across every box<br/>',
+      '<em>"Done for now"</em> — end session and see summary<br/>',
+      '<em>"Import JSON"</em> / <em>"Import CSV"</em> — merge a saved inventory into current<br/>',
+      '<em>"Export JSON"</em> / <em>"Export CSV"</em> — download your inventory<br/>',
+      '<em>"Reset"</em> — clear all data (asks for confirmation)<br/>',
+      '\u2191 / \u2193 arrow keys — recall previous commands</p>',
     ];
+
     var boxOnly = box ? [
-      '',
-      '\u2500\u2500 Inside a box \u2500\u2500',
-      '_"Add item"_ \u2014 log the next item (supports _name, fate, notes_ or _name; fate; notes_; Shift+Enter for multiple)',
-      '_"Move <location>"_ \u2014 relocate this box (e.g. _"move garage"_)',
-      '_"Nest box"_ \u2014 put this box inside another',
-      '_"Convert location <name>"_ \u2014 promote a location string to a nested box',
-      '_"Dump into..."_ \u2014 transfer all items to another box',
-      '_"Trash <name or number>"_ \u2014 mark an item for deletion',
-      '_"Remove <name or number>"_ \u2014 remove an item from this box',
-      '_"Done with this box"_ \u2014 finish sorting this box',
-      'From item detail: _"Move to box"_ \u2014 move a single item to another box; _"Make it a box"_ \u2014 promote an item to a nested box',
+      '<h3>Inside a box</h3>',
+      '<p><em>"Add item"</em> — log the next item (supports <em>name, fate, notes</em> or <em>name; fate; notes</em>; Shift+Enter for multiple)<br/>',
+      '<em>"Review items"</em> — list items in this box; type a number to view item detail<br/>',
+      '<em>"Move &lt;location&gt;"</em> — relocate this box (e.g. <em>"move garage"</em>)<br/>',
+      '<em>"Nest box"</em> — put this box inside another<br/>',
+      '<em>"Convert location &lt;name&gt;"</em> — promote a location string to a nested box<br/>',
+      '<em>"Dump into..."</em> — transfer all items to another box<br/>',
+      '<em>"Trash &lt;name or number&gt;"</em> — mark an item for deletion<br/>',
+      '<em>"Remove &lt;name or number&gt;"</em> — remove an item from this box<br/>',
+      '<em>"Done with this box"</em> — finish sorting this box</p>',
     ] : [
-      '',
-      'Open a box to also use _"Add item"_, _"Move"_, _"Nest box"_, _"Convert location"_, _"Dump into..."_, _"Trash"_, _"Remove"_, and _"Done with this box"_.',
+      '<h3>Open a box to use</h3>',
+      '<p><em>"Add item"</em>, <em>"Review items"</em>, <em>"Move"</em>, <em>"Nest box"</em>, <em>"Convert location"</em>, <em>"Dump into..."</em>, <em>"Trash"</em>, <em>"Remove"</em>, <em>"Done with this box"</em></p>',
     ];
-    addBotMessage(always.concat(boxOnly).join('\n'));
+
+    var itemDetailSection = inItemDetail ? [
+      '<h3>From item detail</h3>',
+      '<p><em>"Move to box"</em> — move a single item to another box<br/>',
+      '<em>"Make it a box"</em> — promote an item to a nested box</p>',
+    ] : [
+      '<h3>From item detail</h3>',
+      '<p><em>"Move to box"</em>, <em>"Make it a box"</em></p>',
+    ];
+
+    addBotMessage(always.concat(boxOnly, itemDetailSection).join('\n'));
     if (box) {
       setBoxOpenChips();
     } else {
