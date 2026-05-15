@@ -2293,7 +2293,9 @@ function exportJSON() {
 function escapeCSV(field) {
   if (field === null || field === undefined) return '';
   var str = String(field);
-  if (str.indexOf(',') !== -1 || str.indexOf('"') !== -1 || str.indexOf('\n') !== -1) {
+  // Replace newlines with spaces to prevent multi-line fields that break naive line splitting
+  str = str.replace(/\n/g, ' ');
+  if (str.indexOf(',') !== -1 || str.indexOf('"') !== -1) {
     return '"' + str.replace(/"/g, '""') + '"';
   }
   return str;

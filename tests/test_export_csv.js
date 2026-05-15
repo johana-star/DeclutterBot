@@ -86,9 +86,9 @@ console.log('\n3. escapeCSV: quote in field escaped');
 var withQuote = escapeCSV('value "quoted"');
 assert('doubled quotes', withQuote === '"value ""quoted"""');
 
-console.log('\n4. escapeCSV: newline in field quoted');
+console.log('\n4. escapeCSV: newline replaced with space');
 var withNewline = escapeCSV('line1\nline2');
-assert('quoted', withNewline === '"line1\nline2"');
+assert('newline replaced', withNewline === 'line1 line2');
 
 console.log('\n5. Empty inventory exports header only');
 reset();
