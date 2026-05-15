@@ -81,7 +81,7 @@ reset();
 processInput('hi', []);
 assertIncludes('prompts for box name', lastBotMessage, 'box');
 assert('stage set to AWAITING_BOX_NAME', state.conversationStage === 'AWAITING_BOX_NAME');
-assert('Start sorting chip shown', lastChips.indexOf('Start sorting') !== -1);
+assert('No chips are shown', lastChips.length === 0);
 
 // 2. "help" with boxes shows command list
 console.log('\n2. "help" with boxes shows command reference');

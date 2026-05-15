@@ -749,9 +749,6 @@ function tryGlobalIntercept(command, photos, input) {
   // new box
   if (command === 'new box') { startNewBox(); return true; }
 
-  // no-ops — chips handled by init, ignore if replayed
-  if (['start new box', 'start sorting'].includes(command)) { return true; }
-
   // review items — only intercept if there is an active box
   if (command === 'review items') {
     if (activeBox()) { reviewBox(); }
@@ -1896,7 +1893,7 @@ function handleFinished(text) {
       total += activeItems.length;
     };
     addBotMessage('Good work. <strong>' + state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '') + '</strong>, <strong>' + total + ' item' + (total !== 1 ? 's' : '') + '</strong> sorted.\n\nExport any time with the buttons above.');
-    setChips(['Start new box', 'Review by fate']);
+    setChips(['New box', 'Review by fate']);
   } else if(command.indexOf('review all') !==- 1) {
     // Set stage to FINISHED so all review-all commands route back to handleFinished
     state.conversationStage = 'FINISHED';
@@ -2196,7 +2193,7 @@ function handleHelp() {
       'What\'s the first box called? <em>(This command will show a help menu once you have input some data.)</em>'
     );
     state.conversationStage = 'AWAITING_BOX_NAME';
-    setChips(['Start sorting']);
+    setChips([]);
   } else {
     var box = activeBox();
     var inItemDetail = state.conversationStage === 'AWAITING_ITEM_VIEW' ||
@@ -2257,7 +2254,7 @@ function handleFreeform(text, photos) {
     if (state.boxes.length === 0) {
       addBotMessage('What\'s the first box called?');
       state.conversationStage = 'AWAITING_BOX_NAME';
-      setChips(['Start sorting']);
+      setChips([]);
     } else {
       addBotMessage('Back at it. <strong>' + state.boxes.length + '</strong> box' + (state.boxes.length !== 1 ? 'es' : '') + ' in play. Pick up where you left off?');
       state.conversationStage = 'FINISHED';
@@ -2769,7 +2766,8 @@ function _doReset() {
   commitState();
   setTimeout(function() {
     addBotMessage(WELCOME_MSG);
-    state.conversationStage = 'AWAITING_BOX_NAME'; setChips(['Start sorting']);
+    state.conversationStage = 'AWAITING_BOX_NAME';
+    setChips([]);
   }, 100);
 }
 
@@ -2830,7 +2828,8 @@ if (sendBtn) {
 if(state.boxes.length===0){
   setTimeout(function(){
     addBotMessage(WELCOME_MSG);
-    state.conversationStage='AWAITING_BOX_NAME'; setChips(['Start sorting']);
+    state.conversationStage='AWAITING_BOX_NAME';
+    setChips([]);
   },200);
 } else {
   var _b=state.boxes.length;
