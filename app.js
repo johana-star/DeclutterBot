@@ -53,13 +53,16 @@ let boxTrashPreferences = {}; // boxId -> 'always' | 'never'
 function toggleCollapse(id) {
   var idx = collapsedBoxIds.indexOf(id);
   var collapsing = idx === -1;
-  if (collapsing) collapsedBoxIds.push(id);
-  else collapsedBoxIds.splice(idx, 1);
+  if (collapsing) {
+    collapsedBoxIds.push(id);
+  } else {
+    collapsedBoxIds.splice(idx, 1);
+  }
   var box = null;
   for (var i = 0; i < state.boxes.length; i++) {
     if (state.boxes[i].id === id) { box = state.boxes[i]; break; }
   }
-  if (box) addUserMessage((collapsing ? 'collapse ' : 'expand ') + box.name, []);
+  if (box) { addUserMessage((collapsing ? 'collapse ' : 'expand ') + box.name, []); }
   renderSidebar();
 }
 
@@ -108,7 +111,7 @@ function loadState() {
     for (var i = 0; i < state.boxes.length; i++) {
       var box = state.boxes[i];
       // Normalise parentId: undefined -> null (added when nesting was introduced)
-      if (box.parentId === undefined) box.parentId = null;
+      if (box.parentId === undefined) { box.parentId = null; }
       // Migrate items: addedAt -> createdAt, remove vestigial photos field
       for (var j = 0; j < (box.items || []).length; j++) {
         var item = box.items[j];
@@ -116,7 +119,7 @@ function loadState() {
           item.createdAt = item.addedAt;
           delete item.addedAt;
         }
-        if (item.photos !== undefined) delete item.photos;
+        if (item.photos !== undefined) { delete item.photos; }
       }
     }
   } catch(e) {} }
@@ -134,7 +137,7 @@ function activeBox() {
 }
 function activeItem() {
   var box = activeBox();
-  if (!box || !state.activeItemId) return null;
+  if (!box || !state.activeItemId) { return null; }
   return box.items.find(function(item) { return item.id === state.activeItemId; }) || null;
 }
 function countFates(box) {
@@ -178,8 +181,11 @@ function saveCollapsedLocations() {
 
 function toggleLocationCollapse(locKey) {
   var idx = collapsedLocationKeys.indexOf(locKey);
-  if (idx === -1) collapsedLocationKeys.push(locKey);
-  else collapsedLocationKeys.splice(idx, 1);
+  if (idx === -1) {
+    collapsedLocationKeys.push(locKey);
+  } else {
+    collapsedLocationKeys.splice(idx, 1);
+  }
   saveCollapsedLocations();
   renderSidebar();
 }
@@ -207,8 +213,8 @@ function renderSidebar() {
   cnt.textContent = state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '');
   if (state.boxes.length === 0) {
     el.innerHTML = '<div class="empty-sidebar">No boxes yet.<br/>Start chatting to<br/>begin sorting.</div>';
-    if (inventoryLabel) inventoryLabel.className = 'inventory-label';
-    if (filterBadge) filterBadge.style.display = 'none';
+    if (inventoryLabel) { inventoryLabel.className = 'inventory-label'; }
+    if (filterBadge) { filterBadge.style.display = 'none'; }
     return;
   }
 
@@ -267,7 +273,7 @@ function renderSidebar() {
         group.boxes.forEach(function(b) {
           var fc = countFatesDeep(b);
           FATES.forEach(function(f) {
-            if (fc[f]) totals[f] = (totals[f] || 0) + fc[f];
+            if (fc[f]) { totals[f] = (totals[f] || 0) + fc[f]; }
           });
         });
         FATES.forEach(function(f) {
@@ -312,7 +318,7 @@ function renderBoxCard(box, depth, collapsedIds) {
   var tags = '';
   for (var fi = 0; fi < FATES.length; fi++) {
     var f = FATES[fi];
-    if (fates[f] > 0) tags += '<span class="tag tag-' + f + '">' + f + ' ' + fates[f] + '</span>';
+    if (fates[f] > 0) { tags += '<span class="tag tag-' + f + '">' + f + ' ' + fates[f] + '</span>'; }
   }
   var total = _.reject(box.items, function(it) { return it.deleted_at; }).length;
   var kidBoxes = state.boxes.filter(function(b) { return b.parentId === box.id; });
@@ -325,9 +331,9 @@ function renderBoxCard(box, depth, collapsedIds) {
       + (isCollapsed ? '&#9654;' : '&#9660;') + '</button>'
     : '<span class="sidebar-caret-spacer"></span>';
   var metaParts = [];
-  if (total > 0) metaParts.push(total + ' item' + (total !== 1 ? 's' : ''));
-  if (hasKids) metaParts.push(kidBoxes.length + ' box' + (kidBoxes.length !== 1 ? 'es' : ''));
-  if (metaParts.length === 0) metaParts.push('empty');
+  if (total > 0) { metaParts.push(total + ' item' + (total !== 1 ? 's' : '')); }
+  if (hasKids) { metaParts.push(kidBoxes.length + ' box' + (kidBoxes.length !== 1 ? 'es' : '')); }
+  if (metaParts.length === 0) { metaParts.push('empty'); }
   var html = '<div class="box-card' + ac + '" draggable="true" data-box-id="' + box.id + '"'
     + ' style="margin-left:' + indent + 'px" onclick="selectBox(\'' + box.id + '\')">'
     + '<div class="box-card-header">' + caret
@@ -367,7 +373,7 @@ function selectBox(id) {
   if (inputHistory.length === 0 ||
       inputHistory[inputHistory.length - 1] !== box.name) {
     inputHistory.push(box.name);
-    if (inputHistory.length > 100) inputHistory.shift();
+    if (inputHistory.length > 100) { inputHistory.shift(); }
   }
   var summary = box.items.length > 0 ? boxSummaryLine(box) : 'empty';
   addBotMessage('Switched to <strong>' + box.name + '</strong>. Contents: ' + summary + '.\n\nWhat would you like to do?');
@@ -393,16 +399,16 @@ function updateContextBar() {
 }
 
 function updateBudgetDisplay(recalculating) {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') { return; }
   var el = document.getElementById('storage-budget');
-  if (!el) return;
+  if (!el) { return; }
   if (recalculating) {
     el.textContent = 'recalculating...';
-    if (el.classList) el.classList.add('budget-recalculating');
+    if (el.classList) { el.classList.add('budget-recalculating'); }
     el.style.color = '';
     return;
   }
-  if (el.classList) el.classList.remove('budget-recalculating');
+  if (el.classList) { el.classList.remove('budget-recalculating'); }
   el.textContent = 'capacity: ' + _budgetItems.toLocaleString() + ' items';
   el.style.opacity = _budgetItems < 1000 ? '1' : '0.6';
   el.style.color = _budgetItems < 500 ? 'var(--peony)' : '';
@@ -429,7 +435,7 @@ let historyDraft = '';   // text in field before arrow-up was pressed
 // Each guards its document calls so they are safe to define in Node too.
 function addBotMessage(text, photos) {
   var msgs = typeof document !== 'undefined' && document.getElementById('chat-messages');
-  if (!msgs) return;
+  if (!msgs) { return; }
   var div = document.createElement('div');
   div.className = 'msg bot';
   var isHtml = typeof text === 'string' && text.trimStart().startsWith('<');
@@ -442,7 +448,7 @@ function addBotMessage(text, photos) {
 
 function addUserMessage(text, photos) {
   var msgs = typeof document !== 'undefined' && document.getElementById('chat-messages');
-  if (!msgs) return;
+  if (!msgs) { return; }
   var div = document.createElement('div');
   div.className = 'msg user';
   var displayText = escHtml(text.replace(/\n+/g, ' ↩ '));
@@ -452,7 +458,7 @@ function addUserMessage(text, photos) {
 }
 
 function _setChipsImpl(chips) {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') { return; }
   var el = document.getElementById('quick-replies');
   var html = '';
   for (var i=0;i<chips.length;i++) {
@@ -468,7 +474,7 @@ function _setChipsImpl(chips) {
 }
 
 function _chipClickImpl(t) {
-  if (t==='Move box') t='move';
+  if (t==='Move box') { t='move'; }
   // Strip count suffix from fate review menu chips e.g. "Review keep (11)" -> "Review keep"
   var display = t.replace(/\s*\(\d+\)$/, '');
   document.getElementById('user-input').value=display;
@@ -477,13 +483,13 @@ function _chipClickImpl(t) {
 }
 
 function showTyping() {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') { return; }
   document.getElementById('typing').classList.add('visible');
   document.getElementById('chat-messages').scrollTop=9999;
 }
 
 function hideTyping() {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') { return; }
   document.getElementById('typing').classList.remove('visible');
 }
 
@@ -500,7 +506,7 @@ function handleKey(e) {
     return;
   }
   if (e.key === 'ArrowUp') {
-    if (inputHistory.length === 0) return;
+    if (inputHistory.length === 0) { return; }
     e.preventDefault();
     if (historyIndex === -1) {
       historyDraft = input.value;
@@ -514,7 +520,7 @@ function handleKey(e) {
     return;
   }
   if (e.key === 'ArrowDown') {
-    if (historyIndex === -1) return;
+    if (historyIndex === -1) { return; }
     e.preventDefault();
     if (historyIndex < inputHistory.length - 1) {
       historyIndex++;
@@ -532,13 +538,13 @@ function handleKey(e) {
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
 
 async function sendUserMessage() {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') { return; }
   var input = document.getElementById('user-input');
   var text = input.value.trim();
-  if (!text) return;
+  if (!text) { return; }
   if (inputHistory.length === 0 || inputHistory[inputHistory.length - 1] !== text) {
     inputHistory.push(text);
-    if (inputHistory.length > 100) inputHistory.shift();
+    if (inputHistory.length > 100) { inputHistory.shift(); }
   }
   historyIndex = -1;
   historyDraft = '';
@@ -704,31 +710,43 @@ function tryGlobalIntercept(command, photos, input) {
 
   // import — typed commands set format then trigger the shared file input
   if (['import', 'import json'].includes(command)) {
-    if (typeof setFormat === 'function') setFormat('json');
-    if (typeof triggerImport === 'function') triggerImport();
-    else addBotMessage('Use the ↑ Import button in the header to import a file.');
+    if (typeof setFormat === 'function') { setFormat('json'); }
+    if (typeof triggerImport === 'function') {
+      triggerImport();
+    } else {
+      addBotMessage('Use the ↑ Import button in the header to import a file.');
+    }
     return true;
   }
 
   if (['import csv'].includes(command)) {
-    if (typeof setFormat === 'function') setFormat('csv');
-    if (typeof triggerImport === 'function') triggerImport();
-    else addBotMessage('Use the ↑ Import button in the header to import a file.');
+    if (typeof setFormat === 'function') { setFormat('csv'); }
+    if (typeof triggerImport === 'function') {
+      triggerImport();
+    } else {
+      addBotMessage('Use the ↑ Import button in the header to import a file.');
+    }
     return true;
   }
 
   // export — typed commands set format then export
   if (['export csv'].includes(command)) {
-    if (typeof setFormat === 'function') setFormat('csv');
-    if (typeof triggerExport === 'function') triggerExport();
-    else exportCSV();
+    if (typeof setFormat === 'function') { setFormat('csv'); }
+    if (typeof triggerExport === 'function') {
+      triggerExport();
+    } else {
+      exportCSV();
+    }
     return true;
   }
 
   if (['export', 'export json'].includes(command)) {
-    if (typeof setFormat === 'function') setFormat('json');
-    if (typeof triggerExport === 'function') triggerExport();
-    else exportJSON();
+    if (typeof setFormat === 'function') { setFormat('json'); }
+    if (typeof triggerExport === 'function') {
+      triggerExport();
+    } else {
+      exportJSON();
+    }
     return true;
   }
 
@@ -928,7 +946,7 @@ function handleDeleteByNumber(num) {
   box.items = box.items.filter(function(it){ return !(it.name === g.name && it.fate === g.fate); });
   if (state.activeItemId) {
     var still = box.items.some(function(it){ return it.id === state.activeItemId; });
-    if (!still) state.activeItemId = null;
+    if (!still) { state.activeItemId = null; }
   }
   state.conversationStage = 'BOX_OPEN';
   if (activeItems(box).length === 0) {
@@ -1054,7 +1072,7 @@ function singularize(word) {
     'children':'child', 'teeth':'tooth', 'feet':'foot', 'mice':'mouse',
     'geese':'goose', 'oxen':'ox', 'dice':'die', 'people':'person',
   };
-  if (irregulars[w]) return irregulars[w];
+  if (irregulars[w]) { return irregulars[w]; }
   // Words that are already singular or uncountable — leave alone
   var invariant = ['series','species','scissors','trousers','glasses','clothes','furniture',
     'equipment','luggage','baggage','box','shelf','knife','leaf'];
@@ -1176,7 +1194,7 @@ function handleBoxBatchLocation(text) {
   for (var i = 0; i < batch.qty; i++) {
     var name = batch.baseName + ' ' + LETTERS[i];
     var id = uid();
-    if (i === 0) firstId = id;
+    if (i === 0) { firstId = id; }
     state.boxes.push({id:id,name:name,location:location,notes:'',parentId:null,createdAt:now,items:[]});
   }
   state.activeBoxId = firstId;
@@ -1198,12 +1216,12 @@ function recentLocations() {
   var result = [];
   for (var i = state.boxes.length - 1; i >= 0; i--) {
     var loc = (state.boxes[i].location || '').trim();
-    if (!loc || loc === 'unspecified') continue;
+    if (!loc || loc === 'unspecified') { continue; }
     var key = loc.toLowerCase();
     if (!seen[key]) {
       seen[key] = true;
       result.push(loc);
-      if (result.length === 3) break;
+      if (result.length === 3) { break; }
     }
   }
   return result;
@@ -1216,7 +1234,7 @@ function locationPrompt(boxLabel) {
   var seenAll = {};
   for (var i = state.boxes.length - 1; i >= 0; i--) {
     var loc = (state.boxes[i].location || '').trim();
-    if (!loc || loc === 'unspecified') continue;
+    if (!loc || loc === 'unspecified') { continue; }
     var k = loc.toLowerCase();
     if (!seenAll[k]) { seenAll[k] = true; allLocs.push(loc); }
   }
@@ -1233,7 +1251,7 @@ function locationPrompt(boxLabel) {
 
   var chips = recent.slice();
   chips.push('New location');
-  if (allLocs.length >= 4) chips.push('List all locations');
+  if (allLocs.length >= 4) { chips.push('List all locations'); }
   return { message: msg, chips: chips };
 }
 
@@ -1246,7 +1264,7 @@ function handleLocation(text) {
     var seenAll = {};
     for (var i = state.boxes.length - 1; i >= 0; i--) {
       var loc = (state.boxes[i].location || '').trim();
-      if (!loc || loc === 'unspecified') continue;
+      if (!loc || loc === 'unspecified') { continue; }
       var k = loc.toLowerCase();
       if (!seenAll[k]) { seenAll[k] = true; allLocs.push(loc); }
     }
@@ -1679,7 +1697,7 @@ function doneWithBox() {
   var fates=countFatesDeep(box); var parts=[];
   for(var i=0;i<FATES.length;i++){if(fates[FATES[i]])parts.push(fates[FATES[i]]+' to '+FATES[i]);}
   var summary=parts.length?parts.join(', '):'nothing yet';
-  if (box) delete boxTrashPreferences[box.id];
+  if (box) { delete boxTrashPreferences[box.id]; }
   state.activeBoxId=null; state.activeItemId=null; state.conversationStage='FINISHED';
   addBotMessage(
     '**"' + box.name + '"** \u2014 done.\n\n' + summary + '.\n\nAnother box, or done for now?'
@@ -1706,7 +1724,7 @@ function groupItems(items) {
 // One-line summary of a box's contents, grouped
 function boxSummaryLine(box) {
   var activeItems = _.reject(box.items, function(it) { return it.deleted_at; });
-  if (activeItems.length === 0) return 'empty';
+  if (activeItems.length === 0) { return 'empty'; }
   var groups = groupItems(activeItems);
   return groups.map(function(g) {
     return (g.count > 1 ? g.count + ' × ' : '') + g.name + ' → ' + g.fate;
@@ -1728,15 +1746,15 @@ function eligibleGroupNumbers(groups, filterFn) {
 // Builds chips for a fate action. ≤2 eligible → numbered chips. 3+ → elliptical.
 function buildActionChips(groups, label, filterFn) {
   var eligible = eligibleGroupNumbers(groups, filterFn);
-  if (eligible.length === 0) return [];
-  if (eligible.length > 2) return [label + '...'];
+  if (eligible.length === 0) { return []; }
+  if (eligible.length > 2) { return [label + '...']; }
   return eligible.map(function(itemNumber) { return label + ' ' + itemNumber; });
 }
 
 // Handles an elliptical chip click: sends reminder and prepopulates the input.
 function handleEllipticalAction(label, filterFn) {
   var box = activeBox();
-  if (!box) return;
+  if (!box) { return; }
   var groups = groupItems(box.items);
   var eligible = eligibleGroupNumbers(groups, filterFn);
   var verb = label.toLowerCase();
@@ -1744,7 +1762,7 @@ function handleEllipticalAction(label, filterFn) {
   var input = document.getElementById('user-input');
   if (input) {
     input.value = verb + ' ';
-    if (input.focus) input.focus();
+    if (input.focus) { input.focus(); }
   }
 }
 
@@ -1839,7 +1857,7 @@ function reviewBox() {
     })
     .concat(buildActionChips(groups, 'Delete', function(g) { return g.fate === 'trash'; }));
 
-  if (directItems.length >= 2) chips.push('Trash All');
+  if (directItems.length >= 2) { chips.push('Trash All'); }
 
   // Open N chips for each child box
   openableBoxes.forEach(function(ob) {
@@ -1850,8 +1868,8 @@ function reviewBox() {
   var totalItems = directItems.length;
   var totalBoxes = childBoxes.length;
   var parts = [];
-  if (totalItems > 0) parts.push(totalItems + ' item' + (totalItems !== 1 ? 's' : ''));
-  if (totalBoxes > 0) parts.push(totalBoxes + ' box' + (totalBoxes !== 1 ? 'es' : ''));
+  if (totalItems > 0) { parts.push(totalItems + ' item' + (totalItems !== 1 ? 's' : '')); }
+  if (totalBoxes > 0) { parts.push(totalBoxes + ' box' + (totalBoxes !== 1 ? 'es' : '')); }
   var groups2 = groupItems(directItems);
   var uniqueNote = (directItems.length > 0 && directItems.length !== groups2.length)
     ? ', ' + groups2.length + ' unique' : '';
@@ -2060,7 +2078,7 @@ function handleEllipticalDeleteEmptyBox() {
   var input = document.getElementById('user-input');
   if (input) {
     input.value = 'delete ';
-    if (input.focus) input.focus();
+    if (input.focus) { input.focus(); }
   }
 }
 
@@ -2092,7 +2110,7 @@ function handleEllipticalRenameBox() {
   var input = document.getElementById('user-input');
   if (input) {
     input.value = 'rename ';
-    if (input.focus) input.focus();
+    if (input.focus) { input.focus(); }
   }
 }
 
@@ -2141,7 +2159,7 @@ function handleEllipticalMoveBox() {
   var input = document.getElementById('user-input');
   if (input) {
     input.value = 'move ';
-    if (input.focus) input.focus();
+    if (input.focus) { input.focus(); }
   }
 }
 
@@ -2284,7 +2302,7 @@ function exportJSON() {
 }
 
 function escapeCSV(field) {
-  if (field === null || field === undefined) return '';
+  if (field === null || field === undefined) { return ''; }
   var str = String(field);
   // Replace newlines with spaces to prevent multi-line fields that break naive line splitting
   str = str.replace(/\n/g, ' ');
@@ -2326,7 +2344,7 @@ function dlBlob(blob, name) {
 
 function parseCSV(text) {
   var lines = text.trim().split('\n');
-  if (lines.length === 0) return [];
+  if (lines.length === 0) { return []; }
 
   var headerLine = lines[0];
   var headers = parseCSVLine(headerLine);
@@ -2395,7 +2413,7 @@ function parseCSVLine(line) {
 
 function importCSV(text) {
   var rows = parseCSV(text);
-  if (!rows) return;
+  if (!rows) { return; }
 
   if (rows.length === 0) {
     addBotMessage('CSV is empty (no items to import).');
@@ -2430,7 +2448,7 @@ function importCSV(text) {
   var existingById   = {};
   var existingByName = {};
   state.boxes.forEach(function(box) {
-    if (box.id) existingById[box.id] = box;
+    if (box.id) { existingById[box.id] = box; }
     existingByName[(box.location || '') + '|' + box.name] = box;
   });
 
@@ -2438,7 +2456,7 @@ function importCSV(text) {
   var existingItemIds = {};
   state.boxes.forEach(function(box) {
     box.items.forEach(function(item) {
-      if (item.id) existingItemIds[item.id] = true;
+      if (item.id) { existingItemIds[item.id] = true; }
     });
   });
 
@@ -2471,7 +2489,7 @@ function importCSV(text) {
       // Merge items into existing box
       boxData.items.forEach(function(incomingItem) {
         // 1. ID match → true duplicate, skip silently
-        if (incomingItem.id && existingItemIds[incomingItem.id]) return;
+        if (incomingItem.id && existingItemIds[incomingItem.id]) { return; }
 
         // 2. Near-duplicate: same name+fate+notes but different/no id
         var isNearDup = existingBox.items.some(function(existItem) {
@@ -2529,8 +2547,8 @@ function importCSV(text) {
   commitState();
 
   var parts = [];
-  if (newBoxCount  > 0) parts.push(newBoxCount  + ' new box'  + (newBoxCount  !== 1 ? 'es' : ''));
-  if (newItemCount > 0) parts.push(newItemCount + ' new item' + (newItemCount !== 1 ? 's' : ''));
+  if (newBoxCount  > 0) { parts.push(newBoxCount  + ' new box'  + (newBoxCount  !== 1 ? 'es' : '')); }
+  if (newItemCount > 0) { parts.push(newItemCount + ' new item' + (newItemCount !== 1 ? 's' : '')); }
   var summary = parts.length > 0
     ? parts.join(' and ') + ' merged in.'
     : 'No new items to import (all already present).';
@@ -2543,7 +2561,7 @@ function importCSV(text) {
   if (nearDupItems.length > 0) {
     var grouped = {};
     nearDupItems.forEach(function(d) {
-      if (!grouped[d.boxName]) grouped[d.boxName] = [];
+      if (!grouped[d.boxName]) { grouped[d.boxName] = []; }
       grouped[d.boxName].push(d.itemName);
     });
     var details = Object.keys(grouped).map(function(boxName) {
@@ -2571,13 +2589,13 @@ function importJSON(data) {
   var incomingBoxes = data.boxes;
   for (var i = 0; i < incomingBoxes.length; i++) {
     var box = incomingBoxes[i];
-    if (box.parentId === undefined) box.parentId = null;
+    if (box.parentId === undefined) { box.parentId = null; }
     if (!Array.isArray(box.items)) box.items = [];
     for (var j = 0; j < box.items.length; j++) {
       var it = box.items[j];
-      if (!it.notes)               it.notes     = '';
-      if (!it.fate)                it.fate      = 'unsure';
-      if (it.deleted_at === undefined) it.deleted_at = null;
+      if (!it.notes) { it.notes     = ''; }
+      if (!it.fate) { it.fate      = 'unsure'; }
+      if (it.deleted_at === undefined) { it.deleted_at = null; }
     }
   }
 
@@ -2585,7 +2603,7 @@ function importJSON(data) {
   var existingById   = {};
   var existingByName = {};
   state.boxes.forEach(function(box) {
-    if (box.id) existingById[box.id] = box;
+    if (box.id) { existingById[box.id] = box; }
     existingByName[(box.location || '') + '|' + box.name] = box;
   });
 
@@ -2593,7 +2611,7 @@ function importJSON(data) {
   var existingItemIds = {};
   state.boxes.forEach(function(box) {
     box.items.forEach(function(item) {
-      if (item.id) existingItemIds[item.id] = true;
+      if (item.id) { existingItemIds[item.id] = true; }
     });
   });
 
@@ -2624,7 +2642,7 @@ function importJSON(data) {
       // Merge items
       incomingBox.items.forEach(function(incomingItem) {
         // 1. ID match → true duplicate, skip silently
-        if (incomingItem.id && existingItemIds[incomingItem.id]) return;
+        if (incomingItem.id && existingItemIds[incomingItem.id]) { return; }
 
         // 2. Near-duplicate: same name+fate+notes, different/no id
         var isNearDup = existingBox.items.some(function(existItem) {
@@ -2672,8 +2690,8 @@ function importJSON(data) {
   }
 
   var parts = [];
-  if (newBoxCount  > 0) parts.push('**' + newBoxCount  + '** new box'  + (newBoxCount  !== 1 ? 'es' : ''));
-  if (newItemCount > 0) parts.push('**' + newItemCount + '** new item' + (newItemCount !== 1 ? 's' : ''));
+  if (newBoxCount  > 0) { parts.push('**' + newBoxCount  + '** new box'  + (newBoxCount  !== 1 ? 'es' : '')); }
+  if (newItemCount > 0) { parts.push('**' + newItemCount + '** new item' + (newItemCount !== 1 ? 's' : '')); }
   var summary = parts.length > 0
     ? parts.join(' and ') + ' merged in'
     : 'No new items to import (all already present)';
@@ -2686,7 +2704,7 @@ function importJSON(data) {
   if (nearDupItems.length > 0) {
     var grouped = {};
     nearDupItems.forEach(function(d) {
-      if (!grouped[d.boxName]) grouped[d.boxName] = [];
+      if (!grouped[d.boxName]) { grouped[d.boxName] = []; }
       grouped[d.boxName].push(d.itemName);
     });
     var details = Object.keys(grouped).map(function(boxName) {
@@ -2760,8 +2778,8 @@ function _doReset() {
   if (typeof document !== 'undefined') {
     var chatEl = document.getElementById('chat-messages');
     var repliesEl = document.getElementById('quick-replies');
-    if (chatEl)    chatEl.innerHTML    = '';
-    if (repliesEl) repliesEl.innerHTML = '';
+    if (chatEl) { chatEl.innerHTML    = ''; }
+    if (repliesEl) { repliesEl.innerHTML = ''; }
   }
   commitState();
   setTimeout(function() {
@@ -2803,13 +2821,13 @@ window.chipClick = _chipClickImpl;
 // preventing it from being lost. Excludes modifier combos, Tab, Escape.
 document.addEventListener('keydown', function(e) {
   var input = document.getElementById('user-input');
-  if (document.activeElement === input) return;
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'Tab' || e.key === 'Escape') return;
+  if (document.activeElement === input) { return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) { return; }
+  if (e.key === 'Tab' || e.key === 'Escape') { return; }
   var isPrintable = e.key.length === 1;
   var isNavKey = e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
                  e.key === 'Enter' || e.key === 'Backspace';
-  if (!isPrintable && !isNavKey) return;
+  if (!isPrintable && !isNavKey) { return; }
   input.focus();
   if (isPrintable) {
     input.value += e.key;
@@ -2990,13 +3008,13 @@ function handleDumpTarget(text) {
   var target = null;
   for (var i = 0; i < state.boxes.length; i++) {
     var b = state.boxes[i];
-    if (b.id === source.id) continue;
+    if (b.id === source.id) { continue; }
     if (b.name.toLowerCase() === command || b.name.toLowerCase() === chipBoxName) { target = b; break; }
   }
   if (!target) {
     for (var i = 0; i < state.boxes.length; i++) {
       var b = state.boxes[i];
-      if (b.id === source.id) continue;
+      if (b.id === source.id) { continue; }
       // Partial match on box name only — NOT location
       if (b.name.toLowerCase().indexOf(chipBoxName) !== -1) { target = b; break; }
     }
@@ -3070,11 +3088,11 @@ function locSegments(loc) {
 function sameProximity(locA, locB) {
   // True if either location is a prefix of the other by segment
   var a = locSegments(locA), b = locSegments(locB);
-  if (!a.length || !b.length) return false;
+  if (!a.length || !b.length) { return false; }
   var shorter = a.length <= b.length ? a : b;
   var longer  = a.length <= b.length ? b : a;
   for (var i = 0; i < shorter.length; i++) {
-    if (shorter[i] !== longer[i]) return false;
+    if (shorter[i] !== longer[i]) { return false; }
   }
   return true;
 }
@@ -3088,8 +3106,8 @@ function nestChipLabel(source, candidate) {
 // Boxes directly inside another box have location:null — their location
 // is inherited from the first ancestor that has a location string.
 function effectiveLocation(box) {
-  if (!box) return null;
-  if (box.location) return box.location;
+  if (!box) { return null; }
+  if (box.location) { return box.location; }
   var parent = state.boxes.find(function(b) { return b.id === box.parentId; });
   return parent ? effectiveLocation(parent) : null;
 }
@@ -3229,8 +3247,8 @@ function handleNest(text) {
   // Parse "put <child> inside/in/on <parent>" inline — works with or without active box
   var command = text.toLowerCase().trim();
   var insideIdx = command.indexOf(' inside ');
-  if (insideIdx === -1) insideIdx = command.indexOf(' in ');
-  if (insideIdx === -1) insideIdx = command.indexOf(' on ');
+  if (insideIdx === -1) { insideIdx = command.indexOf(' in '); }
+  if (insideIdx === -1) { insideIdx = command.indexOf(' on '); }
   if (insideIdx !== -1 && ['put', 'nest'].includes(command.split(' ')[0])) {
     var pfxLen = command.split(' ')[0] === 'put' ? 4 : 5;
     // find which preposition matched
@@ -3394,21 +3412,21 @@ function showItemDetail(group, groupIndex) {
   var lines = [];
   lines.push('**' + (group.count > 1 ? group.count + ' × ' : '') + group.name + '**');
   lines.push('Fate: ' + group.fate);
-  if (group.notes) lines.push('Notes: ' + group.notes);
+  if (group.notes) { lines.push('Notes: ' + group.notes); }
 
   state.conversationStage = 'AWAITING_ITEM_VIEW';
   state.activeItemViewGroup = groupIndex;
   addBotMessage(lines.join('\n'));
   var actionChip = (group && group.fate === 'trash') ? 'Delete' : 'Trash';
   var chips = ['Change fate', 'Edit notes', actionChip, 'Move to box'];
-  if (group && group.count === 1) chips.push('Make it a box');
+  if (group && group.count === 1) { chips.push('Make it a box'); }
   chips.push('Back to list');
   setChips(chips);
 }
 
 function handleItemViewByNumber(num) {
   var box = activeBox();
-  if (!box) return;
+  if (!box) { return; }
   var groups = groupItems(box.items);
   if (num < 1 || num > groups.length) {
     // Not a valid item number — treat as item name instead
@@ -3530,7 +3548,7 @@ function handleItemViewNotes(text) {
   if (group && box) {
     var newNotes = command === 'clear notes' ? '' : text.trim();
     box.items.forEach(function(it){
-      if (it.name === group.name && it.fate === group.fate) it.notes = newNotes;
+      if (it.name === group.name && it.fate === group.fate) { it.notes = newNotes; }
     });
     addBotMessage('Notes ' + (newNotes ? 'updated to: "' + newNotes + '"' : 'cleared') + '.');
     // Refresh group and show updated detail
@@ -3551,8 +3569,11 @@ function handleItemMoveTarget(text) {
   var group = groups[groupIdx];
 
   if (command === 'cancel') {
-    if (group) { showItemDetail(group, groupIdx); }
-    else { state.conversationStage = 'BOX_OPEN'; reviewBox(); }
+    if (group) {
+      showItemDetail(group, groupIdx);
+    } else {
+      state.conversationStage = 'BOX_OPEN'; reviewBox();
+    }
     return;
   }
 
@@ -3672,7 +3693,7 @@ let _mantraItemCount = 0; // increments on item add, triggers mantra every ~7
 let _mantrasEnabled = (typeof window !== 'undefined'); // true in browser, false in Node
 
 function mantra(context) {
-  if (!_mantrasEnabled || typeof addBotMessage === 'undefined') return;
+  if (!_mantrasEnabled || typeof addBotMessage === 'undefined') { return; }
   var pool = MANTRAS[context] || MANTRAS.load;
   var text = pool[Math.floor(Math.random() * pool.length)];
   addBotMessage('<em>' + text + '</em>');
@@ -3681,7 +3702,7 @@ function mantra(context) {
 function maybeMantraOnItem() {
   return; // no-op until copy is approved.
   _mantraItemCount++;
-  if (_mantraItemCount % 7 === 0) mantra('itemAdded');
+  if (_mantraItemCount % 7 === 0) { mantra('itemAdded'); }
 }
 
 // ── TRASH / DISPOSAL HELPERS ──────────────────────────────────────────────────
@@ -3722,7 +3743,7 @@ function deletionLog(itemName) {
   sessionDeletedCount++;
   var todayCount = stored.count;
   var parts = [todayCount + ' deleted today'];
-  if (sessionDeletedCount !== todayCount) parts.push(sessionDeletedCount + ' this session');
+  if (sessionDeletedCount !== todayCount) { parts.push(sessionDeletedCount + ' this session'); }
   return '\uD83D\uDDD1 Deleted **' + itemName + '**. ' + parts.join(', ') + '.';
 }
 
@@ -3752,7 +3773,7 @@ function deleteActiveItem() {
 }
 
 function trashAllItems(box) {
-  if (!box) return 0;
+  if (!box) { return 0; }
   var count = 0;
   box.items.forEach(function(item) {
     if (!item.deleted_at) { item.fate = 'trash'; count++; }
@@ -3761,7 +3782,7 @@ function trashAllItems(box) {
 }
 
 function deleteAllItems(box) {
-  if (!box) return 0;
+  if (!box) { return 0; }
   var count = 0;
   box.items.forEach(function(item) {
     if (!item.deleted_at) { item.deleted_at = new Date().toISOString(); count++; }
@@ -3935,7 +3956,7 @@ function buildFateReviewPath(box) {
     for (var i = 0; i < state.boxes.length; i++) {
       if (state.boxes[i].id === current.parentId) { parent = state.boxes[i]; break; }
     }
-    if (!parent) break;
+    if (!parent) { break; }
     path.unshift(parent.name);
     current = parent;
     safety++;
@@ -4009,7 +4030,7 @@ function handleFateReviewMenu() {
   var fateOrder = ['unsure', 'trash', 'return', 'sell', 'donate', 'keep'];
   for (var f = 0; f < fateOrder.length; f++) {
     var fate = fateOrder[f];
-    if (counts[fate]) chips.push('Review ' + fate + ' (' + counts[fate] + ')');
+    if (counts[fate]) { chips.push('Review ' + fate + ' (' + counts[fate] + ')'); }
   }
   if (chips.length === 0) {
     addBotMessage('No items logged yet.');
@@ -4045,7 +4066,7 @@ function handleFateReviewAction(text) {
   if (command === 'back' || command === 'cancel') {
     state.pendingFateReview = null;
     state.conversationStage = 'FINISHED';
-    if (review) addBotMessage('Fate review cancelled.');
+    if (review) { addBotMessage('Fate review cancelled.'); }
     setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     return;
   }
@@ -4089,7 +4110,7 @@ function showFateReviewCurrentItem(review) {
   var entry = review.items[review.index];
   var item = null;
   for (var b = 0; b < state.boxes.length; b++) {
-    if (state.boxes[b].id !== entry.boxId) continue;
+    if (state.boxes[b].id !== entry.boxId) { continue; }
     for (var i = 0; i < state.boxes[b].items.length; i++) {
       if (state.boxes[b].items[i].id === entry.itemId) { item = state.boxes[b].items[i]; break; }
     }
@@ -4101,7 +4122,7 @@ function showFateReviewCurrentItem(review) {
   }
   var progress = (review.index + 1) + ' of ' + review.items.length;
   var msg = '**' + item.name + '** (' + entry.boxPath + ') [' + progress + ']';
-  if (item.notes) msg += '\nNotes: ' + item.notes;
+  if (item.notes) { msg += '\nNotes: ' + item.notes; }
   msg += '\n\nWhat would you like to do with this one?';
   addBotMessage(msg);
   setChips(fateReviewChips(review.fate).concat(['Done reviewing']));
@@ -4139,10 +4160,10 @@ function handleFateReviewItem(text) {
 
   // Fate changes
   var newFate = null;
-  if (command === 'keep')                     newFate = 'keep';
-  if (command === 'donate' || command === 'mark as donate') newFate = 'donate';
-  if (command === 'sell'   || command === 'mark as sell')   newFate = 'sell';
-  if (command === 'move to unsure')           newFate = 'unsure';
+  if (command === 'keep') { newFate = 'keep'; }
+  if (command === 'donate' || command === 'mark as donate') { newFate = 'donate'; }
+  if (command === 'sell'   || command === 'mark as sell') { newFate = 'sell'; }
+  if (command === 'move to unsure') { newFate = 'unsure'; }
 
   if (newFate && item) {
     item.fate = newFate;
@@ -4241,19 +4262,19 @@ function handleFateReviewBulk(text) {
   if (command === 'cancel') { showFateReviewList(review); return; }
 
   var newFate = null;
-  if (command === 'mark all keep')    newFate = 'keep';
-  if (command === 'mark all donate')  newFate = 'donate';
-  if (command === 'mark all trash')   newFate = 'trash';
-  if (command === 'mark all sell')    newFate = 'sell';
-  if (command === 'mark all return')  newFate = 'return';
-  if (command === 'mark all unsure')  newFate = 'unsure';
+  if (command === 'mark all keep') { newFate = 'keep'; }
+  if (command === 'mark all donate') { newFate = 'donate'; }
+  if (command === 'mark all trash') { newFate = 'trash'; }
+  if (command === 'mark all sell') { newFate = 'sell'; }
+  if (command === 'mark all return') { newFate = 'return'; }
+  if (command === 'mark all unsure') { newFate = 'unsure'; }
 
   if (newFate) {
     var updateCount = 0;
     for (var i = 0; i < review.items.length; i++) {
       var reviewEntry = review.items[i];
       for (var b = 0; b < state.boxes.length; b++) {
-        if (state.boxes[b].id !== reviewEntry.boxId) continue;
+        if (state.boxes[b].id !== reviewEntry.boxId) { continue; }
         for (var j = 0; j < state.boxes[b].items.length; j++) {
           if (state.boxes[b].items[j].id === reviewEntry.itemId) {
             state.boxes[b].items[j].fate = newFate;
@@ -4274,7 +4295,7 @@ function handleFateReviewBulk(text) {
     for (var i = 0; i < review.items.length; i++) {
       var reviewEntry = review.items[i];
       for (var b = 0; b < state.boxes.length; b++) {
-        if (state.boxes[b].id !== reviewEntry.boxId) continue;
+        if (state.boxes[b].id !== reviewEntry.boxId) { continue; }
         var before = state.boxes[b].items.length;
         deleteCount += removeItem(state.boxes[b], reviewEntry.itemId);
       }
@@ -4291,7 +4312,7 @@ function handleFateReviewBulk(text) {
     for (var i = 0; i < review.items.length; i++) {
       var reviewEntry = review.items[i];
       for (var b = 0; b < state.boxes.length; b++) {
-        if (state.boxes[b].id !== reviewEntry.boxId) continue;
+        if (state.boxes[b].id !== reviewEntry.boxId) { continue; }
         for (var j = 0; j < state.boxes[b].items.length; j++) {
           if (state.boxes[b].items[j].id === reviewEntry.itemId) {
             state.boxes[b].items[j].fate = 'unsure';
@@ -4321,13 +4342,13 @@ function handleFateReviewBulk(text) {
 let _dragSrcId = null;
 
 function initSidebarDrag() {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') { return; }
   var sidebar = document.getElementById('sidebar-content');
-  if (!sidebar) return;
+  if (!sidebar) { return; }
 
   sidebar.addEventListener('dragstart', function(e) {
     var card = e.target.closest ? e.target.closest('[data-box-id]') : null;
-    if (!card) return;
+    if (!card) { return; }
     _dragSrcId = card.getAttribute('data-box-id');
     card.style.opacity = '0.5';
     e.dataTransfer.effectAllowed = 'move';
@@ -4335,7 +4356,7 @@ function initSidebarDrag() {
 
   sidebar.addEventListener('dragend', function(e) {
     var card = e.target.closest ? e.target.closest('[data-box-id]') : null;
-    if (card) card.style.opacity = '';
+    if (card) { card.style.opacity = ''; }
     // Remove all drag-over highlights
     var cards = sidebar.querySelectorAll('[data-box-id]');
     for (var i = 0; i < cards.length; i++) cards[i].classList.remove('drag-over');
@@ -4354,22 +4375,22 @@ function initSidebarDrag() {
   sidebar.addEventListener('drop', function(e) {
     e.preventDefault();
     var card = e.target.closest ? e.target.closest('[data-box-id]') : null;
-    if (!card) return;
+    if (!card) { return; }
     var targetId = card.getAttribute('data-box-id');
-    if (!targetId || targetId === _dragSrcId) return;
+    if (!targetId || targetId === _dragSrcId) { return; }
 
     // Find source and target in state.boxes and reorder
     var srcIdx = -1, tgtIdx = -1;
     for (var i = 0; i < state.boxes.length; i++) {
-      if (state.boxes[i].id === _dragSrcId) srcIdx = i;
-      if (state.boxes[i].id === targetId)   tgtIdx = i;
+      if (state.boxes[i].id === _dragSrcId) { srcIdx = i; }
+      if (state.boxes[i].id === targetId) { tgtIdx = i; }
     }
-    if (srcIdx === -1 || tgtIdx === -1) return;
+    if (srcIdx === -1 || tgtIdx === -1) { return; }
 
     // Only reorder within the same parent level
     var srcParent = state.boxes[srcIdx].parentId || null;
     var tgtParent = state.boxes[tgtIdx].parentId || null;
-    if (srcParent !== tgtParent) return;
+    if (srcParent !== tgtParent) { return; }
 
     var moved = state.boxes.splice(srcIdx, 1)[0];
     // Recalculate tgtIdx after splice
