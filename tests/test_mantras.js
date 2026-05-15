@@ -61,7 +61,7 @@ console.log('\n2. Enabling mantras allows messages');
 withMantras(function() {
   mantra('load');
   assert('message sent when enabled', messages.length === 1);
-  assert('message is italic', messages[0].startsWith('_') && messages[0].endsWith('_'));
+  assert('message is italic', messages[0].startsWith('<em>') && messages[0].endsWith('</em>'));
 });
 
 // ── Each pool contains valid strings ─────────────────────────────────────────
@@ -78,7 +78,7 @@ console.log('\n4. mantra() selects from the correct pool');
 pools.forEach(function(pool) {
   withMantras(function() {
     mantra(pool);
-    var text = messages[0].slice(1, -1); // strip italic underscores
+    var text = messages[0].slice(4, -5); // strip <em> and </em> tags
     assert(pool + ' mantra comes from its pool', MANTRAS[pool].indexOf(text) !== -1);
   });
 });
@@ -87,7 +87,7 @@ pools.forEach(function(pool) {
 console.log('\n5. Unknown context falls back to load pool');
 withMantras(function() {
   mantra('unknownContext');
-  var text = messages[0].slice(1, -1);
+  var text = messages[0].slice(4, -5); // strip <em> and </em> tags
   assert('falls back to load pool', MANTRAS.load.indexOf(text) !== -1);
 });
 

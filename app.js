@@ -370,7 +370,7 @@ function selectBox(id) {
     if (inputHistory.length > 100) inputHistory.shift();
   }
   var summary = box.items.length > 0 ? boxSummaryLine(box) : 'empty';
-  addBotMessage('Switched to **' + box.name + '**. Contents: ' + summary + '.\n\nWhat would you like to do?');
+  addBotMessage('Switched to <strong>' + box.name + '</strong>. Contents: ' + summary + '.\n\nWhat would you like to do?');
   setBoxOpenChips();
 }
 
@@ -409,19 +409,15 @@ function updateBudgetDisplay(recalculating) {
 }
 
 function escHtml(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s||'').
+    replace(/&/g,'&amp;').
+    replace(/</g,'&lt;').
+    replace(/>/g,'&gt;').
+    replace(/\n/g, '<br/>');
 }
 function escAttr(s) {
   return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 }
-// TODO: Remove this function — scheduled for deletion in markdown removal pass.
-// Now that addBotMessage supports raw HTML passthrough (strings starting with '<'),
-// all call sites should be converted to inline <strong> and <em> tags.
-// See CONTRIBUTING.md punchlist for details.
-function renderMarkdown(s) {
-  return s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>').replace(/\n/g,'<br/>');
-}
-
 // ── INPUT HISTORY state vars ──────────────────────────────────────────────────
 let inputHistory = [];   // sent messages, oldest first
 let _budgetItems = 14397; // counter, updated per-item and recalibrated every ~10 items
@@ -438,7 +434,7 @@ function addBotMessage(text, photos) {
   div.className = 'msg bot';
   var isHtml = typeof text === 'string' && text.trimStart().startsWith('<');
   div.innerHTML = '<div class="msg-avatar">S</div><div class="msg-bubble">'
-    + (isHtml ? text : '<p>' + renderMarkdown(text) + '</p>')
+    + (isHtml ? text : '<p>' + escHtml(text) + '</p>')
     + '</div>';
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
@@ -796,7 +792,7 @@ function tryGlobalIntercept(command, photos, input) {
           }
         });
         commitState();
-        addBotMessage('**' + fateGroup.name + '** \u2192 ' + fateWord + '.');
+        addBotMessage('<strong>' + fateGroup.name + '</strong> \u2192 ' + fateWord + '.');
         reviewBox();
       }
     }
@@ -908,7 +904,7 @@ function handleMove(loc) {
   if (!box) { addBotMessage('No active box to move. Open a box first.'); return; }
   if (!loc || !loc.trim()) {
     state.conversationStage = 'AWAITING_MOVE_LOCATION';
-    addBotMessage('Where would you like to move **"' + box.name + '"**?');
+    addBotMessage('Where would you like to move <strong>"' + box.name + '"</strong>?');
     return;
   }
   var prev = box.location || 'unspecified';
@@ -917,7 +913,7 @@ function handleMove(loc) {
   if (state.conversationStage === 'AWAITING_MOVE_LOCATION') {
     state.conversationStage = 'BOX_OPEN';
   }
-  addBotMessage('Moved **"' + box.name + '"** from _' + prev + '_ to _' + box.location + '_.');
+  addBotMessage('Moved <strong>"' + box.name + '"</strong> from <em>' + prev + '</em> to <em>' + box.location + '</em>.');
 }
 
 function handleDeleteByNumber(num) {
@@ -926,7 +922,7 @@ function handleDeleteByNumber(num) {
   if (!box) { addBotMessage('No active box. Open a box first.'); return; }
   var groups = groupItems(box.items);
   if (num < 1 || num > groups.length) {
-    addBotMessage('No item ' + num + ' in the list. Use _"review items"_ to see the current list.');
+    addBotMessage('No item ' + num + ' in the list. Use <em>"review items"</em> to see the current list.');
     return;
   }
   var g = groups[num - 1];
@@ -961,7 +957,7 @@ function handleTrashByNumber(num) {
   if (!box) { addBotMessage('No active box. Open a box first.'); return; }
   var groups = groupItems(box.items);
   if (num < 1 || num > groups.length) {
-    addBotMessage('No item ' + num + ' in the list. Use _"review items"_ to see the current list.');
+    addBotMessage('No item ' + num + ' in the list. Use <em>"review items"</em> to see the current list.');
     return;
   }
   var g = groups[num - 1];
@@ -979,12 +975,12 @@ function handleTrashByNumber(num) {
   var effectivePref = boxPref || sessionTrashPreference;
   if (effectivePref === 'always') { deleteActiveItem(); return; }
   if (effectivePref === 'never') {
-    addBotMessage('\uD83D\uDDD1 **' + g.name + '** marked trash.\n\n' + disposalPrompt(g.name));
+    addBotMessage('\uD83D\uDDD1 <strong>' + g.name + '</strong> marked trash.\n\n' + disposalPrompt(g.name));
     state.conversationStage = 'AWAITING_DISPOSAL';
     setChips(['Skip disposal note', 'Done with this box']);
     return;
   }
-  addBotMessage('\uD83D\uDDD1 **' + g.name + '** \u2014 delete now?');
+  addBotMessage('\uD83D\uDDD1 <strong>' + g.name + '</strong> \u2014 delete now?');
   state.conversationStage = 'AWAITING_TRASH_DELETE';
   state._reviewingBox = true; // flag to restore review list after delete
   setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
@@ -1142,7 +1138,7 @@ function handleBoxBatchConfirm(text) {
     return;
   }
   if (command.includes('change') || command.includes('quantity')) {
-    addBotMessage('How many **' + batch.baseName + '** boxes are there?');
+    addBotMessage('How many <strong>' + batch.baseName + '</strong> boxes are there?');
     state.conversationStage = 'AWAITING_BOX_BATCH_QTY';
     return;
   }
@@ -1302,7 +1298,7 @@ function handleBoxRenameConfirm(text) {
   box.name = newName;
   state.pendingRenameBoxId = null;
   state.conversationStage = 'FINISHED';
-  addBotMessage('Renamed **"' + oldName + '"** to **"' + newName + '"**.');
+  addBotMessage('Renamed <strong>"' + oldName + '"</strong> to <strong>"' + newName + '"</strong>.');
   handleFinished('review all');
 }
 
@@ -1469,7 +1465,7 @@ function handleItemName(text, photos) {
   if (parsed) {
     state.pendingBatch = { qty: parsed.qty, itemName: parsed.itemName };
     state.conversationStage = 'AWAITING_BATCH_CONFIRM';
-    addBotMessage('I see **' + parsed.qty + ' \u00d7 ' + parsed.itemName + '**. Should I log ' + parsed.qty +
+    addBotMessage('I see <strong>' + parsed.qty + ' \u00d7 ' + parsed.itemName + '</strong>. Should I log ' + parsed.qty +
       ' separate entries for these, all with the same fate?');
     setChips(['Yes, log ' + parsed.qty, 'No, just 1', 'Change quantity']);
     return;
@@ -1490,7 +1486,7 @@ function handleItemName(text, photos) {
     // Both provided — log and move on
     state.activeItemId = null;
     state.conversationStage = 'BOX_OPEN';
-    addBotMessage('**' + name + '.** ' + item.fate + (item.notes ? ' (' + item.notes + ')' : '') + '.' + warn + '\n\n**' + activeItems(box).length + ' in the box.** What\'s next?');
+    addBotMessage('<strong>' + name + '.</strong> ' + item.fate + (item.notes ? ' (' + item.notes + ')' : '') + '.' + warn + '\n\n<strong>' + activeItems(box).length + ' in the box.</strong> What\'s next?');
     setBoxOpenChips();
   } else if (entry.fate !== null && entry.notes === null) {
     // Fate provided — skip fate prompt, ask for notes
@@ -1504,12 +1500,12 @@ function handleItemName(text, photos) {
     // Notes provided (2-part, second wasn't a fate) — already logged with unsure, done
     state.activeItemId = null;
     state.conversationStage = 'BOX_OPEN';
-    addBotMessage('**' + name + '.** unsure (' + item.notes + ').' + warn + '\n\n**' + activeItems(box).length + ' in the box.** What\'s next?');
+    addBotMessage('<strong>' + name + '.</strong> unsure (' + item.notes + ').' + warn + '\n\n<strong>' + activeItems(box).length + ' in the box.</strong> What\'s next?');
     setBoxOpenChips();
   } else {
     // Name only — normal fate prompt
     state.conversationStage = 'AWAITING_FATE';
-    addBotMessage('**' + name + '.** Keep it, sell it, or out it goes?');
+    addBotMessage('<strong>' + name + '.</strong> Keep it, sell it, or out it goes?');
     setChips(FATE_TITLES);
   }
 }
@@ -1518,7 +1514,7 @@ function handleBatchConfirm(text, photos) {
   var command = text.toLowerCase().trim();
   var batch = state.pendingBatch;
   if (command.indexOf('change') !== -1 || command.indexOf('quantity') !== -1) {
-    addBotMessage('How many **' + batch.itemName + '** are there?');
+    addBotMessage('How many <strong>' + batch.itemName + '</strong> are there?');
     state.conversationStage = 'AWAITING_BATCH_QTY';
     setChips([]);
     return;
@@ -1533,7 +1529,7 @@ function handleBatchConfirm(text, photos) {
     };
     addItem(box, item); state.activeItemId = item.id;
     state.conversationStage = 'AWAITING_FATE';
-    addBotMessage('Just the one **' + batch.itemName + '**. What should we do with it?');
+    addBotMessage('Just the one <strong>' + batch.itemName + '</strong>. What should we do with it?');
     setChips(FATE_TITLES);
     return;
   }
@@ -1543,7 +1539,7 @@ function handleBatchConfirm(text, photos) {
     var qty = nm ? parseInt(nm[0],10) : batch.qty;
     commitBatch(qty, batch.itemName); return;
   }
-  addBotMessage('Log **' + batch.qty + ' \u00d7 ' + batch.itemName + '** as separate entries?');
+  addBotMessage('Log <strong>' + batch.qty + ' \u00d7 ' + batch.itemName + '</strong> as separate entries?');
   setChips(['Yes, log ' + batch.qty,'No, just 1','Change quantity']);
 }
 
@@ -1553,11 +1549,11 @@ function handleBatchQty(text) {
   var wordQty=WORD_NUMBERS[text.toLowerCase().trim()];
   var qty=wordQty||(parsed&&parsed.qty)||parseInt(text,10);
   if (!qty || isNaN(qty) || qty < 1) {
-    addBotMessage('Sorry, I didn\'t catch a number. How many **' + batch.itemName + '** are there?');
+    addBotMessage('Sorry, I didn\'t catch a number. How many <strong>' + batch.itemName + '</strong> are there?');
     return;
   }
   batch.qty=qty; state.conversationStage='AWAITING_BATCH_CONFIRM';
-  addBotMessage('Got it \u2014 **'+qty+' \u00d7 '+batch.itemName+'**. Log them all as separate entries?');
+  addBotMessage('Got it \u2014 <strong>'+qty+' \u00d7 '+batch.itemName+'</strong>. Log them all as separate entries?');
   setChips(['Yes, log '+qty,'No, just 1']);
 }
 
@@ -1579,7 +1575,7 @@ function commitBatch(qty, itemName) {
   state.activeItemId = firstId;
   state.pendingBatch = null;
   state.conversationStage = 'AWAITING_BATCH_FATE';
-  addBotMessage('Logged **' + qty + ' \u00d7 ' + itemName + '**. What should we do with all of them?');
+  addBotMessage('Logged <strong>' + qty + ' \u00d7 ' + itemName + '</strong>. What should we do with all of them?');
   setChips(FATE_TITLES.concat(['Mixed fates']));
 }
 
@@ -1612,7 +1608,7 @@ function handleBatchFate(text, photos) {
     unsure: '\uD83E\uDD37 **Unsure** \u2014 we\'ll revisit.'
   };
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
-  addBotMessage(fm[matched]+'\n\n**'+activeItems(box).length+'** item(s) logged in "'+box.name+'". What\'s next?');
+  addBotMessage(fm[matched]+'\n\n<strong>'+activeItems(box).length+'</strong> item(s) logged in "'+box.name+'". What\'s next?');
   setBoxOpenChips();
 }
 
@@ -1620,7 +1616,7 @@ function handleItemDesc(text, photos) {
   var item=activeItem(); if(!item){state.conversationStage='BOX_OPEN';handleFreeform(text,photos);return;}
   item.description=text.trim();
   state.conversationStage='AWAITING_FATE';
-  addBotMessage('Got it. What should we do with **'+item.name+'**?');
+  addBotMessage('Got it. What should we do with <strong>'+item.name+'</strong>?');
   setChips(FATE_TITLES);
 }
 
@@ -1629,7 +1625,7 @@ function handleFate(text, photos) {
   var t=text.toLowerCase().trim();
   var matched=null; for(var i=0;i<FATES.length;i++){if(t.indexOf(FATES[i])!==-1){matched=FATES[i];break;}}
   if (!matched) {
-    addBotMessage('I didn\'t catch that \u2014 what should we do with **'+item.name+'**?');
+    addBotMessage('I didn\'t catch that \u2014 what should we do with <strong>'+item.name+'</strong>?');
     setChips(FATE_TITLES);
     return;
   }
@@ -1647,12 +1643,12 @@ function handleFate(text, photos) {
     var effectivePref = boxPref || sessionTrashPreference;
     if (effectivePref === 'always') { deleteActiveItem(); return; }
     if (effectivePref === 'never') {
-      addBotMessage('\uD83D\uDDD1 **Trash** \u2014 noted.\n\n' + disposalPrompt(item.name));
+      addBotMessage('\uD83D\uDDD1 <strong>Trash</strong> \u2014 noted.\n\n' + disposalPrompt(item.name));
       state.conversationStage = 'AWAITING_DISPOSAL';
       setChips(['Skip disposal note', 'Done with this box']);
       return;
     }
-    addBotMessage('\uD83D\uDDD1 **Trash** \u2014 delete this item now?');
+    addBotMessage('\uD83D\uDDD1 <strong>Trash</strong> \u2014 delete this item now?');
     state.conversationStage = 'AWAITING_TRASH_DELETE';
     setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
     return;
@@ -1677,7 +1673,7 @@ function handleItemNotes(text) {
   if(item&&t!=='next'&&t!=='next item'&&t!=='no notes'&&text.trim()) item.notes=text.trim();
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   var box=activeBox();
-  addBotMessage('**' + activeItems(box).length + ' in the box.** What\'s next?');
+  addBotMessage('<strong>' + activeItems(box).length + ' in the box.</strong> What\'s next?');
   setBoxOpenChips();
 }
 
@@ -1747,7 +1743,7 @@ function handleEllipticalAction(label, filterFn) {
   var groups = groupItems(box.items);
   var eligible = eligibleGroupNumbers(groups, filterFn);
   var verb = label.toLowerCase();
-  addBotMessage('Which item? Type _' + verb + '_ followed by the number. Applies to: ' + eligible.join(', ') + '.');
+  addBotMessage('Which item? Type <em>' + verb + '</em> followed by the number. Applies to: ' + eligible.join(', ') + '.');
   var input = document.getElementById('user-input');
   if (input) {
     input.value = verb + ' ';
@@ -1899,7 +1895,7 @@ function handleFinished(text) {
       var activeItems = _.reject(state.boxes[i].items, (item) => item.deleted_at);
       total += activeItems.length;
     };
-    addBotMessage('Good work. **' + state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '') + '**, **' + total + ' item' + (total !== 1 ? 's' : '') + '** sorted.\n\nExport any time with the buttons above.');
+    addBotMessage('Good work. <strong>' + state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '') + '</strong>, <strong>' + total + ' item' + (total !== 1 ? 's' : '') + '</strong> sorted.\n\nExport any time with the buttons above.');
     setChips(['Start new box', 'Review by fate']);
   } else if(command.indexOf('review all') !==- 1) {
     // Set stage to FINISHED so all review-all commands route back to handleFinished
@@ -1910,7 +1906,7 @@ function handleFinished(text) {
       var loc = box.location ? ' (' + box.location + ')' : '';
       return (i+1) + '. **' + box.name + '**' + loc + ' — ' + boxSummaryLine(box);
     }).join('\n');
-    addBotMessage('**All boxes:**\n' + lines.trim());
+    addBotMessage('<strong>All boxes:</strong>\n' + lines.trim());
 
     // Identify empty boxes and their positions in the review list
     var emptyBoxPositions = _.compact(_.map(boxes, (box, i) => {
@@ -2047,7 +2043,7 @@ function handleDeleteEmptyBox(index) {
   // Soft delete the box
   box.deleted_at = new Date().toISOString();
   sessionDeletedCount++;
-  addBotMessage('Deleted the empty box **"' + box.name + '"**.');
+  addBotMessage('Deleted the empty box <strong>"' + box.name + '"</strong>.');
   // Refresh the review
   state.emptyBoxesForDelete = null;
   state.emptyBoxPositions = null;
@@ -2062,7 +2058,7 @@ function handleEllipticalDeleteEmptyBox() {
   }
   state.conversationStage = 'AWAITING_DELETE_EMPTY_BOX';
   var eligible = state.emptyBoxPositions;
-  addBotMessage('Which box? Type _delete_ followed by the number. Applies to: ' +
+  addBotMessage('Which box? Type <em>delete</em> followed by the number. Applies to: ' +
     eligible.join(', ') + '.');
   var input = document.getElementById('user-input');
   if (input) {
@@ -2084,7 +2080,7 @@ function handleRenameBox(index) {
   var box = boxes[index];
   state.conversationStage = 'AWAITING_BOX_RENAME';
   state.pendingRenameBoxId = box.id;
-  addBotMessage('What would you like to call **' + box.name + '**?');
+  addBotMessage('What would you like to call <strong>' + box.name + '</strong>?');
 }
 
 function handleEllipticalRenameBox() {
@@ -2094,7 +2090,7 @@ function handleEllipticalRenameBox() {
   }
   state.conversationStage = 'AWAITING_RENAME_ELLIPTICAL';
   var eligible = state.renamePositions;
-  addBotMessage('Which box? Type _rename_ followed by the number. Applies to: ' +
+  addBotMessage('Which box? Type <em>rename</em> followed by the number. Applies to: ' +
     eligible.join(', ') + '.');
   var input = document.getElementById('user-input');
   if (input) {
@@ -2133,7 +2129,7 @@ function handleMoveBox(index) {
   var box = boxes[index];
   state.conversationStage = 'AWAITING_MOVE_LOCATION_REVIEW';
   state.pendingMoveBoxId = box.id;
-  addBotMessage('Where would you like to move **"' + box.name + '"**?');
+  addBotMessage('Where would you like to move <strong>"' + box.name + '"</strong>?');
 }
 
 function handleEllipticalMoveBox() {
@@ -2143,7 +2139,7 @@ function handleEllipticalMoveBox() {
   }
   state.conversationStage = 'AWAITING_MOVE_ELLIPTICAL';
   var eligible = state.movePositions;
-  addBotMessage('Which box? Type _move_ followed by the number. Applies to: ' +
+  addBotMessage('Which box? Type <em>move</em> followed by the number. Applies to: ' +
     eligible.join(', ') + '.');
   var input = document.getElementById('user-input');
   if (input) {
@@ -2172,7 +2168,7 @@ function handleMoveLocationConfirm(newLocation) {
   box.location = location;
   state.pendingMoveBoxId = null;
   state.conversationStage = 'FINISHED';
-  addBotMessage('Moved **"' + box.name + '"** from _' + prevLocation + '_ to _' +
+  addBotMessage('Moved <strong>"' + box.name + '"</strong> from <em>' + prevLocation + '</em> to _' +
     location + '_.');
   handleFinished('review all');
 }
@@ -2263,7 +2259,7 @@ function handleFreeform(text, photos) {
       state.conversationStage = 'AWAITING_BOX_NAME';
       setChips(['Start sorting']);
     } else {
-      addBotMessage('Back at it. **' + state.boxes.length + '** box' + (state.boxes.length !== 1 ? 'es' : '') + ' in play. Pick up where you left off?');
+      addBotMessage('Back at it. <strong>' + state.boxes.length + '</strong> box' + (state.boxes.length !== 1 ? 'es' : '') + ' in play. Pick up where you left off?');
       state.conversationStage = 'FINISHED';
       setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     }
@@ -2903,7 +2899,7 @@ function handleDeleteBox() {
   var prev = state.conversationStage;
   state.conversationStage = 'AWAITING_DELETE_BOX_CONFIRM';
   state.pendingDeleteBoxId = box.id;
-  addBotMessage('Delete **"' + box.name + '"**? It is empty. This cannot be undone.');
+  addBotMessage('Delete <strong>"' + box.name + '"</strong>? It is empty. This cannot be undone.');
   setChips(['Yes, delete it', 'No, keep it']);
 }
 
@@ -2937,11 +2933,11 @@ function handleDeleteBoxConfirm(text) {
   if (parentBox) {
     state.activeBoxId = parentBox.id;
     state.conversationStage = 'BOX_OPEN';
-    addBotMessage('Deleted **"' + name + '"**. Back in **"' + parentBox.name + '"**.');
+    addBotMessage('Deleted <strong>"' + name + '"</strong>. Back in <strong>"' + parentBox.name + '"</strong>.');
     setBoxOpenChips();
   } else {
     state.conversationStage = 'FINISHED';
-    addBotMessage('Deleted **"' + name + '"**. ' + state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '') + ' remaining.');
+    addBotMessage('Deleted <strong>"' + name + '"</strong>. ' + state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '') + ' remaining.');
     setChips(['New box', 'Review all boxes', 'Done for now', 'Review by fate']);
   }
 }
@@ -3108,7 +3104,7 @@ function promoteLocationToBox(locationName, targetBox) {
   });
 
   if (matched.length === 0) {
-    addBotMessage('No boxes found with location **"' + locationName + '"**.');
+    addBotMessage('No boxes found with location <strong>"' + locationName + '"</strong>.');
     return;
   }
 
@@ -3153,7 +3149,7 @@ function handlePromoteLocation(text) {
   }
 
   if (!locationName) {
-    addBotMessage('What location should I convert? Use: _convert location <name>_ or _nest <name>_.');
+    addBotMessage('What location should I convert? Use: <em>convert location <name></em> or _nest <name>_.');
     return;
   }
 
@@ -3162,7 +3158,7 @@ function handlePromoteLocation(text) {
     return (b.location || '').toLowerCase() === locationName.toLowerCase();
   });
   if (matchedBoxes.length === 0) {
-    addBotMessage('No boxes found with location **"' + locationName + '"**. Check the spelling.');
+    addBotMessage('No boxes found with location <strong>"' + locationName + '"</strong>. Check the spelling.');
     return;
   }
 
@@ -3258,14 +3254,14 @@ function handleNest(text) {
       }
     }
     if (!child) child = box; // fall back to active box
-    if (!child) { addBotMessage('Could not find a box named **"' + childName + '"**.'); return; }
+    if (!child) { addBotMessage('Could not find a box named <strong>"' + childName + '"</strong>.'); return; }
     state.pendingNest = { childId: child.id };
     handleNestParent(parentName);
     return;
   }
 
   // Bare "nest" or "nest box" — needs an active box
-  if (!box) { addBotMessage('No active box. Open a box first, then use _"nest"_ to put it inside another.'); return; }
+  if (!box) { addBotMessage('No active box. Open a box first, then use <em>"nest"</em> to put it inside another.'); return; }
 
   // "nest" or "nest box" — prompt for which child to nest (default active box)
   state.pendingNest = { childId: box.id };
@@ -3274,12 +3270,12 @@ function handleNest(text) {
     return b.id !== box.id && getDescendantIds(box.id).indexOf(b.id) === -1;
   });
   if (others.length === 0) {
-    addBotMessage('No other boxes to nest **"' + box.name + '"** inside. Create one first.');
+    addBotMessage('No other boxes to nest <strong>"' + box.name + '"</strong> inside. Create one first.');
     state.conversationStage = 'BOX_OPEN';
     return;
   }
   var chips = others.map(function(b){ return nestChipLabel(box, b); });
-  addBotMessage('Put **"' + box.name + '"** inside which box?');
+  addBotMessage('Put <strong>"' + box.name + '"</strong> inside which box?');
   setChips(chips);
 }
 
@@ -3311,7 +3307,7 @@ function handleNestParent(text) {
     }
   }
   if (!parent) {
-    addBotMessage('Could not find a box matching **"' + text + '"**. Try the full name.');
+    addBotMessage('Could not find a box matching <strong>"' + text + '"</strong>. Try the full name.');
     return;
   }
   // Prevent circular nesting
@@ -3333,7 +3329,7 @@ function handleNestParent(text) {
   state.conversationStage = 'BOX_OPEN';
   renderSidebar();
   updateContextBar();
-  addBotMessage('**"' + child.name + '"** is now inside **"' + parent.name + '"**.');
+  addBotMessage('<strong>"' + child.name + '"</strong> is now inside <strong>"' + parent.name + '"</strong>.');
   setBoxOpenChips();
 }
 
@@ -3477,7 +3473,7 @@ function handleItemViewAction(text) {
     }
     state.conversationStage = 'AWAITING_FATE';
     state.activeItemViewGroup = null;
-    addBotMessage('What should we do with **' + group.name + '**?');
+    addBotMessage('What should we do with <strong>' + group.name + '</strong>?');
     setChips(FATE_TITLES);
     return;
   }
@@ -3487,14 +3483,14 @@ function handleItemViewAction(text) {
     var boxNames = state.boxes
       .filter(function(b){ return b.id !== (box ? box.id : null); })
       .map(function(b){ return b.name; });
-    addBotMessage('Move **' + group.name + '** to which box?');
+    addBotMessage('Move <strong>' + group.name + '</strong> to which box?');
     setChips(boxNames.concat(['Cancel']));
     return;
   }
   if (command === 'edit notes') {
     if (!group) { state.conversationStage = 'BOX_OPEN'; return; }
     state.conversationStage = 'AWAITING_ITEM_VIEW_NOTES';
-    addBotMessage('Current notes: ' + (group.notes || '_none_') + '\n\nEnter new notes for **' + group.name + '**:');
+    addBotMessage('Current notes: ' + (group.notes || '<em>none</em>') + '\n\nEnter new notes for <strong>' + group.name + '</strong>:');
     setChips(['Clear notes', 'Cancel']);
     return;
   }
@@ -3597,7 +3593,7 @@ function handleItemMoveTarget(text) {
 
   var count = moved.length;
   var label = count > 1 ? count + ' × ' + group.name : '**' + group.name + '**';
-  addBotMessage('Moved ' + label + ' to **' + target.name + '**.');
+  addBotMessage('Moved ' + label + ' to <strong>' + target.name + '</strong>.');
   state.activeItemViewGroup = null;
   state.conversationStage = 'BOX_OPEN';
   reviewBox();
@@ -3680,7 +3676,7 @@ function mantra(context) {
   if (!_mantrasEnabled || typeof addBotMessage === 'undefined') return;
   var pool = MANTRAS[context] || MANTRAS.load;
   var text = pool[Math.floor(Math.random() * pool.length)];
-  addBotMessage('_' + text + '_');
+  addBotMessage('<em>' + text + '</em>');
 }
 
 function maybeMantraOnItem() {
@@ -3786,7 +3782,7 @@ function handleTrashAll() {
     return;
   }
   state.conversationStage = 'AWAITING_TRASH_ALL_CONFIRM';
-  addBotMessage('Delete all **' + activeItems.length + '** item(s)?');
+  addBotMessage('Delete all <strong>' + activeItems.length + '</strong> item(s)?');
   setChips(['Yes', 'No']);
 }
 
@@ -3801,7 +3797,7 @@ function handleTrashAllConfirm(text) {
     trashAllItems(box);
     var trashCount = activeItems.length;
     state.conversationStage = 'AWAITING_DELETE_TRASHED_CONFIRM';
-    addBotMessage('Marked **' + trashCount + '** item(s) as trash.\n\nDelete all trashed items in this box?');
+    addBotMessage('Marked <strong>' + trashCount + '</strong> item(s) as trash.\n\nDelete all trashed items in this box?');
     setChips(['Yes', 'No']);
   } else {
     state.conversationStage = 'BOX_OPEN';
@@ -4031,7 +4027,7 @@ function handleFateReview(fate) {
   if (cleanFate.startsWith('review ')) cleanFate = cleanFate.slice(7).trim();
   var items = collectFateItems(cleanFate);
   if (items.length === 0) {
-    addBotMessage('No items marked **' + cleanFate + '** in your inventory.');
+    addBotMessage('No items marked <strong>' + cleanFate + '</strong> in your inventory.');
     return;
   }
   state.pendingFateReview = { fate: cleanFate, items: items, index: 0, reviewedCount: 0 };
@@ -4075,7 +4071,7 @@ function handleFateReviewAction(text) {
   }
   if (command === 'bulk action') {
     state.conversationStage = 'AWAITING_FATE_REVIEW_BULK';
-    addBotMessage('Apply a bulk action to all **' + review.fate + '** items (' + review.items.length + ')?');
+    addBotMessage('Apply a bulk action to all <strong>' + review.fate + '</strong> items (' + review.items.length + ')?');
     setChips(fateReviewBulkChips(review.fate));
     return;
   }
@@ -4087,7 +4083,7 @@ function showFateReviewCurrentItem(review) {
   if (review.index >= review.items.length) {
     state.pendingFateReview = null;
     state.conversationStage = 'FINISHED';
-    addBotMessage('Done reviewing all **' + review.fate + '** items.');
+    addBotMessage('Done reviewing all <strong>' + review.fate + '</strong> items.');
     setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     return;
   }
@@ -4151,7 +4147,7 @@ function handleFateReviewItem(text) {
 
   if (newFate && item) {
     item.fate = newFate;
-    addBotMessage('Updated **' + item.name + '** to **' + newFate + '**.');
+    addBotMessage('Updated <strong>' + item.name + '</strong> to <strong>' + newFate + '</strong>.');
     review.index++;
     review.reviewedCount = (review.reviewedCount || 0) + 1;
     showFateReviewCurrentItem(review);
@@ -4176,7 +4172,7 @@ function handleFateReviewItem(text) {
       state.pendingFateReview._resumeAfterTrash = true;
       return;
     }
-    addBotMessage('\uD83D\uDDD1 **' + item.name + '** \u2014 delete now?');
+    addBotMessage('\uD83D\uDDD1 <strong>' + item.name + '</strong> \u2014 delete now?');
     state.conversationStage = 'AWAITING_TRASH_DELETE';
     setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
     state.pendingFateReview._resumeAfterTrash = true;
@@ -4203,7 +4199,7 @@ function handleFateReviewItem(text) {
   }
 
   if ((command === 'add selling notes' || command === 'add donation destination') && item) {
-    addBotMessage('Enter notes for **' + item.name + '**:');
+    addBotMessage('Enter notes for <strong>' + item.name + '</strong>:');
     state.pendingFateReview._awaitingNotes = true;
     return;
   }
@@ -4222,7 +4218,7 @@ function handleFateReviewItem(text) {
     state.activeItemId = item.id;
     state.activeBoxId = entry.boxId;
     state.conversationStage = 'AWAITING_FATE';
-    addBotMessage('What should we do with **' + item.name + '**?');
+    addBotMessage('What should we do with <strong>' + item.name + '</strong>?');
     setChips(['Trash', 'Return', 'Sell', 'Keep', 'Donate', 'Unsure']);
     state.pendingFateReview._resumeAfterFate = true;
     return;
@@ -4269,7 +4265,7 @@ function handleFateReviewBulk(text) {
     }
     state.pendingFateReview = null;
     state.conversationStage = 'FINISHED';
-    addBotMessage('Updated **' + updateCount + '** items to **' + newFate + '**.');
+    addBotMessage('Updated <strong>' + updateCount + '</strong> items to <strong>' + newFate + '</strong>.');
     setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     return;
   }
@@ -4286,7 +4282,7 @@ function handleFateReviewBulk(text) {
     }
     state.pendingFateReview = null;
     state.conversationStage = 'FINISHED';
-    addBotMessage(deletionLog(deleteCount + ' items') + ' All **' + review.fate + '** items deleted.');
+    addBotMessage(deletionLog(deleteCount + ' items') + ' All <strong>' + review.fate + '</strong> items deleted.');
     setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     return;
   }
@@ -4307,12 +4303,12 @@ function handleFateReviewBulk(text) {
     }
     state.pendingFateReview = null;
     state.conversationStage = 'FINISHED';
-    addBotMessage('Moved **' + moveCount + '** items to unsure.');
+    addBotMessage('Moved <strong>' + moveCount + '</strong> items to unsure.');
     setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     return;
   }
 
-  addBotMessage('Apply a bulk action to all **' + review.fate + '** items (' + review.items.length + ')?');
+  addBotMessage('Apply a bulk action to all <strong>' + review.fate + '</strong> items (' + review.items.length + ')?');
   setChips(fateReviewBulkChips(review.fate));
 }
 

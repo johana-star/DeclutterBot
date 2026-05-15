@@ -391,8 +391,6 @@ When planning work sessions, use **story points** (relative effort) rather than 
 - Extract inline scripts to ui.js — the `<script>` block at the bottom of `index.html` (lines ~593-634) contains `setFormat`, `triggerImport`, `handleImportFile`, `triggerExport`, and `openNewTab`. Move these to a `ui.js` file and replace the inline block with `<script src="ui.js"></script>`. Load order: lodash → ui.js → app.js.
 
 
-- Remove markdown parser — `renderMarkdown` is called only in `addBotMessage` and handles `**bold**`, `_italic_`, and `\n` → `<br/>`. Now that `addBotMessage` supports raw HTML passthrough (strings starting with `<`), the parser can be removed by converting all `**...**` and `_..._` usage at each call site to inline `<strong>` and `<em>` tags. Audit required: ~30-40 `addBotMessage` call sites. Not a quick session — do as a dedicated cleanup pass.
-
 - Start sorting chip broken — On fresh start (no boxes), the "Start sorting" chip appears but clicking it does nothing. Typing a box name works. Likely the chip doesn't map to the correct command or isn't wired to trigger box creation. Verify chip click handler maps "Start sorting" to the expected input, or remove the chip and rely on typed input only.
 
 - Chip position on mobile — on phone, chips display at the bottom of the message box, covering the most recent message. Move chips to the top of the input area (pinned between message list and input bar) so the user can read context before tapping.
