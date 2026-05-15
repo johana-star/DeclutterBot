@@ -3,7 +3,6 @@
 app.js
 CONTRIBUTING.md
 flowchart.html
-helpers.js
 index.html
 LICENSE
 README.md

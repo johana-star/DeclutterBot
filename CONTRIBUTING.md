@@ -170,27 +170,6 @@ As a general rule, prefer ES5-compatible syntax (`var`, plain functions, string 
 
 ## app.js Architecture
 
-### Pure helpers in helpers.js
-
-Pure utility functions (with no side effects and no state mutations) have been extracted to `helpers.js`:
-
-```javascript
-// helpers.js exports 21 pure functions:
-- String utilities: titleize, singularize, singularizeLast, escapeCSV, escHtml
-- Data transformations: parseCSVLine, parseQuantity, countFates, groupItems, collectFateItems
-- UI text generation: buildActionChips, fateReviewChips, fateReviewBulkChips, buildFateReviewPath, disposalPrompt
-- Validation: isReservedCommand
-- Content: mantra, maybeMantraOnItem, nestChipLabel, dumpChipLabel, eligibleGroupNumbers, executeReviewAllActionByNumber, activeItems
-```
-
-These functions are:
-- **Pure:** No state mutation, no DOM access, no side effects
-- **Testable:** Can be tested in isolation without mocking
-- **Reusable:** Can be imported as a standalone module
-- **Consistent:** All use lodash for data operations
-
-**When adding a helper function:** If it has zero side effects and doesn't read/write state, put it in `helpers.js`. If it mutates state or touches `document`, keep it in `app.js` as a handler or utility.
-
 ### DOM guard pattern
 
 `app.js` is split into two zones separated by a `typeof document` guard:
@@ -387,7 +366,7 @@ When planning work sessions, use **story points** (relative effort) rather than 
 - Merge-on-import (CSV + JSON) — both `importCSV()` and `importJSON()` now merge incoming data into existing state rather than replacing it. Deduplication is two-tier: (1) **ID match** on box or item → true duplicate, skipped silently; (2) **near-duplicate** (same name/location for boxes, same name/fate/notes for items, but different or absent id) → skipped and surfaced as a ⚠️ warning in the summary message. Incoming IDs are retained; missing IDs are generated. CSV format extended to 7 columns (adding `box id`, `item id`); legacy 5-column CSVs still accepted. Export now writes 7 columns. 75 tests passing in test_import_csv.js.
 
 
-- Pure helpers extraction — Extracted 22 pure utility functions (225 LOC) into dedicated `helpers.js` module. Functions include titleize, singularize, parseCSVLine, renderMarkdown, countFates, groupItems, escapeCSV, escHtml, isReservedCommand, and others. All have zero side effects and no state mutations. Exports to both Node.js (module.exports) and browser (global scope). Tests: 800/800 passing. Architecture: helpers load at app.js startup; test runner loads before running tests. Benefit: Pure functions isolated from business logic, easier to test and reuse.
+- Pure helpers extraction (later reverted) — Attempted to extract 22 pure utility functions (225 LOC) into dedicated `helpers.js` module, but the extraction was incomplete and created test/app entanglement issues. The file was never loaded in the browser, causing all functions to be duplicated in `app.js`. After attempting to complete the extraction in May 2026, the complexity of syncing out-of-date functions and resolving lodash conflicts led to the decision to delete `helpers.js` entirely and keep all utility functions in `app.js`. All pure helper functions remain in app.js.
 - Number extraction refactoring — Changed all number extraction from command strings to use regex `/(\d+)$/` instead of position-based slicing. Patterns: `command.slice(7)`, `command.split(' ')[1]` replaced with `command.match(/(\d+)$/)[1]`. More robust (works with multi-word commands), future-proof (handles "delete item 5"), consistent with existing code patterns. Added `extractNumberFromCommand()` helper for reuse. 3 locations updated in app.js.
 - 120-char line length refactoring — all lines now at or under 120 characters by code point count. Expanded dense object literals, long `addBotMessage` strings, and extracted long regex patterns to variables. Added documentation to CONTRIBUTING on line length rules and how to measure correctly (character count, not bytes).
 - Add Lodash via CDN — Lodash 4.17.21 added to index.html via cdnjs. Test setup: (1) `npm init -y && npm install lodash`, (2) add `global._ = require('lodash')` to test stubs before `require('../app.js')`. All calls guarded with `typeof _ !== 'undefined'` for graceful degradation in Node tests.
@@ -415,8 +394,6 @@ When planning work sessions, use **story points** (relative effort) rather than 
 - Remove markdown parser — `renderMarkdown` is called only in `addBotMessage` and handles `**bold**`, `_italic_`, and `\n` → `<br/>`. Now that `addBotMessage` supports raw HTML passthrough (strings starting with `<`), the parser can be removed by converting all `**...**` and `_..._` usage at each call site to inline `<strong>` and `<em>` tags. Audit required: ~30-40 `addBotMessage` call sites. Not a quick session — do as a dedicated cleanup pass.
 
 - Start sorting chip broken — On fresh start (no boxes), the "Start sorting" chip appears but clicking it does nothing. Typing a box name works. Likely the chip doesn't map to the correct command or isn't wired to trigger box creation. Verify chip click handler maps "Start sorting" to the expected input, or remove the chip and rely on typed input only.
-
-- Complete helpers.js extraction — `helpers.js` exists and contains 21 pure functions, but is never loaded in the browser (`index.html` doesn't have a `<script src="helpers.js"></script>` tag). All 21 functions are duplicated in `app.js` where they shadow the helpers.js versions in Node tests. Complete the extraction: (1) add `<script src="helpers.js"></script>` to `index.html` before app.js, (2) remove the 21 duplicate function definitions from app.js, (3) verify all 1049 tests still pass, (4) test in browser. This will reduce app.js by ~225 LOC and make the pure helpers truly reusable. Functions to remove from app.js: titleize, singularize, singularizeLast, escapeCSV, escHtml, parseCSVLine, parseQuantity, countFates, groupItems, collectFateItems, executeReviewAllActionByNumber, disposalPrompt, buildActionChips, fateReviewChips, fateReviewBulkChips, buildFateReviewPath, eligibleGroupNumbers, nestChipLabel, dumpChipLabel, isReservedCommand, maybeMantraOnItem, mantra, activeItems.
 
 - Chip position on mobile — on phone, chips display at the bottom of the message box, covering the most recent message. Move chips to the top of the input area (pinned between message list and input bar) so the user can read context before tapping.
 - Header space on mobile — the header takes up too much vertical space on phone. Collapse or hide labels on small screens. Pair with import/export toggle work (fewer buttons = easier to compress).
