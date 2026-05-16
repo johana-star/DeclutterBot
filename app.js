@@ -19,9 +19,15 @@ if (typeof require !== 'undefined') {
 const _ = typeof require !== 'undefined' ? require('./tests/lodash.js') : window._;
 
 // Helper: Filter out soft-deleted items
-function activeItems(box) {
-  return box ? _.reject(box.items, (item) => item.deleted_at) : [];
-}
+const helpers = {
+  activeItems: function(box) {
+    return box ? _.reject(box.items, (item) => item.deleted_at) : [];
+  },
+
+  activeBoxes: function() {
+    return _.reject(state.boxes, (box) => box.deleted_at);
+  }
+};
 
 let state = {
   boxes: [],
@@ -134,8 +140,8 @@ function activeItem() {
   return box.items.find(function(item) { return item.id === state.activeItemId; });
 }
 function countFates(box) {
-  var activeItems = _.reject(box.items, function(item) { return item.deleted_at; });
-  return activeItems.reduce(function(counts, item) {
+  var items = helpers.activeItems(box);
+  return items.reduce(function(counts, item) {
     counts[item.fate] = (counts[item.fate] || 0) + 1;
     return counts;
   }, {});
@@ -312,7 +318,7 @@ function renderBoxCard(box, depth, collapsedIds) {
   tags = FATES.filter((fateName) => fates[fateName] > 0)
     .map((fateName) => '<span class="tag tag-' + fateName + '">' + fateName + ' ' + fates[fateName] + '</span>')
     .join('');
-  var total = _.reject(box.items, function(it) { return it.deleted_at; }).length;
+  var total = helpers.activeItems(box).length;
   var kidBoxes = state.boxes.filter(function(b) { return b.parentId === box.id; });
   var hasKids = kidBoxes.length > 0;
   var isCollapsed = collapsedIds && collapsedIds.indexOf(box.id) !== -1;
@@ -378,8 +384,8 @@ function updateContextBar() {
     dot.classList.remove('dot-inactive'); dot.classList.add('dot-active');
     var item = activeItem();
     label.textContent = item
-      ? 'Box: '+box.name+'  \u2192  Item: '+item.name
-      : 'Active box: '+box.name+'  \u00b7  '+activeItems(box).length+' items';
+      ? 'Box: ' + box.name + '  \u2192  Item: ' + item.name
+      : 'Active box: ' + box.name + '  \u00b7  ' + helpers.activeItems(box).length + ' items';
   } else {
     dot.classList.remove('dot-active'); dot.classList.add('dot-inactive');
     label.textContent = state.boxes.length === 0
@@ -940,7 +946,7 @@ function handleDeleteByNumber(num) {
     if (!still) { state.activeItemId = null; }
   }
   state.conversationStage = 'BOX_OPEN';
-  if (activeItems(box).length === 0) {
+  if (helpers.activeItems(box).length === 0) {
     addBotMessage(deletionLog(countLabel + name) + ' The box is now empty.');
     setChips(['Add item', 'Move box', 'Done with this box', 'Delete this box']);
   } else {
@@ -1501,7 +1507,7 @@ function handleItemName(text, photos) {
     // Both provided — log and move on
     state.activeItemId = null;
     state.conversationStage = 'BOX_OPEN';
-    addBotMessage('<strong>' + name + '.</strong> ' + item.fate + (item.notes ? ' (' + item.notes + ')' : '') + '.' + warn + '\n\n<strong>' + activeItems(box).length + ' in the box.</strong> What\'s next?');
+    addBotMessage('<strong>' + name + '.</strong> ' + item.fate + (item.notes ? ' (' + item.notes + ')' : '') + '.' + warn + '\n\n<strong>' + helpers.activeItems(box).length + ' in the box.</strong> What\'s next?');
     setBoxOpenChips();
   } else if (entry.fate !== null && entry.notes === null) {
     // Fate provided — skip fate prompt, ask for notes
@@ -1515,7 +1521,7 @@ function handleItemName(text, photos) {
     // Notes provided (2-part, second wasn't a fate) — already logged with unsure, done
     state.activeItemId = null;
     state.conversationStage = 'BOX_OPEN';
-    addBotMessage('<strong>' + name + '.</strong> unsure (' + item.notes + ').' + warn + '\n\n<strong>' + activeItems(box).length + ' in the box.</strong> What\'s next?');
+    addBotMessage('<strong>' + name + '.</strong> unsure (' + item.notes + ').' + warn + '\n\n<strong>' + helpers.activeItems(box).length + ' in the box.</strong> What\'s next?');
     setBoxOpenChips();
   } else {
     // Name only — normal fate prompt
@@ -1628,7 +1634,7 @@ function handleBatchFate(text, photos) {
   };
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
-  addBotMessage(fateMessages[matched] + '\n\n<strong>' + activeItems(box).length + '</strong> item(s) logged in "' + box.name + '". What\'s next?');
+  addBotMessage(fateMessages[matched] + '\n\n<strong>' + helpers.activeItems(box).length + '</strong> item(s) logged in "' + box.name + '". What\'s next?');
   setBoxOpenChips();
 }
 
@@ -1693,7 +1699,7 @@ function handleItemNotes(text) {
   if(item&&t!=='next'&&t!=='next item'&&t!=='no notes'&&text.trim()) item.notes=text.trim();
   state.activeItemId=null; state.conversationStage='BOX_OPEN';
   var box=activeBox();
-  addBotMessage('<strong>' + activeItems(box).length + ' in the box.</strong> What\'s next?');
+  addBotMessage('<strong>' + helpers.activeItems(box).length + ' in the box.</strong> What\'s next?');
   setBoxOpenChips();
 }
 
@@ -1714,7 +1720,7 @@ function doneWithBox() {
 function groupItems(items) {
   var groups = [];
   var seen = {};
-  _.reject(items, function(it) { return it.deleted_at; }).forEach(function(it) {
+  items.forEach(function(it) {
     var key = it.name + '|' + it.fate;
     if (seen[key] !== undefined) {
       groups[seen[key]].count++;
@@ -1728,9 +1734,9 @@ function groupItems(items) {
 
 // One-line summary of a box's contents, grouped
 function boxSummaryLine(box) {
-  var activeItems = _.reject(box.items, function(it) { return it.deleted_at; });
-  if (activeItems.length === 0) { return 'empty'; }
-  var groups = groupItems(activeItems);
+  var items = helpers.activeItems(box);
+  if (items.length === 0) { return 'empty'; }
+  var groups = groupItems(items);
   return groups.map(function(g) {
     return (g.count > 1 ? g.count + ' × ' : '') + g.name + ' → ' + g.fate;
   }).join(', ');
@@ -1787,7 +1793,7 @@ function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
   let [multiplicationSign, rightwardArrow, packageEmoji] = ['\u00d7', '\u2192', '\uD83D\uDCE6'];
 
   // Direct items
-  let items  = _.reject(box.items, (item) => item.deleted_at);
+  let items = helpers.activeItems(box);
   let groups = groupItems(items);
   html += groups.map((group, index) => {
     let prefix = group.count > 1 ? group.count + ' ' + multiplicationSign +  ' ' : '';
@@ -1801,7 +1807,7 @@ function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
   // Child boxes
   var children = state.boxes.filter(function(b) { return b.parentId === box.id; });
   children.forEach((child, index) => {
-    let childItems = _.reject(child.items, (item) => item.deleted_at);
+    let childItems = helpers.activeItems(child);
     let childChildren = state.boxes.filter((box) => box.parentId === child.id);
     let totalItems = childItems.length + childChildren.length;
 
@@ -1838,7 +1844,7 @@ function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
 
 function reviewBox() {
   var box = activeBox();
-  var directItems = box ? _.reject(box.items, function(it) { return it.deleted_at; }) : [];
+  var directItems = helpers.activeItems(box);
   var childBoxes = box ? state.boxes.filter(function(b) { return b.parentId === box.id; }) : [];
 
   if (!box || (directItems.length === 0 && childBoxes.length === 0)) {
@@ -1910,8 +1916,7 @@ function handleFinished(text) {
   } else if (command.indexOf('done') !== -1 || command.indexOf('stop') !== -1) {
     var total = 0;
     state.boxes.forEach((box) => {
-      let activeItems = _.reject(box.items, (item) => item.deleted_at);
-      total += activeItems.length;
+      total += helpers.activeItems(box).length;
     });
     addBotMessage('Good work. <strong>' + state.boxes.length + ' box' + (state.boxes.length !== 1 ? 'es' : '') + '</strong>, <strong>' + total + ' item' + (total !== 1 ? 's' : '') + '</strong> sorted.\n\nExport any time with the buttons above.');
     setChips(['New box', 'Review by fate']);
@@ -1919,7 +1924,7 @@ function handleFinished(text) {
     // Set stage to FINISHED so all review-all commands route back to handleFinished
     state.conversationStage = 'FINISHED';
 
-    var boxes = _.reject(state.boxes, (box) => box.deleted_at);
+    var boxes = helpers.activeBoxes();
     var lines = _.map(boxes, (box, i) => {
       var loc = box.location ? ' (' + box.location + ')' : '';
       return (i+1) + '. **' + box.name + '**' + loc + ' — ' + boxSummaryLine(box);
@@ -1928,8 +1933,7 @@ function handleFinished(text) {
 
     // Identify empty boxes and their positions in the review list
     var emptyBoxPositions = _.compact(_.map(boxes, (box, i) => {
-      var activeItems = _.reject(box.items, (item) => item.deleted_at);
-      return activeItems.length === 0 ? (i + 1) : null;
+      return helpers.activeItems(box).length === 0 ? (i + 1) : null;
     }));
 
     // Build delete chips based on number of empty boxes
@@ -1945,8 +1949,7 @@ function handleFinished(text) {
 
     // Store empty boxes for delete commands (with their positions)
     var emptyBoxes = _.reject(boxes, (box) => {
-      var activeItems = _.reject(box.items, (item) => item.deleted_at);
-      return activeItems.length > 0;
+      return helpers.activeItems(box).length > 0;
     });
     if (emptyBoxes.length > 0) {
       state.emptyBoxesForDelete = emptyBoxes;
@@ -2090,7 +2093,7 @@ function handleRenameBox(index) {
     addBotMessage('Invalid box number.');
     return;
   }
-  var boxes = _.reject(state.boxes, (box) => box.deleted_at);
+  var boxes = helpers.activeBoxes();
   if (index >= boxes.length) {
     addBotMessage('Invalid box number.');
     return;
@@ -2139,7 +2142,7 @@ function handleMoveBox(index) {
     addBotMessage('Invalid box number.');
     return;
   }
-  var boxes = _.reject(state.boxes, (box) => box.deleted_at);
+  var boxes = helpers.activeBoxes();
   if (index >= boxes.length) {
     addBotMessage('Invalid box number.');
     return;
@@ -2691,7 +2694,7 @@ function importJSON(data) {
       });
       state.boxes.push(incomingBox);
       newBoxCount++;
-      newItemCount += incomingBox.items.filter(function(it) { return !it.deleted_at; }).length;
+      newItemCount += helpers.activeItems(incomingBox).length;
     }
   });
 
@@ -2747,8 +2750,8 @@ function clearAll() {
   if (state.boxes.length === 0) { _doReset(); return; }
   // Otherwise ask for typed confirmation before wiping anything
   var boxCount = state.boxes.length;
-  var itemCount = state.boxes.reduce(function(sum, b) {
-    return sum + b.items.filter(function(it) { return !it.deleted_at; }).length;
+  var itemCount = state.boxes.reduce(function(sum, box) {
+    return sum + helpers.activeItems(box).length;
   }, 0);
   state.conversationStage = 'AWAITING_RESET_CONFIRM';
   addBotMessage(
@@ -2901,7 +2904,7 @@ if (typeof window === 'undefined' && typeof global !== 'undefined') {
 
 function setBoxOpenChips() {
   var box = activeBox();
-  var hasActiveItems = box && activeItems(box).length > 0;
+  var hasActiveItems = box && helpers.activeItems(box).length > 0;
   var extra = hasActiveItems ? 'Dump into...' : 'Delete this box';
   setChips(['Add item', 'Review items', 'Move box', 'Nest box', extra, 'Review by fate', 'Done with this box']);
 }
@@ -2919,7 +2922,7 @@ function handleDeleteBox() {
     setBoxOpenChips();
     return;
   }
-  var activeCount = activeItems(box).length;
+  var activeCount = helpers.activeItems(box).length;
   if (activeCount > 0) {
     addBotMessage(
       '**"' + box.name + '"** still has ' + activeCount + ' item(s).' +
@@ -2980,7 +2983,7 @@ function dumpChipLabel(source, target) {
 function handleDump(text) {
   var box = activeBox();
   if (!box) { addBotMessage('No active box to dump. Open a box first.'); return; }
-  var activeCount = activeItems(box).length;
+  var activeCount = helpers.activeItems(box).length;
   if (activeCount === 0) { addBotMessage('"' + box.name + '" is already empty — nothing to dump.'); return; }
 
   // Parse target from "dump into <name>" or "dump <name>"
@@ -3033,7 +3036,7 @@ function handleDumpTarget(text) {
     state.boxes.push(newBox);
     target = newBox;
     // Transfer items to new box, then ask for its location
-    var count = activeItems(source).length;
+    var count = helpers.activeItems(source).length;
     source.items.forEach(function(item) { target.items.push(item); });
     source.items = [];
     // Set new box as active and ask for location
@@ -3046,7 +3049,7 @@ function handleDumpTarget(text) {
     return;
   }
 
-  var count = activeItems(source).length;
+  var count = helpers.activeItems(source).length;
   source.items.forEach(function(item) { target.items.push(item); });
   source.items = [];
   // Re-parent direct children of source to target (preserving deeper ancestry)
@@ -3768,14 +3771,14 @@ function deleteAllItems(box) {
 function handleTrashAll() {
   var box = activeBox();
   if (!box) { state.conversationStage = 'BOX_OPEN'; return; }
-  var activeItems = _.reject(box.items, (item) => item.deleted_at);
-  if (activeItems.length === 0) {
+  var items = helpers.activeItems(box);
+  if (items.length === 0) {
     addBotMessage('No items to trash.');
     reviewBox();
     return;
   }
   state.conversationStage = 'AWAITING_TRASH_ALL_CONFIRM';
-  addBotMessage('Delete all <strong>' + activeItems.length + '</strong> item(s)?');
+  addBotMessage('Delete all <strong>' + items.length + '</strong> item(s)?');
   setChips(['Yes', 'No']);
 }
 
@@ -3783,12 +3786,12 @@ function handleTrashAllConfirm(text) {
   var command = text.toLowerCase().trim();
   var box = activeBox();
   if (!box) { state.conversationStage = 'BOX_OPEN'; return; }
-  var activeItems = _.reject(box.items, (item) => item.deleted_at);
+  var items = helpers.activeItems(box);
 
   if (command === 'yes' || command === 'y') {
     // Mark all active items as trash
     trashAllItems(box);
-    var trashCount = activeItems.length;
+    var trashCount = items.length;
     state.conversationStage = 'AWAITING_DELETE_TRASHED_CONFIRM';
     addBotMessage('Marked <strong>' + trashCount + '</strong> item(s) as trash.\n\nDelete all trashed items in this box?');
     setChips(['Yes', 'No']);
@@ -4348,7 +4351,7 @@ function initSidebarDrag() {
 
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
-  module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, countFates, countFatesDeep,
+  module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, helpers, countFates, countFatesDeep,
     processInput, handleMove, handleBatchConfirm, handleBatchQty,
     commitBatch, handleFate, handleItemNotes, handleItemName, parseItemEntry,
     processMultilineItems,
@@ -4386,7 +4389,7 @@ if (typeof module !== 'undefined') {
     saveState,
     setBoxOpenChips,
     updateContextBar,
-    activeItems,
+    helpers,
     escapeCSV,
     exportCSV,
     parseCSV,

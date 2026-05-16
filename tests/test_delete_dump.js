@@ -28,7 +28,7 @@ var handleDump             = app.handleDump;
 var handleDumpTarget       = app.handleDumpTarget;
 var setBoxOpenChips        = app.setBoxOpenChips;
 var updateContextBar       = app.updateContextBar;
-var activeItems            = app.activeItems;
+var helpers = app.helpers;
 var doneWithBox            = app.doneWithBox;
 
 // ── HARNESS ───────────────────────────────────────────────────────────────────
