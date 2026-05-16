@@ -391,8 +391,6 @@ When planning work sessions, use **story points** (relative effort) rather than 
 - Extract inline scripts to ui.js — the `<script>` block at the bottom of `index.html` (lines ~593-634) contains `setFormat`, `triggerImport`, `handleImportFile`, `triggerExport`, and `openNewTab`. Move these to a `ui.js` file and replace the inline block with `<script src="ui.js"></script>`. Load order: lodash → ui.js → app.js.
 
 
-- Start sorting chip broken — On fresh start (no boxes), the "Start sorting" chip appears but clicking it does nothing. Typing a box name works. Likely the chip doesn't map to the correct command or isn't wired to trigger box creation. Verify chip click handler maps "Start sorting" to the expected input, or remove the chip and rely on typed input only.
-
 - Chip position on mobile — on phone, chips display at the bottom of the message box, covering the most recent message. Move chips to the top of the input area (pinned between message list and input bar) so the user can read context before tapping.
 - Header space on mobile — the header takes up too much vertical space on phone. Collapse or hide labels on small screens. Pair with import/export toggle work (fewer buttons = easier to compress).
 - Sidebar landscape breakpoint — box drawer does not appear when the app is in landscape on a phone. The breakpoint needs to be revised down to match phone actual dimensions. Best validated with Xcode simulator.
@@ -736,6 +734,22 @@ This rule is mechanical by design. The more specific the trigger, the more likel
 ## Keeping CONTRIBUTING.md Up to Date
 
 **CONTRIBUTING.md must be updated in the same change as the code it describes.** It is not a document to update later — later never comes.
+
+### Code Quality Checklist — Before ANY `str_replace` or file edit
+
+Every code change must meet these quality standards **before** submission:
+
+1. **No trailing whitespace** — strip spaces/tabs at end of lines
+2. **Operator spacing** — always `'text' + variable`, never `'text'+variable`
+3. **Modern JavaScript** — use `let`/`const`, never `var` (unless modifying existing var-based code)
+4. **Line length** — break lines over 120 characters across multiple lines
+5. **Consistent formatting** — `<strong>` not `**` (markdown parser removed)
+6. **Use helpers** — `helpers.emoji.checkMark` not `'\u2705'`
+7. **Descriptive names** — `fateMessages` not `fm`, `targetBox` not `box2`
+8. **Refactor nearby code** — if touching a line with nested ternaries or other antipatterns, fix them
+9. **No duplicate imports** — check if `var helpers = app.helpers;` already exists before adding
+
+**Do it right the first time.** There is no time pressure. Rework costs more than doing it correctly initially.
 
 ### Checklist — run this when finishing any change
 

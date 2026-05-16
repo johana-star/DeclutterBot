@@ -402,7 +402,7 @@ function updateContextBar() {
     var item = activeItem();
     label.textContent = item
       ? 'Box: ' + box.name + '  ' + helpers.emoji.rightArrow + '  Item: ' + item.name
-      : 'Active box: ' + box.name + '  \u00b7  ' + helpers.activeItems(box).length + ' items';
+      : 'Active box: ' + box.name + '  ' + helpers.emoji.middleDot + '  ' + helpers.activeItems(box).length + ' items';
   } else {
     dot.classList.remove('dot-active'); dot.classList.add('dot-inactive');
     label.textContent = state.boxes.length === 0
@@ -1004,12 +1004,12 @@ function handleTrashByNumber(num) {
   var effectivePref = boxPref || sessionTrashPreference;
   if (effectivePref === 'always') { deleteActiveItem(); return; }
   if (effectivePref === 'never') {
-    addBotMessage('\uD83D\uDDD1 <strong>' + group.name + '</strong> marked trash.\n\n' + disposalPrompt(group.name));
+    addBotMessage(helpers.emoji.trashBin + ' <strong>' + group.name + '</strong> marked trash.\n\n' + disposalPrompt(group.name));
     state.conversationStage = 'AWAITING_DISPOSAL';
     setChips(['Skip disposal note', 'Done with this box']);
     return;
   }
-  addBotMessage('\uD83D\uDDD1 <strong>' + group.name + '</strong> ' + helpers.emoji.emDash + ' delete now?');
+  addBotMessage(helpers.emoji.trashBin + ' <strong>' + group.name + '</strong> ' + helpers.emoji.emDash + ' delete now?');
   state.conversationStage = 'AWAITING_TRASH_DELETE';
   state._reviewingBox = true; // flag to restore review list after delete
   setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
@@ -1134,8 +1134,9 @@ function handleBoxName(text) {
     state.pendingBoxBatch = { qty: parsed.qty, baseName: singular };
     state.conversationStage = 'AWAITING_BOX_BATCH_CONFIRM';
     addBotMessage(
-      'I see **' + parsed.qty + ' \u00d7 ' + singular + '**. Should I create ' + parsed.qty +
-      ' boxes named **' + singular + ' A** through **' + singular + ' ' + LETTERS[parsed.qty - 1] + '**?'
+      'I see <strong>' + parsed.qty + ' ' + helpers.emoji.multiplicationSign + ' ' + singular
+      + '<strong/>. Should I create ' + parsed.qty + ' boxes named <strong>' + singular
+      + ' A</strong> through <strong>' + singular + ' ' + LETTERS[parsed.qty - 1] + '</strong>?'
     );
     setChips(['Yes, create ' + parsed.qty, 'No, just 1', 'Change quantity']);
     return;
@@ -1193,8 +1194,9 @@ function handleBoxBatchQty(text) {
   batch.qty = qty;
   state.conversationStage = 'AWAITING_BOX_BATCH_CONFIRM';
   addBotMessage(
-    'Got it ' + helpers.emoji.emDash + ' **' + qty + ' \u00d7 ' + batch.baseName + '**. Create boxes **' +
-    batch.baseName + ' A** through **' + batch.baseName + ' ' + LETTERS[qty - 1] + '**?'
+    'Got it ' + helpers.emoji.emDash + ' <strong>' + qty + ' ' + helpers.emoji.multiplicationSign + ' '
+    + batch.baseName + '<strong>. Create boxes <strong>' + batch.baseName + ' A<strong> through <strong>'
+    + batch.baseName + ' ' + LETTERS[qty - 1] + '<strong>?'
   );
   setChips(['Yes, create ' + qty, 'No, just 1']);
 }
@@ -1505,8 +1507,8 @@ function handleItemName(text, photos) {
   if (parsed) {
     state.pendingBatch = { qty: parsed.qty, itemName: parsed.itemName };
     state.conversationStage = 'AWAITING_BATCH_CONFIRM';
-    addBotMessage('I see <strong>' + parsed.qty + ' \u00d7 ' + parsed.itemName + '</strong>. Should I log ' + parsed.qty +
-      ' separate entries for these, all with the same fate?');
+    addBotMessage('I see <strong>' + parsed.qty + ' ' + helpers.emoji.multiplicationSign + ' ' + parsed.itemName
+      + '</strong>. Should I log ' + parsed.qty + ' separate entries for these, all with the same fate?');
     setChips(['Yes, log ' + parsed.qty, 'No, just 1', 'Change quantity']);
     return;
   }
@@ -1531,9 +1533,19 @@ function handleItemName(text, photos) {
   } else if (entry.fate !== null && entry.notes === null) {
     // Fate provided — skip fate prompt, ask for notes
     state.conversationStage = 'AWAITING_ITEM_NOTES';
+    let fateToEmoji = {
+      trash:  helpers.emoji.trashBin,
+      keep:   helpers.emoji.checkMark,
+      donate: helpers.emoji.blueHeart,
+      sell:   helpers.emoji.moneyBag,
+      return: helpers.emoji.box
+    }
+
     addBotMessage(
-      (entry.fate === 'trash' ? '\uD83D\uDDD1' : entry.fate === 'keep' ? '\u2705' : entry.fate === 'donate' ? '\uD83D\uDC99' : entry.fate === 'sell' ? '\uD83D\uDCB0' : entry.fate === 'return' ? '\uD83D\uDCE6' : '\uD83E\uDD37') +
-      ' **' + titleize(item.fate) + '.** ' + warn + 'Anything to note? (condition, value, where it\'s going) ' + helpers.emoji.emDash + ' or just say _"next"_.'
+      (fateToEmoji[entry.fate] || helpers.emoji.shrug)
+      + ' <strong>' + titleize(item.fate) + '.<strong> ' + warn
+      + 'Anything to note? (condition, value, where it\'s going) '
+      + helpers.emoji.emDash + ' or just say <em>"next"</em>.'
     );
     setChips(['Next item', 'No notes', 'Done with this box']);
   } else if (entry.fate === null && entry.notes !== null) {
@@ -1645,12 +1657,13 @@ function handleBatchFate(text, photos) {
   }
 
   var fateMessages = {
-    keep:   '\u2705 <strong>Keep</strong> ' + helpers.emoji.emDash + ' all going back home.',
-    donate: '\uD83D\uDC99 <strong>Donate</strong> ' + helpers.emoji.emDash + ' great!',
-    trash:  '\uD83D\uDDD1 <strong>Trash</strong> ' + helpers.emoji.emDash + ' out they go.',
-    sell:   '\uD83D\uDCB0 <strong>Sell</strong> ' + helpers.emoji.emDash + ' nice haul!',
-    unsure: '\uD83E\uDD37 <strong>Unsure</strong> ' + helpers.emoji.emDash + ' we\'ll revisit.'
+    keep:   helpers.emoji.checkMark + ' <strong>Keep</strong> ' + helpers.emoji.emDash + ' all going back home.',
+    donate: helpers.emoji.blueHeart + ' <strong>Donate</strong> ' + helpers.emoji.emDash + ' great!',
+    trash:  helpers.emoji.trashBin + ' <strong>Trash</strong> ' + helpers.emoji.emDash + ' out they go.',
+    sell:   helpers.emoji.moneyBag + ' <strong>Sell</strong> ' + helpers.emoji.emDash + ' nice haul!',
+    unsure: helpers.emoji.shrug + ' <strong>Unsure</strong> ' + helpers.emoji.emDash + ' we\'ll revisit.'
   };
+
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
   addBotMessage(fateMessages[matched] + '\n\n<strong>' + helpers.activeItems(box).length + '</strong> item(s) logged in "' + box.name + '". What\'s next?');
@@ -1675,32 +1688,32 @@ function handleFate(text, photos) {
     return;
   }
   item.fate=matched;
-  var fm = {
-    keep:   '\u2705 **Keep.** Back it goes.',
-    donate: '\uD83D\uDC99 **Donate.** Someone else\'s treasure.',
-    trash:  '\uD83D\uDDD1 **Trash.** Gone.',
-    sell:   '\uD83D\uDCB0 **Sell.** Worth something to someone.',
-    unsure: '\uD83E\uDD37 **Unsure.** We\'ll come back to it.',
-    return: '\uD83D\uDCE6 **Return.** Noted\u2026 someone\'s waiting for this.'
+  var fateMessages = {
+    keep:   helpers.emoji.checkMark + ' **Keep.** Back it goes.',
+    donate: helpers.emoji.blueHeart + ' **Donate.** Someone else\'s treasure.',
+    trash:  helpers.emoji.trashBin + ' **Trash.** Gone.',
+    sell:   helpers.emoji.moneyBag + ' **Sell.** Worth something to someone.',
+    unsure: helpers.emoji.shrug + ' **Unsure.** We\'ll come back to it.',
+    return: helpers.emoji.box + ' **Return.** Noted' + helpers.emoji.ellipses + ' someone\'s waiting for this.'
   };
   if (matched === 'trash') {
     var boxPref = activeBox() ? boxTrashPreferences[activeBox().id] : null;
     var effectivePref = boxPref || sessionTrashPreference;
     if (effectivePref === 'always') { deleteActiveItem(); return; }
     if (effectivePref === 'never') {
-      addBotMessage('\uD83D\uDDD1 <strong>Trash</strong> ' + helpers.emoji.emDash + ' noted.\n\n' + disposalPrompt(item.name));
+      addBotMessage(helpers.emoji.trashBin + ' <strong>Trash</strong> ' + helpers.emoji.emDash + ' noted.\n\n' + disposalPrompt(item.name));
       state.conversationStage = 'AWAITING_DISPOSAL';
       setChips(['Skip disposal note', 'Done with this box']);
       return;
     }
-    addBotMessage('\uD83D\uDDD1 <strong>Trash</strong> ' + helpers.emoji.emDash + ' delete this item now?');
+    addBotMessage(helpers.emoji.trashBin + ' <strong>Trash</strong> ' + helpers.emoji.emDash + ' delete this item now?');
     state.conversationStage = 'AWAITING_TRASH_DELETE';
     setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
     return;
   }
   if (state.pendingFateReview && state.pendingFateReview._resumeAfterFate) {
     state.pendingFateReview._resumeAfterFate = false;
-    addBotMessage(fm[matched]);
+    addBotMessage(fateMessages[matched]);
     state.pendingFateReview.index++;
     state.pendingFateReview.reviewedCount = (state.pendingFateReview.reviewedCount || 0) + 1;
     showFateReviewCurrentItem(state.pendingFateReview);
@@ -1708,7 +1721,7 @@ function handleFate(text, photos) {
   }
   state.conversationStage='AWAITING_ITEM_NOTES';
   addBotMessage(
-    fm[matched] + '\n\nAnything to note? (condition, value, where it\'s going) ' + helpers.emoji.emDash + ' or just say _"next"_.'
+    fateMessages[matched] + '\n\nAnything to note? (condition, value, where it\'s going) ' + helpers.emoji.emDash + ' or just say _"next"_.'
   );
   setChips(['Next item','No notes','Done with this box']);
 }
@@ -1810,13 +1823,12 @@ function handleEllipticalAction(label, filterFn) {
 // depth 2+ = stub only ("containing N items")
 function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
   let html = '';
-  let [multiplicationSign, packageEmoji] = ['\u00d7', '\uD83D\uDCE6'];
 
   // Direct items
   let items = helpers.activeItems(box);
   let groups = groupItems(items);
   html += groups.map((group, index) => {
-    let prefix = group.count > 1 ? group.count + ' ' + multiplicationSign +  ' ' : '';
+    let prefix = group.count > 1 ? group.count + ' ' + helpers.emoji.multiplicationSign +  ' ' : '';
     return '<li value="' + (listItemNumber + index) + '"><strong>' + escHtml(prefix + group.name) + '</strong>'
       + ' ' + helpers.emoji.rightArrow + ' ' + escHtml(group.fate)
       + (group.notes ? ' <span class="review-note">(' + escHtml(group.notes) + ')</span>' : '')
@@ -1834,7 +1846,7 @@ function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
     if (depth >= 1) {
       // Stub -- summarise without expanding
       html += '<li value="' + listItemNumber + '">'
-        + packageEmoji + ' <strong>' + escHtml(child.name) + '</strong>'
+        + helpers.emoji.box + ' <strong>' + escHtml(child.name) + '</strong>'
         + ' ' + helpers.emoji.rightArrow + ' ' + escHtml(child.fate || 'unsure')
         + (totalItems > 0 ? ' <span class="review-note">(containing '
         + totalItems + ' item' + (totalItems !== 1 ? 's' : '') + ')</span>' : '')
@@ -1843,7 +1855,7 @@ function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
     } else {
       // Box entry -- show its contents as a sub-list
       html += '<li value="' + listItemNumber + '">'
-        + packageEmoji + ' <strong>' + escHtml(child.name) + '</strong>'
+        + helpers.emoji.box + ' <strong>' + escHtml(child.name) + '</strong>'
         + ' ' + helpers.emoji.rightArrow + ' ' + escHtml(child.fate || 'unsure');
       childBoxes.push({ number: listItemNumber, box: child });
       listItemNumber++;

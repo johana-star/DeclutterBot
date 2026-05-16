@@ -26,7 +26,7 @@ global.document = {
 global.URL = { createObjectURL: function() { return ''; }, revokeObjectURL: function() {} };
 
 var app        = require('../app.js');
-var helpers    = app.helpers;
+var helpers     = app.helpers;
 var state      = app.state;
 var uid        = app.uid;
 var importJSON = app.importJSON;
