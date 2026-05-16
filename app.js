@@ -26,6 +26,23 @@ const helpers = {
 
   activeBoxes: function() {
     return _.reject(state.boxes, (box) => box.deleted_at);
+  },
+
+  emoji: {
+    middleDot: '\u00b7',
+    multiplicationSign: '\u00d7',
+    emDash: '\u2014',
+    ellipses: '\u2026',
+    upArrow: '\u2191',
+    rightArrow: '\u2192',
+    downArrow: '\u2193',
+    warningSign: '\u26a0\ufe0f',  // Variation selector for emoji presentation
+    checkMark: '\u2705\ufe0f',    // Variation selector for emoji presentation
+    blueHeart: '\uD83D\uDC99',
+    moneyBag: '\uD83D\uDCB0',
+    box: '\uD83D\uDCE6',
+    trashBin: '\uD83D\uDDD1\ufe0f',  // Variation selector for emoji presentation
+    shrug: '\uD83E\uDD37'
   }
 };
 
@@ -384,13 +401,13 @@ function updateContextBar() {
     dot.classList.remove('dot-inactive'); dot.classList.add('dot-active');
     var item = activeItem();
     label.textContent = item
-      ? 'Box: ' + box.name + '  \u2192  Item: ' + item.name
+      ? 'Box: ' + box.name + '  ' + helpers.emoji.rightArrow + '  Item: ' + item.name
       : 'Active box: ' + box.name + '  \u00b7  ' + helpers.activeItems(box).length + ' items';
   } else {
     dot.classList.remove('dot-active'); dot.classList.add('dot-inactive');
     label.textContent = state.boxes.length === 0
-      ? 'No active box \u2014 say hi to get started'
-      : 'No active box \u2014 type "help" or "?" for commands';
+      ? 'No active box ' + helpers.emoji.emDash + ' say hi to get started'
+      : 'No active box ' + helpers.emoji.emDash + ' type "help" or "?" for commands';
   }
 }
 
@@ -434,6 +451,8 @@ function addBotMessage(text, photos) {
   if (!msgs) { return; }
   var div = document.createElement('div');
   div.className = 'msg bot';
+
+  // adjust this towrap anything not clearly html in <p> tags
   var isHtml = typeof text === 'string' && text.trimStart().startsWith('<');
   div.innerHTML = '<div class="msg-avatar">S</div><div class="msg-bubble">'
     + (isHtml ? text : '<p>' + escHtml(text) + '</p>')
@@ -804,7 +823,7 @@ function tryGlobalIntercept(command, photos, input) {
           }
         });
         commitState();
-        addBotMessage('<strong>' + fateGroup.name + '</strong> \u2192 ' + fateWord + '.');
+        addBotMessage('<strong>' + fateGroup.name + '</strong> ' + helpers.emoji.rightArrow + ' ' + fateWord + '.');
         reviewBox();
       }
     }
@@ -990,7 +1009,7 @@ function handleTrashByNumber(num) {
     setChips(['Skip disposal note', 'Done with this box']);
     return;
   }
-  addBotMessage('\uD83D\uDDD1 <strong>' + group.name + '</strong> \u2014 delete now?');
+  addBotMessage('\uD83D\uDDD1 <strong>' + group.name + '</strong> ' + helpers.emoji.emDash + ' delete now?');
   state.conversationStage = 'AWAITING_TRASH_DELETE';
   state._reviewingBox = true; // flag to restore review list after delete
   setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
@@ -1124,7 +1143,7 @@ function handleBoxName(text) {
   var box = {id:uid(),name:raw,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
   state.boxes.push(box); state.activeBoxId=box.id;
   state.conversationStage='AWAITING_LOCATION';
-  var locP = locationPrompt('**"' + raw + '"** \u2014 good name.');
+  var locP = locationPrompt('**"' + raw + '"** ' + helpers.emoji.emDash + ' good name.');
   addBotMessage(locP.message);
   setChips(locP.chips);
 }
@@ -1174,7 +1193,7 @@ function handleBoxBatchQty(text) {
   batch.qty = qty;
   state.conversationStage = 'AWAITING_BOX_BATCH_CONFIRM';
   addBotMessage(
-    'Got it \u2014 **' + qty + ' \u00d7 ' + batch.baseName + '**. Create boxes **' +
+    'Got it ' + helpers.emoji.emDash + ' **' + qty + ' \u00d7 ' + batch.baseName + '**. Create boxes **' +
     batch.baseName + ' A** through **' + batch.baseName + ' ' + LETTERS[qty - 1] + '**?'
   );
   setChips(['Yes, create ' + qty, 'No, just 1']);
@@ -1514,7 +1533,7 @@ function handleItemName(text, photos) {
     state.conversationStage = 'AWAITING_ITEM_NOTES';
     addBotMessage(
       (entry.fate === 'trash' ? '\uD83D\uDDD1' : entry.fate === 'keep' ? '\u2705' : entry.fate === 'donate' ? '\uD83D\uDC99' : entry.fate === 'sell' ? '\uD83D\uDCB0' : entry.fate === 'return' ? '\uD83D\uDCE6' : '\uD83E\uDD37') +
-      ' **' + titleize(item.fate) + '.** ' + warn + 'Anything to note? (condition, value, where it\'s going) \u2014 or just say _"next"_.'
+      ' **' + titleize(item.fate) + '.** ' + warn + 'Anything to note? (condition, value, where it\'s going) ' + helpers.emoji.emDash + ' or just say _"next"_.'
     );
     setChips(['Next item', 'No notes', 'Done with this box']);
   } else if (entry.fate === null && entry.notes !== null) {
@@ -1560,7 +1579,7 @@ function handleBatchConfirm(text, photos) {
     var qty = nm ? parseInt(nm[0],10) : batch.qty;
     commitBatch(qty, batch.itemName); return;
   }
-  addBotMessage('Log <strong>' + batch.qty + ' \u00d7 ' + batch.itemName + '</strong> as separate entries?');
+  addBotMessage('Log <strong>' + batch.qty + ' ' + helpers.emoji.multiplicationSign + ' ' + batch.itemName + '</strong> as separate entries?');
   setChips(['Yes, log ' + batch.qty,'No, just 1','Change quantity']);
 }
 
@@ -1574,7 +1593,7 @@ function handleBatchQty(text) {
     return;
   }
   batch.qty=qty; state.conversationStage='AWAITING_BATCH_CONFIRM';
-  addBotMessage('Got it \u2014 <strong>'+qty+' \u00d7 '+batch.itemName+'</strong>. Log them all as separate entries?');
+  addBotMessage('Got it ' + helpers.emoji.emDash + ' <strong>'+qty+' ' + helpers.emoji.multiplicationSign + ' '+batch.itemName+'</strong>. Log them all as separate entries?');
   setChips(['Yes, log '+qty,'No, just 1']);
 }
 
@@ -1595,7 +1614,7 @@ function commitBatch(quantity, itemName) {
   state.activeItemId = items[0].id;
   state.pendingBatch = null;
   state.conversationStage = 'AWAITING_BATCH_FATE';
-  addBotMessage('Logged <strong>' + quantity + ' \u00d7 ' + itemName + '</strong>. What should we do with all of them?');
+  addBotMessage('Logged <strong>' + quantity + ' ' + helpers.emoji.multiplicationSign + ' ' + itemName + '</strong>. What should we do with all of them?');
   setChips(FATE_TITLES.concat(['Mixed fates']));
 }
 
@@ -1626,11 +1645,11 @@ function handleBatchFate(text, photos) {
   }
 
   var fateMessages = {
-    keep:   '\u2705 <strong>Keep</strong> \u2014 all going back home.',
-    donate: '\uD83D\uDC99 <strong>Donate</strong> \u2014 great!',
-    trash:  '\uD83D\uDDD1 <strong>Trash</strong> \u2014 out they go.',
-    sell:   '\uD83D\uDCB0 <strong>Sell</strong> \u2014 nice haul!',
-    unsure: '\uD83E\uDD37 <strong>Unsure</strong> \u2014 we\'ll revisit.'
+    keep:   '\u2705 <strong>Keep</strong> ' + helpers.emoji.emDash + ' all going back home.',
+    donate: '\uD83D\uDC99 <strong>Donate</strong> ' + helpers.emoji.emDash + ' great!',
+    trash:  '\uD83D\uDDD1 <strong>Trash</strong> ' + helpers.emoji.emDash + ' out they go.',
+    sell:   '\uD83D\uDCB0 <strong>Sell</strong> ' + helpers.emoji.emDash + ' nice haul!',
+    unsure: '\uD83E\uDD37 <strong>Unsure</strong> ' + helpers.emoji.emDash + ' we\'ll revisit.'
   };
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
@@ -1651,7 +1670,7 @@ function handleFate(text, photos) {
   var t=text.toLowerCase().trim();
   var matched=null; for(var i=0;i<FATES.length;i++){if(t.indexOf(FATES[i])!==-1){matched=FATES[i];break;}}
   if (!matched) {
-    addBotMessage('I didn\'t catch that \u2014 what should we do with <strong>'+item.name+'</strong>?');
+    addBotMessage('I didn\'t catch that ' + helpers.emoji.emDash + ' what should we do with <strong>'+item.name+'</strong>?');
     setChips(FATE_TITLES);
     return;
   }
@@ -1669,12 +1688,12 @@ function handleFate(text, photos) {
     var effectivePref = boxPref || sessionTrashPreference;
     if (effectivePref === 'always') { deleteActiveItem(); return; }
     if (effectivePref === 'never') {
-      addBotMessage('\uD83D\uDDD1 <strong>Trash</strong> \u2014 noted.\n\n' + disposalPrompt(item.name));
+      addBotMessage('\uD83D\uDDD1 <strong>Trash</strong> ' + helpers.emoji.emDash + ' noted.\n\n' + disposalPrompt(item.name));
       state.conversationStage = 'AWAITING_DISPOSAL';
       setChips(['Skip disposal note', 'Done with this box']);
       return;
     }
-    addBotMessage('\uD83D\uDDD1 <strong>Trash</strong> \u2014 delete this item now?');
+    addBotMessage('\uD83D\uDDD1 <strong>Trash</strong> ' + helpers.emoji.emDash + ' delete this item now?');
     state.conversationStage = 'AWAITING_TRASH_DELETE';
     setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
     return;
@@ -1689,7 +1708,7 @@ function handleFate(text, photos) {
   }
   state.conversationStage='AWAITING_ITEM_NOTES';
   addBotMessage(
-    fm[matched] + '\n\nAnything to note? (condition, value, where it\'s going) \u2014 or just say _"next"_.'
+    fm[matched] + '\n\nAnything to note? (condition, value, where it\'s going) ' + helpers.emoji.emDash + ' or just say _"next"_.'
   );
   setChips(['Next item','No notes','Done with this box']);
 }
@@ -1711,7 +1730,7 @@ function doneWithBox() {
   if (box) { delete boxTrashPreferences[box.id]; }
   state.activeBoxId=null; state.activeItemId=null; state.conversationStage='FINISHED';
   addBotMessage(
-    '**"' + box.name + '"** \u2014 done.\n\n' + summary + '.\n\nAnother box, or done for now?'
+    '**"' + box.name + '"** ' + helpers.emoji.emDash + ' done.\n\n' + summary + '.\n\nAnother box, or done for now?'
   );
   setChips(['New box','Done for now','Review all boxes','Review by fate']);
 }
@@ -1720,7 +1739,8 @@ function doneWithBox() {
 function groupItems(items) {
   var groups = [];
   var seen = {};
-  items.forEach(function(it) {
+  // Defensive filter - some callers pass box.items directly
+  items.filter(function(it) { return !it.deleted_at; }).forEach(function(it) {
     var key = it.name + '|' + it.fate;
     if (seen[key] !== undefined) {
       groups[seen[key]].count++;
@@ -1790,7 +1810,7 @@ function handleEllipticalAction(label, filterFn) {
 // depth 2+ = stub only ("containing N items")
 function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
   let html = '';
-  let [multiplicationSign, rightwardArrow, packageEmoji] = ['\u00d7', '\u2192', '\uD83D\uDCE6'];
+  let [multiplicationSign, packageEmoji] = ['\u00d7', '\uD83D\uDCE6'];
 
   // Direct items
   let items = helpers.activeItems(box);
@@ -1798,7 +1818,7 @@ function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
   html += groups.map((group, index) => {
     let prefix = group.count > 1 ? group.count + ' ' + multiplicationSign +  ' ' : '';
     return '<li value="' + (listItemNumber + index) + '"><strong>' + escHtml(prefix + group.name) + '</strong>'
-      + ' ' + rightwardArrow + ' ' + escHtml(group.fate)
+      + ' ' + helpers.emoji.rightArrow + ' ' + escHtml(group.fate)
       + (group.notes ? ' <span class="review-note">(' + escHtml(group.notes) + ')</span>' : '')
       + '</li>';
   }).join('');
@@ -1815,7 +1835,7 @@ function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
       // Stub -- summarise without expanding
       html += '<li value="' + listItemNumber + '">'
         + packageEmoji + ' <strong>' + escHtml(child.name) + '</strong>'
-        + ' ' + rightwardArrow + ' ' + escHtml(child.fate || 'unsure')
+        + ' ' + helpers.emoji.rightArrow + ' ' + escHtml(child.fate || 'unsure')
         + (totalItems > 0 ? ' <span class="review-note">(containing '
         + totalItems + ' item' + (totalItems !== 1 ? 's' : '') + ')</span>' : '')
         + '</li>';
@@ -1824,7 +1844,7 @@ function renderReviewLines(box, depth, listItemNumber = 1, childBoxes = []) {
       // Box entry -- show its contents as a sub-list
       html += '<li value="' + listItemNumber + '">'
         + packageEmoji + ' <strong>' + escHtml(child.name) + '</strong>'
-        + ' ' + rightwardArrow + ' ' + escHtml(child.fate || 'unsure');
+        + ' ' + helpers.emoji.rightArrow + ' ' + escHtml(child.fate || 'unsure');
       childBoxes.push({ number: listItemNumber, box: child });
       listItemNumber++;
 
@@ -2233,7 +2253,7 @@ function handleHelp() {
       '<em>"Import JSON"</em> / <em>"Import CSV"</em> — merge a saved inventory into current<br/>',
       '<em>"Export JSON"</em> / <em>"Export CSV"</em> — download your inventory<br/>',
       '<em>"Reset"</em> — clear all data (asks for confirmation)<br/>',
-      '\u2191 / \u2193 arrow keys — recall previous commands</p>',
+      helpers.emoji.upArrow + ' / ' + helpers.emoji.downArrow + ' arrow keys — recall previous commands</p>',
     ];
 
     var boxOnly = box ? [
@@ -2589,7 +2609,7 @@ function importCSV(text) {
     warnings.push('\n\n⚠️ **Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '** skipped (same name/fate/notes, no id match): ' + details + '.');
   }
 
-  addBotMessage('\u2705 ' + summary + warnings.join('') + '\n\nReady to continue organizing?');
+  addBotMessage(helpers.emoji.checkMark + ' ' + summary + warnings.join('') + '\n\nReady to continue organizing?');
   state.conversationStage = 'BOX_OPEN';
   setChips(['New box', 'Review all boxes', 'Review by fate']);
 }
@@ -2598,7 +2618,7 @@ function importJSON(data) {
   // Validate structure
   if (!data || !Array.isArray(data.boxes)) {
     addBotMessage(
-      'Import failed \u2014 the file does not look like a valid DeclutterBot inventory.' +
+      'Import failed ' + helpers.emoji.emDash + ' the file does not look like a valid DeclutterBot inventory.' +
       ' Expected a JSON object with a "boxes" array.'
     );
     return;
@@ -2716,7 +2736,7 @@ function importJSON(data) {
 
   var warnings = [];
   if (nearDupBoxes.length > 0) {
-    warnings.push('\n\n\u26a0\ufe0f **Possible duplicate box' + (nearDupBoxes.length !== 1 ? 'es' : '') + '** (same name/location, different id): ' +
+    warnings.push('\n\n' + helpers.emoji.warningSign + ' **Possible duplicate box' + (nearDupBoxes.length !== 1 ? 'es' : '') + '** (same name/location, different id): ' +
       nearDupBoxes.map(function(n) { return '**' + n + '**'; }).join(', ') + '. Items were merged into the existing box.');
   }
   if (nearDupItems.length > 0) {
@@ -2728,7 +2748,7 @@ function importJSON(data) {
     var details = Object.keys(grouped).map(function(boxName) {
       return '**' + boxName + '**: ' + grouped[boxName].join(', ');
     }).join('; ');
-    warnings.push('\n\n\u26a0\ufe0f **Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '** skipped (same name/fate/notes, no id match): ' + details + '.');
+    warnings.push('\n\n' + helpers.emoji.warningSign + ' **Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '** skipped (same name/fate/notes, no id match): ' + details + '.');
   }
 
   addBotMessage(summary + '.' +
@@ -2740,8 +2760,8 @@ function importJSON(data) {
 
 const WELCOME_MSG =
   'Let\'s sort through this together.\n\n' +
-  'Pick up a box, give it a name, and we\'ll go item by item \u2014' +
-  ' **keep, donate, sell, trash, return,** or **unsure**.' +
+  'Pick up a box, give it a name, and we\'ll go item by item ' + helpers.emoji.emDash +
+  ' <strong>keep, donate, sell, trash, return,</strong> or <strong>unsure</strong>.' +
   ' Add notes and export everything when you\'re done.\n\n' +
   'What\'s the first box called?';
 
@@ -3688,21 +3708,21 @@ function disposalPrompt(itemName) {
   // Batteries — more accessible drop-offs than general e-waste
   if (n.match(/batter|aa|aaa|9v|lithium/)) {
     return 'Batteries can be dropped off at many libraries, hardware stores, or e-waste facilities' +
-      ' \u2014 where will you take this?';
+      ' ' + helpers.emoji.emDash + ' where will you take this?';
   }
   // E-waste
   var ewastePattern1 = /laptop|phone|computer|monitor|printer|cable|charger|keyboard|mouse|\btv\b/;
   var ewastePattern2 = /tablet|speaker|headphone|camera|router|hard drive|ssd|ram|cpu|gpu/;
   if (n.match(ewastePattern1) || n.match(ewastePattern2)) {
-    return 'E-waste needs a special drop-off \u2014 where will you take it?';
+    return 'E-waste needs a special drop-off ' + helpers.emoji.emDash + ' where will you take it?';
   }
   // Clothing / textiles
   if (n.match(/shirt|dress|coat|shoe|jacket|jean|trouser|pant|sock|underwear|fabric|textile|cloth|scarf|hat|glove/)) {
-    return 'Clothing can be donated or textile-recycled \u2014 where will you drop this off?';
+    return 'Clothing can be donated or textile-recycled ' + helpers.emoji.emDash + ' where will you drop this off?';
   }
   // Hazardous / chemicals
   if (n.match(/paint|bleach|oil|chemical|pesticide|solvent|cleaner|acid|flammable|hazard/)) {
-    return 'Hazardous material \u2014 where can you safely dispose of this?';
+    return 'Hazardous material ' + helpers.emoji.emDash + ' where can you safely dispose of this?';
   }
   // Generic fallback
   return 'Where can this be safely disposed of?';
@@ -3720,7 +3740,7 @@ function deletionLog(itemName) {
   var todayCount = stored.count;
   var parts = [todayCount + ' deleted today'];
   if (sessionDeletedCount !== todayCount) { parts.push(sessionDeletedCount + ' this session'); }
-  return '\uD83D\uDDD1 Deleted **' + itemName + '**. ' + parts.join(', ') + '.';
+  return helpers.emoji.trashBin + ' Deleted **' + itemName + '**. ' + parts.join(', ') + '.';
 }
 
 function deleteActiveItem() {
@@ -4152,7 +4172,7 @@ function handleFateReviewItem(text) {
       state.pendingFateReview._resumeAfterTrash = true;
       return;
     }
-    addBotMessage('\uD83D\uDDD1 <strong>' + item.name + '</strong> \u2014 delete now?');
+    addBotMessage(helpers.emoji.trashBin + ' <strong>' + item.name + '</strong> ' + helpers.emoji.emDash + ' delete now?');
     state.conversationStage = 'AWAITING_TRASH_DELETE';
     setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
     state.pendingFateReview._resumeAfterTrash = true;
@@ -4205,7 +4225,7 @@ function handleFateReviewItem(text) {
   }
 
   if (command === 'add to kit') {
-    addBotMessage('Kit assembly is on the punchlist \u2014 coming soon!');
+    addBotMessage('Kit assembly is on the punchlist ' + helpers.emoji.emDash + ' coming soon!');
     review.index++;
     showFateReviewCurrentItem(review);
     return;

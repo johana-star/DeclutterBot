@@ -26,6 +26,7 @@ global.Blob = function(parts) { global._lastCSV = parts[0]; };  // default captu
 global.confirm = function() { confirmCalled = true; return confirmAnswer; };
 
 var app = require('../app.js');
+var helpers = app.helpers;
 var state = app.state;
 var uid = app.uid;
 var parseCSV = app.parseCSV;
@@ -189,7 +190,7 @@ var exported = state.boxes.reduce(function(acc, box) {
     return box.location + ',' + box.name + ',' + item.name + ',' + item.fate + ',' + (item.notes || '');
   }));
 }, []);
-assert('round-trip matches', exported.length === 2 && 
+assert('round-trip matches', exported.length === 2 &&
   exported[0] === 'kitchen,Kitchen,Bowl,keep,chipped' &&
   exported[1] === 'bedroom,Bedroom,Lamp,unsure,needs bulb');
 
@@ -209,7 +210,7 @@ csv = 'location,box name,item name,fate,notes\n' +
   'k,K,unsure,unsure,\n' +
   'k,K,trash,trash,';
 importCSV(csv);
-assert('all fates present', 
+assert('all fates present',
   state.boxes[0].items[0].fate === 'keep' &&
   state.boxes[0].items[1].fate === 'donate' &&
   state.boxes[0].items[2].fate === 'sell' &&

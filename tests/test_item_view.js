@@ -19,6 +19,7 @@ global.renderMarkdown = function(s) { return s; };
 global.localStorage = { getItem: function() { return null; }, setItem: function() {}, removeItem: function() {} };
 
 var app = require('../app.js');
+var helpers              = app.helpers;
 var state                = app.state;
 var uid                  = app.uid;
 var processInput         = app.processInput;

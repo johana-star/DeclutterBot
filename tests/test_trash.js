@@ -28,6 +28,7 @@ global.document = {
 };
 
 var app = require('../app.js');
+var helpers                  = app.helpers;
 var state                    = app.state;
 var uid                      = app.uid;
 var processInput             = app.processInput;
