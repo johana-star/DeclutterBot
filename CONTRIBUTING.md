@@ -386,6 +386,184 @@ When planning work sessions, use **story points** (relative effort) rather than 
 - Rename to DeclutterBot — completed
 - Nested boxes — nest command, parentId data model, sidebar indent/caret, delete guard, dump with child re-parenting
 
+## Planned Features
+
+### Side Quests System
+
+Side quests are contextual action prompts that bridge the gap between "cataloged" and "done." When users have accumulated items in certain fates or states, the bot suggests concrete next steps to actually complete the decluttering work.
+
+**Core Quest Types:**
+
+1. **E-waste Expedition Quest** 🔌
+   - **Trigger:** 3+ items marked trash with "ewaste" in notes, or electronics category
+   - **Action:** Groups e-waste items by disposal category (batteries, cables, devices)
+   - **Output:** Generates packing manifest with item-specific notes
+   - **Optional:** Find e-waste facilities near user location
+   - **Value:** E-waste requires special disposal; this makes the detailed notes actionable
+
+2. **Cable Consolidation Quest** 🎯
+   - **Trigger:** 10+ cables/chargers/power bricks marked "unsure"
+   - **Action:** "Cable Roulette" - shows 3-5 cables at a time with user's own notes
+   - **Chips:** "Keep it", "Bag for ewaste", "Test it first"
+   - **Value:** Gamifies tedious cable sorting by batching decisions into manageable chunks
+
+3. **Donation Run Quest** 📦
+   - **Trigger:** 5+ items marked donate
+   - **Action:** Groups items by likely destination (Goodwill, textile recycling, specialty)
+   - **Output:** Packing list with box-by-box breakdown
+   - **Optional:** Find donation centers, generate directions
+   - **Value:** Turns vague "donate pile" into organized drop-off mission
+
+4. **Sell Quest** 💰
+   - **Trigger:** 5+ items marked sell
+   - **Action:** Estimates total value, offers to generate marketplace listings
+   - **Output:** Draft Craigslist/Marketplace posts with descriptions from item notes
+   - **Value:** Monetizes decluttering decisions with minimal friction
+
+5. **Box Archaeology Quest** 🗺️
+   - **Trigger:** User mentions uncataloged boxes or system detects low box count
+   - **Action:** Estimates remaining work (X boxes × 2min = Y total time)
+   - **Progress tracking:** Shows completion percentage as boxes are logged
+   - **Value:** Turns daunting backlog into concrete, time-boxed challenge
+
+**Implementation Notes:**
+- Start with E-waste Quest (high value, clear scope, rewards user's detailed notes)
+- Quest chips appear contextually during review screens when trigger thresholds met
+- Track completed quests in state for "Quest completed!" acknowledgments
+- Build utility progressively: encouragement → draft generation → external integration
+
+**Related:** Main Quest feature (see below) tracks overall catalog completion.
+
+---
+
+### Main Quest: Catalog Completion Tracker
+
+A meta-feature that helps users understand their progress through the entire decluttering project, not just individual boxes. Addresses the "estimation is hard" problem by asking multiple calibration questions.
+
+**Design Principles (inspired by Cookie Clicker + Zelda):**
+
+1. **Respect player agency** - Opt-in discovery, not mandatory tracking. User asks "how much left?" rather than system nagging.
+2. **Small actions accumulate** - Every item logged is progress, even if box stays incomplete.
+3. **Reward showing up** - Logging 3 items counts. Partial work is celebrated.
+4. **No shaming, just state** - "20 boxes cataloged" not "You're only 40% done"
+5. **Delight in mundane systems** - Milestones, achievements, gentle humor without sarcasm
+
+**Tone guidance:**
+- ✅ "Want to map the rest?" (gentle, opt-in)
+- ✅ "You've cataloged 20 boxes. That's real work." (earnest acknowledgment)
+- ✅ "Achievement unlocked: Cable Cartographer" (playful, no judgment)
+- ❌ "You've logged 100 cables - that's dedication or a problem" (snarky, boomer energy)
+- ❌ "You're only 40% done!" (guilt-inducing)
+- ❌ Commentary on *why* someone has lots of stuff (not our business)
+
+**Design Proposal:**
+
+**When to trigger:**
+- After user has logged 10+ boxes OR 100+ items
+- When user mentions "almost done", "halfway through", or other progress indicators
+- Via explicit command: "show progress" or "how much left?"
+
+**What to ask:**
+- "You've cataloged [X] boxes so far. How many uncataloged boxes do you have left?"
+- "Where are your uncataloged boxes?" (captures locations for future logging sessions)
+- "What percentage of your total stuff do you think you've logged?" (percentage slider or buckets: <25%, 25-50%, 50-75%, >75%)
+- "Which areas are done?" vs "Which areas still have stuff?" (room-by-room checklist)
+
+**Calibration approach:**
+Since estimation is notoriously unreliable, triangulate from multiple angles:
+1. **Bottom-up:** Count of remaining boxes × avg items per box
+2. **Top-down:** User's percentage estimate applied to current totals
+3. **Spatial:** Rooms/locations marked complete vs incomplete
+4. **Velocity:** Items/hour logged × estimated remaining time
+
+Show user the range: "Based on your answers, you're between 35-60% done. You've logged 234 items, estimated 150-450 remaining."
+
+**Outputs:**
+- Progress bar with confidence range
+- "Uncataloged boxes" list in sidebar (grayed out, shows location + estimated item count)
+- Quest chips: "Log bedroom boxes" when uncataloged boxes exist
+- Milestone celebrations: "Halfway there!", "75% complete!"
+
+**State additions:**
+```javascript
+state.mainQuest = {
+  uncatalogedBoxes: [
+    { location: 'garage', estimatedCount: 3, estimatedItems: 20 },
+    { location: 'attic', estimatedCount: 2, estimatedItems: 15 }
+  ],
+  completionPercentageEstimate: 45,
+  completedLocations: ['bedroom', 'kitchen'],
+  lastUpdated: '2026-05-16T21:00:00Z'
+}
+```
+
+**Test coverage:**
+- Verify progress calculation from multiple inputs
+- Test percentage estimate boundary handling (0%, 100%, >100%)
+- Confirm uncataloged box list persists and can be edited
+- Validate milestone triggers at correct thresholds
+
+**Implementation Milestones:**
+
+Following CONTRIBUTING.md principles: each milestone is testable, incremental, and ships working code.
+
+**Milestone 1: Data model + basic command** (Foundation)
+- Add `state.mainQuest` object with uncatalogedBoxes array
+- Implement "show progress" command that displays current stats
+- Output: "You've cataloged X boxes, Y items"
+- Test: verify command shows accurate counts, handles empty state
+- **Ships:** A working command that acknowledges progress
+
+**Milestone 2: Uncataloged box tracking** (Core mechanic)
+- Add "add uncataloged box" command: captures location + estimated count
+- Store in `state.mainQuest.uncatalogedBoxes`
+- Display in sidebar (grayed out, below regular boxes)
+- Test: verify boxes persist, can be added/removed, display correctly
+- **Ships:** Users can map their remaining work
+
+**Milestone 3: Calibration questions** (Estimation engine)
+- Implement "how much left?" command with multi-question flow
+- Ask: uncataloged box count, locations, percentage estimate
+- Calculate confidence range from inputs
+- Test: verify calculation logic, handle edge cases (0%, contradictory estimates)
+- **Ships:** System helps users estimate remaining work
+
+**Milestone 4: Progress visualization** (Feedback)
+- Add progress bar to "show progress" output (text-based for now)
+- Display confidence range: "35-60% complete"
+- Show breakdown: X cataloged, Y-Z estimated remaining
+- Test: verify bar renders correctly, range calculation accurate
+- **Ships:** Visual feedback on progress
+
+**Milestone 5: Contextual prompting** (Discovery)
+- Detect when user hits thresholds (10+ boxes, 100+ items)
+- Offer "Want to map the rest?" chip in natural conversation breaks
+- Trigger after box completion, during review screens
+- Test: verify triggers fire correctly, don't spam user
+- **Ships:** Opt-in discovery model
+
+**Milestone 6: Milestones & achievements** (Delight)
+- Detect progress thresholds (25%, 50%, 75%, 100% of estimate)
+- Show celebration messages: "Halfway there!"
+- Track in state, avoid repeat celebrations
+- Test: verify thresholds trigger once, handle edge cases
+- **Ships:** Small moments of delight
+
+**Future milestones (post-MVP):**
+- Location-based quest chips ("Log garage boxes")
+- Velocity tracking (items/hour, time remaining estimate)
+- Visual progress bar in UI (beyond text)
+- "Mark location complete" workflow
+- Export uncataloged box list
+
+**Notes:**
+- Each milestone builds on previous ones
+- Each can be tested independently
+- Each ships user-visible value
+- Main Quest remains opt-in throughout
+
+---
+
 ## Punchlist
 
 - Extract inline scripts to ui.js — the `<script>` block at the bottom of `index.html` (lines ~593-634) contains `setFormat`, `triggerImport`, `handleImportFile`, `triggerExport`, and `openNewTab`. Move these to a `ui.js` file and replace the inline block with `<script src="ui.js"></script>`. Load order: lodash → ui.js → app.js.
