@@ -59,7 +59,29 @@ const helpers = {
     box: '\uD83D\uDCE6',
     trashBin: '\uD83D\uDDD1\ufe0f',  // Variation selector for emoji presentation
     shrug: '\uD83E\uDD37'
-  }
+  },
+
+  IRREGULARS: {
+    // Plural to singular only (for singularize function)
+    'shelves':'shelf', 'knives':'knife', 'leaves':'leaf', 'lives':'life',
+    'wolves':'wolf', 'halves':'half', 'loaves':'loaf', 'scarves':'scarf',
+    'wives':'wife', 'thieves':'thief', 'men':'man', 'women':'woman',
+    'children':'child', 'teeth':'tooth', 'feet':'foot', 'mice':'mouse',
+    'geese':'goose', 'oxen':'ox', 'dice':'die', 'people':'person',
+    'boxes':'box'
+  },
+
+  pluralize: function(word, count) {
+    if (count === 1) return word;
+    let plurals = _.invert(helpers.IRREGULARS);
+    if (plurals[word]) return plurals[word];
+    // Standard rules
+    if (word.match(/(s|sh|ch|x|z)$/)) return word + 'es';
+    if (word.match(/[^aeiou]y$/)) return word.slice(0, -1) + 'ies';
+    return word + 's';
+  },
+
+  normalize: (text) => (text || '').toLowerCase().trim()
 };
 
 let state = {
@@ -80,6 +102,15 @@ let state = {
   movePositions: null,
   pendingMoveBoxId: null,
   hasSeenProgressPrompt: false,
+  pendingUncatalogedMapping: null,
+  pendingCatalogId: null,
+  _previousStage: null,
+  mainQuest: {
+    uncatalogedBoxes: [],
+    completionEstimate: null,       // 'less-than-25' | '25-50' | '50-75' | 'more-than-75'
+    completedLocations: [],         // ['bedroom', 'kitchen']
+    calibratedAt: null              // ISO timestamp of last calibration
+  }
 };
 const FATES = ['trash','return','sell','keep','donate','unsure'];
 function titleize(str) {
@@ -143,6 +174,18 @@ function loadState() {
   var raw = localStorage.getItem('declutterbot_state');
   if (raw) { try {
     state = JSON.parse(raw);
+
+    // Migrate mainQuest (added for Milestone 2, extended Milestone 3)
+    if (!state.mainQuest) {
+      state.mainQuest = { uncatalogedBoxes: [], completionEstimate: null, completedLocations: [], calibratedAt: null };
+    }
+    if (!state.mainQuest.uncatalogedBoxes) {
+      state.mainQuest.uncatalogedBoxes = [];
+    }
+    if (state.mainQuest.completedLocations === undefined) {
+      state.mainQuest.completedLocations = [];
+    }
+
     state.boxes.forEach(function(box) {
       // Normalise parentId: undefined -> null (added when nesting was introduced)
       if (box.parentId === undefined) { box.parentId = null; }
@@ -235,6 +278,30 @@ function setLocationFilter(locKey) {
 function clearLocationFilter() {
   activeLocationFilter = null;
   renderSidebar();
+}
+
+function renderUncatalogedBoxes(uncatalogedBoxes = []) {
+  let totalUncataloged  = uncatalogedBoxes.reduce((sum, ub) => sum + ub.quantity, 0);
+  let displayBox        = (box) => `${box.quantity} ${helpers.pluralize('box', box.quantity)} in `
+      + `${escHtml(box.location)}${box.description ? ' (' + escHtml(box.description) + ')' : ''}`;
+
+  return `
+    <div class="uncataloged-section">
+      <div class="uncataloged-header">Uncataloged (${totalUncataloged})</div>
+      ${uncatalogedBoxes.map((uncatalogedBox) => `
+        <div class="uncataloged-card" data-uncataloged-id="${uncatalogedBox.id}">
+          <div class="uncataloged-card-body">
+            <div class="uncataloged-name">
+              ${displayBox(uncatalogedBox)}
+            </div>
+            <div class="uncataloged-actions">
+              <button class="uncataloged-btn" onclick="catalogUncatalogedBox('${uncatalogedBox.id}')">Catalog</button>
+              <button class="uncataloged-btn uncataloged-btn-remove" onclick="removeUncatalogedBox('${uncatalogedBox.id}')">Remove</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
 }
 
 function renderSidebar() {
@@ -340,6 +407,11 @@ function renderSidebar() {
       });
     }
   });
+
+  // Add uncataloged boxes section at the bottom
+  if (state.mainQuest && state.mainQuest.uncatalogedBoxes) {
+    html += renderUncatalogedBoxes(state.mainQuest.uncatalogedBoxes);
+  }
 
   el.innerHTML = html;
 }
@@ -811,6 +883,35 @@ function tryGlobalIntercept(command, photos, input) {
   if (command === 'map remaining work') { handleMapRemainingWork(); return true; }
   if (command === 'just show stats') { showProgress(); return true; }
   if (command === 'not yet') { handleNotYetMapping(); return true; }
+  if (command === 'map another') { command = 'map box'; } // Alias for chip
+
+  // Calibration - globally available
+  if (command === 'how much left' || command === 'how much left?' ||
+      command === 'estimate' || command === 'calibrate') {
+    handleCalibrationStart();
+    return true;
+  }
+
+  // Catalog next uncataloged box - globally available
+  if (command === 'catalog next box' || command === 'catalog box' || command === 'catalog') {
+    handleCatalogNextBox();
+    return true;
+  }
+  if (command.startsWith('catalog next box in ')) {
+    let locationHint = command.substring('catalog next box in '.length).trim();
+    handleCatalogNextBox(locationHint);
+    return true;
+  }
+
+  // Map uncataloged boxes - globally available in all contexts
+  if (command.startsWith('map ') && command.match(/\bbox(es)?\b/)) {
+    // Store previous stage so we can return to it after confirmation
+    if (state.conversationStage !== 'CONFIRMING_UNCATALOGED_LOCATION') {
+      state._previousStage = state.conversationStage;
+    }
+    handleMapUncatalogedBox(command);
+    return true;
+  }
 
   // review items — only intercept if there is an active box
   if (command === 'review items') {
@@ -905,6 +1006,10 @@ function tryGlobalIntercept(command, photos, input) {
 
 function routeToHandler(stage, command, photos) {
   switch(stage) {
+    case 'CONFIRMING_UNCATALOGED_LOCATION': handleConfirmUncatalogedLocation(command); break;
+    case 'AWAITING_CALIBRATION_BOXES':     handleCalibrationBoxes(command);    break;
+    case 'AWAITING_CALIBRATION_PERCENT':   handleCalibrationPercent(command);  break;
+    case 'AWAITING_CALIBRATION_LOCATIONS': handleCalibrationLocations(command); break;
     case 'AWAITING_DELETE_BOX_CONFIRM':  handleDeleteBoxConfirm(command);             break;
     case 'AWAITING_TRASH_ALL_CONFIRM':   handleTrashAllConfirm(command);              break;
     case 'AWAITING_DELETE_TRASHED_CONFIRM':      handleDeleteTrashedConfirm(command);         break;
@@ -1114,15 +1219,7 @@ function startNewBox() {
 // ── SINGULARIZER ─────────────────────────────────────────────────────────────
 function singularize(word) {
   var w = word.toLowerCase().trim();
-  // Explicit irregular plurals — add more here as edge cases are found
-  var irregulars = {
-    'shelves':'shelf', 'knives':'knife', 'leaves':'leaf', 'lives':'life',
-    'wolves':'wolf', 'halves':'half', 'loaves':'loaf', 'scarves':'scarf',
-    'wives':'wife', 'thieves':'thief', 'men':'man', 'women':'woman',
-    'children':'child', 'teeth':'tooth', 'feet':'foot', 'mice':'mouse',
-    'geese':'goose', 'oxen':'ox', 'dice':'die', 'people':'person',
-  };
-  if (irregulars[w]) { return irregulars[w]; }
+  if (helpers.IRREGULARS[w]) { return helpers.IRREGULARS[w]; }
   // Words that are already singular or uncountable — leave alone
   var invariant = ['series','species','scissors','trousers','glasses','clothes','furniture',
     'equipment','luggage','baggage','box','shelf','knife','leaf'];
@@ -1179,6 +1276,42 @@ function handleBoxName(text) {
   }
   var box = {id:uid(),name:raw,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
   state.boxes.push(box); state.activeBoxId=box.id;
+
+  // If cataloging an uncataloged box, pre-fill location and skip location prompt
+  if (state.pendingCatalogId) {
+    let uncatalogedBoxes = state.mainQuest.uncatalogedBoxes;
+    let entry = uncatalogedBoxes.find((uncatalogedBox) => uncatalogedBox.id === state.pendingCatalogId);
+    if (entry) {
+      box.location = entry.location;
+      box.notes = entry.description || '';
+
+      // Decrement or remove from uncataloged list
+      if (entry.quantity > 1) {
+        entry.quantity--;
+      } else {
+        state.mainQuest.uncatalogedBoxes = uncatalogedBoxes.filter(
+          (uncatalogedBox) => uncatalogedBox.id !== state.pendingCatalogId
+        );
+      }
+
+      state.pendingCatalogId = null;
+      state.conversationStage = 'BOX_OPEN';
+      commitState();
+      renderSidebar();
+
+      let message = '<p><strong>"' + raw + '"</strong> in the <em>' + box.location + '</em>.</p>';
+      if (entry.quantity > 0) {
+        message += '<p>' + entry.quantity + ' more uncataloged ' +
+          helpers.pluralize('box', entry.quantity) + ' in this location.</p>';
+      }
+      message += '<p>First item?</p>';
+      addBotMessage(message);
+      setChips(['Skip to next box','Review items','Done']);
+      return;
+    }
+    state.pendingCatalogId = null;
+  }
+
   state.conversationStage='AWAITING_LOCATION';
   let locPrompt = locationPrompt('<strong>"' + raw + '"</strong> ' + helpers.emoji.emDash + ' good name.');
   addBotMessage(locPrompt.message);
@@ -2360,6 +2493,9 @@ function handleHelp() {
       '<em>"Review all boxes"</em> — summary of every box; from there you can rename, move, or delete empty boxes<br/>',
       '<em>"Review by fate"</em> — review all items of a given fate across every box<br/>',
       '<em>"Show progress"</em> — see how many boxes and items you\'ve cataloged<br/>',
+      '<em>"Map box in [location]"</em> — track uncataloged boxes (e.g. <em>"map 5 boxes in garage"</em>)<br/>',
+      '<em>"Catalog next box"</em> — start cataloging an uncataloged box<br/>',
+      '<em>"How much left?"</em> — estimate remaining work<br/>',
       '<em>"Done for now"</em> — end session and see summary<br/>',
       '<em>"Import JSON"</em> / <em>"Import CSV"</em> — merge a saved inventory into current<br/>',
       '<em>"Export JSON"</em> / <em>"Export CSV"</em> — download your inventory<br/>',
@@ -2485,27 +2621,36 @@ function showProgress() {
 
   // Always offer mapping option alongside other actions
   if (state.conversationStage === 'FINISHED') {
-    setChips(['Map remaining work', 'New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+    setChips(['How much left?', 'Map remaining work', 'New box', 'Continue last box', 'Review all boxes']);
   } else {
-    setChips(['Map remaining work', 'Add item', 'Review items', 'Done with this box']);
+    setChips(['How much left?', 'Map remaining work', 'Add item', 'Review items', 'Done with this box']);
   }
 
   commitState();
 }
 
 function handleMapRemainingWork() {
-  // Placeholder for Milestone 3
   const boxCount = helpers.activeBoxes().length;
   const itemCount = state.boxes.reduce(function(sum, box) {
     return sum + helpers.activeItems(box).length;
   }, 0);
 
-  addBotMessage(
-    '<p>Mapping flow coming soon! For now, here are your stats:</p>' +
-    '<p>You\'ve cataloged <strong>' + boxCount + '</strong> box' +
-    (boxCount !== 1 ? 'es' : '') + ', <strong>' + itemCount +
-    '</strong> item' + (itemCount !== 1 ? 's' : '') + '.</p>'
-  );
+  const uncatalogedCount = state.mainQuest.uncatalogedBoxes.reduce(function(sum, ub) {
+    return sum + ub.quantity;
+  }, 0);
+
+  let message = '<p>You\'ve cataloged <strong>' + boxCount + '</strong> ' +
+    helpers.pluralize('box', boxCount) + ', <strong>' + itemCount +
+    '</strong> ' + helpers.pluralize('item', itemCount) + '.';
+
+  if (uncatalogedCount > 0) {
+    message += ' You have <strong>' + uncatalogedCount + '</strong> uncataloged ' +
+      helpers.pluralize('box', uncatalogedCount) + ' mapped.';
+  }
+
+  message += '</p><p>Try: <em>"map 5 boxes in garage"</em> to track uncataloged boxes.</p>';
+
+  addBotMessage(message);
   setChips(['Continue']);
 }
 
@@ -2515,6 +2660,571 @@ function handleNotYetMapping() {
     setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
   } else {
     setBoxOpenChips();
+  }
+}
+
+function handleMapUncatalogedBox(text) {
+  // Parse "map [about] [quantity] box[es] <location> [preposition] [description]"
+  // Examples:
+  //   "map box garage"
+  //   "map 5 boxes attic on shelf"
+  //   "map about ten boxes living room near window"
+
+  let normalize = helpers.normalize;
+  let input     = normalize(text);
+
+  // Remove "map" prefix
+  input = input.replace(/^map\s+/, '');
+
+  // Remove "about" if present (it's implied)
+  input = input.replace(/^about\s+/, '');
+
+  // Find "box" or "boxes" as the delimiter, optionally followed by "in"
+  let boxMatch = input.match(/^(.*?)\s*(box|boxes)(?:\s+in)?\s+(.+)$/);
+  if (!boxMatch) {
+    addBotMessage('<p>I need to know where the boxes are. Try: <em>"map 5 boxes garage"</em></p>');
+    setChips(['Continue']);
+    return;
+  }
+
+  let quantityPart = boxMatch[1].trim(); // e.g., "5", "ten", "" (empty for "box garage")
+  let boxWord = boxMatch[2]; // "box" or "boxes"
+  let locationAndDescription = boxMatch[3].trim(); // e.g., "garage on shelf"
+
+  // Parse quantity
+  let quantity = 1;
+  if (quantityPart) {
+    let parsed = parseQuantity(quantityPart + ' ' + boxWord);
+    if (parsed && parsed.quantity > 0) {
+      quantity = parsed.quantity;
+    }
+  } else if (boxWord === 'boxes') {
+    quantity = 2; // "boxes" without number implies plural
+  }
+
+  // Parse location and description from locationAndDescription
+  // First, try to match against existing locations
+  let existingLocations = recentLocations();
+  let location = null;
+  let description = null;
+
+  // Try to find exact match in existing locations
+  let exactMatch = existingLocations.find((loc) => normalize(loc) === normalize(locationAndDescription));
+
+  if (exactMatch) {
+    // Exact match found
+    location = exactMatch;
+    description = null;
+  } else {
+    // Try to find existing location at start of input
+    let matchedLocation = existingLocations.find((loc) => normalize(locationAndDescription).startsWith(normalize(loc) + ' '));
+
+    if (matchedLocation) {
+      // Found existing location at start
+      location = matchedLocation;
+      description = locationAndDescription.substring(matchedLocation.length).trim();
+    } else {
+      // No existing location match - parse manually
+      // Assume first word is location, rest is description
+      let parts = locationAndDescription.split(/\s+/);
+      location = parts[0];
+      description = parts.length > 1 ? parts.slice(1).join(' ') : null;
+    }
+  }
+
+  // Check if this is a totally new location (not in existing locations)
+  let isNewLocation = !existingLocations.some((loc) => normalize(loc) === normalize(location));
+
+  // Create uncataloged box entry
+  let uncatalogedBox = {
+    id: uid(),
+    location: location,
+    description: description,
+    quantity: quantity,
+    addedAt: new Date().toISOString()
+  };
+
+  if (isNewLocation) {
+    // New location - ask for confirmation
+    state.pendingUncatalogedMapping = uncatalogedBox;
+    state.conversationStage = 'CONFIRMING_UNCATALOGED_LOCATION';
+    commitState();
+
+    addBotMessage('<p>This is a new location: <strong>' + escHtml(location) + '</strong>. Proceed?</p>');
+    setChips(['Yes', 'No']);
+    return;
+  }
+
+  // Existing location - add directly
+  state.mainQuest.uncatalogedBoxes.push(uncatalogedBox);
+  commitState();
+  renderSidebar();
+
+  // Build response message
+  let message = '<p>Mapped <strong>' + quantity + '</strong> ' +
+    helpers.pluralize('box', quantity) + ' in <strong>' + escHtml(location) + '</strong>';
+
+  message += (description) ? ' (' + escHtml(description) + ')</p>' : '.</p>';
+
+  // Show count of total uncataloged boxes
+  let totalUncataloged = state.mainQuest.uncatalogedBoxes.reduce(
+    (sum, uncatalogedBox) => sum + uncatalogedBox.quantity, 0
+  );
+
+  if (totalUncataloged > quantity) {
+    message += '<p>You now have <strong>' + totalUncataloged + '</strong> uncataloged ' +
+      helpers.pluralize('box', totalUncataloged) + ' mapped.</p>';
+  }
+
+  addBotMessage(message);
+
+  // Return to appropriate stage
+  if (state.conversationStage === 'FINISHED') {
+    setChips(['Map another', 'New box', 'Continue last box', 'Review all boxes', 'Show progress']);
+  } else {
+    setChips(['Map another', 'Add item', 'Review items', 'Show progress']);
+  }
+}
+
+function handleConfirmUncatalogedLocation(command) {
+  let mapping = state.pendingUncatalogedMapping;
+  if (!mapping) return;
+
+  // Handle yes/no with or without commas
+  let isYes = command === 'yes' || command === 'y' || command.startsWith('yes,') || command.startsWith('yes ');
+  let isNo = command === 'no' || command === 'n' || command.startsWith('no,') || command.startsWith('no ');
+
+  if (!isYes && !isNo) {
+    // Not a yes/no response, ignore
+    return;
+  }
+
+  if (isNo) {
+    // User cancelled
+    state.pendingUncatalogedMapping = null;
+    state.conversationStage = state._previousStage || 'FINISHED';
+    commitState();
+
+    addBotMessage('<p>Cancelled mapping.</p>');
+    if (state.conversationStage === 'FINISHED') {
+      setChips(['New box', 'Continue last box', 'Review all boxes', 'Show progress']);
+    } else {
+      setBoxOpenChips();
+    }
+    return;
+  }
+
+  // If "yes, <corrected>" extract the corrected location
+  let correctedMatch = command.match(/^yes[, ]\s*(.+)$/);
+  if (correctedMatch) {
+    mapping.location = correctedMatch[1].trim();
+  }
+
+  // User confirmed - add the mapping
+  state.mainQuest.uncatalogedBoxes.push(mapping);
+  state.pendingUncatalogedMapping = null;
+  state.conversationStage = state._previousStage || 'FINISHED';
+  commitState();
+  renderSidebar();
+
+  let message = '<p>Mapped <strong>' + mapping.quantity + '</strong> ' +
+    helpers.pluralize('box', mapping.quantity) + ' in <strong>' + escHtml(mapping.location) + '</strong>';
+  message += (mapping.description) ? ' (' + escHtml(mapping.description) + ')</p>' : '.</p>';
+
+  let totalUncataloged = state.mainQuest.uncatalogedBoxes.reduce((sum, uncatalogedBox) =>
+    sum + uncatalogedBox.quantity, 0
+  );
+
+  if (totalUncataloged > mapping.quantity) {
+    message += '<p>You now have <strong>' + totalUncataloged + '</strong> uncataloged ' +
+      helpers.pluralize('box', totalUncataloged) + ' mapped.</p>';
+  }
+
+  addBotMessage(message);
+
+  if (state.conversationStage === 'FINISHED') {
+    setChips(['Map another', 'New box', 'Continue last box', 'Review all boxes', 'Show progress']);
+  } else {
+    setChips(['Map another', 'Add item', 'Review items', 'Show progress']);
+  }
+}
+
+// ── CALIBRATION (Milestone 3) ──────────────────────────────────────────────────
+
+function renderCalibrationStart(itemCount, boxCount, uncatalogedCount, calibratedAt) {
+  let message = `<p>Let's estimate how much work is left.</p>`;
+  message += `<p>You've cataloged <strong>${boxCount}</strong> ${helpers.pluralize('box', boxCount)}`
+    + ` with <strong>${itemCount}</strong> ${helpers.pluralize('item', itemCount)} so far.</p>`;
+
+  if (uncatalogedCount > 0) {
+    let previous = calibratedAt
+      ? ` (last estimated ${new Date(calibratedAt).toLocaleDateString()})`
+      : '';
+    message += `<p>You've mapped <strong>${uncatalogedCount}</strong> uncataloged `
+      + `${helpers.pluralize('box', uncatalogedCount)}${previous}.</p>`;
+    message += `<p>Is that still accurate, or has the number changed?</p>`;
+  } else {
+    message += `<p>How many uncataloged boxes do you have left?</p>`;
+  }
+
+  return message;
+}
+
+function handleCalibrationStart() {
+  let itemCount = state.boxes.reduce((sum, box) => sum + helpers.activeItems(box).length, 0);
+  let boxCount = helpers.activeBoxes().length;
+  let uncatalogedCount = state.mainQuest.uncatalogedBoxes.reduce((sum, box) => sum + box.quantity, 0);
+
+  state._previousStage = state.conversationStage;
+  state.conversationStage = 'AWAITING_CALIBRATION_BOXES';
+  commitState();
+  addBotMessage(renderCalibrationStart(itemCount, boxCount, uncatalogedCount, state.mainQuest.calibratedAt));
+
+  if (uncatalogedCount > 0) {
+    setChips(["That's right", 'More than that', 'Fewer now', 'Not sure']);
+  } else {
+    setChips(['None', 'A few', '5-10', '10-20', '20+']);
+  }
+}
+
+function handleCalibrationBoxes(command) {
+  let uncatalogedCount = state.mainQuest.uncatalogedBoxes.reduce((sum, box) => sum + box.quantity, 0);
+
+  // Parse response
+  if (command === "that's right" || command === 'yes') {
+    // Keep existing count
+  } else if (command === 'none' || command === '0') {
+    // Clear uncataloged boxes
+    state.mainQuest.uncatalogedBoxes = [];
+  } else if (command === 'not sure') {
+    // Keep existing, move on
+  } else if (command === 'fewer now') {
+    // Acknowledge but don't change — they can use remove to adjust
+    addBotMessage(`<p>You can remove mapped boxes from the sidebar, or adjust with <em>"map box"</em> commands.</p>`);
+  } else if (command === 'more than that') {
+    addBotMessage(`<p>You can add more with <em>"map 5 boxes in garage"</em> after we finish estimating.</p>`);
+  } else {
+    // Try to parse a number
+    let num = parseInt(command, 10);
+    if (isNaN(num)) {
+      let parsed = parseQuantity(command + ' boxes');
+      if (parsed && parsed.quantity > 0) { num = parsed.quantity };
+    }
+    if (!isNaN(num) && num > 0 && uncatalogedCount === 0) {
+      // If they gave a number and have no mapped boxes, create a generic entry
+      state.mainQuest.uncatalogedBoxes.push({
+        id: uid(),
+        location: 'unspecified',
+        description: null,
+        quantity: num,
+        addedAt: new Date().toISOString()
+      });
+      commitState();
+    }
+  }
+
+  // Move to step 2: percentage estimate
+  state.conversationStage = 'AWAITING_CALIBRATION_PERCENT';
+  commitState();
+  addBotMessage(renderCalibrationPercent(state.mainQuest.completionEstimate));
+  setChips(['Less than 25%', '25-50%', '50-75%', 'More than 75%']);
+}
+
+function renderCalibrationPercent(previousEstimate) {
+  if (previousEstimate) {
+    let label = calibrationPercentLabel(previousEstimate);
+    return `<p>Last time you estimated <strong>${label}</strong>. What would you say now?</p>`;
+  }
+  return `<p>What percentage of your total stuff do you think you've logged so far?</p>`;
+}
+
+function handleCalibrationPercent(command) {
+  let estimate = null;
+  if (command.includes('less') || command.includes('<') || command.includes('25%') && !command.includes('50')) {
+    estimate = 'less-than-25';
+  } else if (command.includes('25') && command.includes('50')) {
+    estimate = '25-50';
+  } else if (command.includes('50') && command.includes('75')) {
+    estimate = '50-75';
+  } else if (command.includes('more') || command.includes('>') || command.includes('75%')) {
+    estimate = 'more-than-75';
+  }
+
+  if (!estimate) {
+    addBotMessage(`<p>Please pick one:</p>`);
+    setChips(['Less than 25%', '25-50%', '50-75%', 'More than 75%']);
+    return;
+  }
+
+  state.mainQuest.completionEstimate = estimate;
+  commitState();
+
+  // Move to step 3: completed locations
+  let locations = recentLocations();
+  if (locations.length > 1) {
+    addBotMessage(`<p>Which areas are completely done? (Pick all that apply, then "Continue")</p>`);
+    let chips = locations.map(loc => loc);
+    chips.push('None are done', 'All are done', 'Continue');
+    state.conversationStage = 'AWAITING_CALIBRATION_LOCATIONS';
+    state.mainQuest.completedLocations = [];
+    commitState();
+    setChips(chips);
+  } else {
+    // Not enough locations to ask about, skip to results
+    state.mainQuest.completedLocations = [];
+    finishCalibration();
+  }
+}
+
+function handleCalibrationLocations(command) {
+  if (command === 'none are done') {
+    state.mainQuest.completedLocations = [];
+    finishCalibration();
+    return;
+  }
+
+  if (command === 'all are done') {
+    state.mainQuest.completedLocations = recentLocations().slice();
+    finishCalibration();
+    return;
+  }
+
+  if (command === 'continue' || command === 'done') {
+    finishCalibration();
+    return;
+  }
+
+  // Toggle location — add if not present, remove if already selected
+  let locations = recentLocations();
+  let matchedLoc = locations.find(loc => helpers.normalize(loc) === helpers.normalize(command));
+
+  if (matchedLoc) {
+    let index = state.mainQuest.completedLocations.indexOf(matchedLoc);
+    if (index === -1) {
+      state.mainQuest.completedLocations.push(matchedLoc);
+      addBotMessage(`<p>Marked <strong>${escHtml(matchedLoc)}</strong> as done. Any others?</p>`);
+    } else {
+      state.mainQuest.completedLocations.splice(index, 1);
+      addBotMessage(`<p>Unmarked <strong>${escHtml(matchedLoc)}</strong>. Any others?</p>`);
+    }
+    commitState();
+
+    // Rebuild chips with checkmarks
+    let checkedLocations = (loc) =>
+      state.mainQuest.completedLocations.includes(loc) ? helpers.emoji.checkMark + ' ' + loc : loc;
+    setChips([...locations.map(checkedLocations), 'Continue']);
+    return;
+  }
+
+  // Unrecognized input
+  addBotMessage(`<p>Pick a location, or "Continue" when done.</p>`);
+}
+
+function calibrationPercentLabel(estimate) {
+  let labels = {
+    'less-than-25': 'less than 25%',
+    '25-50': '25-50%',
+    '50-75': '50-75%',
+    'more-than-75': 'more than 75%'
+  };
+  return labels[estimate] || estimate;
+}
+
+function calibrationPercentRange(estimate) {
+  let ranges = {
+    'less-than-25': [5, 25],
+    '25-50': [25, 50],
+    '50-75': [50, 75],
+    'more-than-75': [75, 95]
+  };
+  return ranges[estimate] || [25, 75];
+}
+
+function calculateCalibration() {
+  let itemCount = state.boxes.reduce((sum, box) => sum + helpers.activeItems(box).length, 0);
+  let boxCount = helpers.activeBoxes().length;
+  let uncatalogedCount = state.mainQuest.uncatalogedBoxes.reduce((sum, box) => sum + box.quantity, 0);
+  let avgItemsPerBox = boxCount > 0 ? itemCount / boxCount : 5;
+
+  let estimates = [];
+
+  // 1. Bottom-up: uncataloged boxes × avg items per box
+  if (uncatalogedCount > 0) {
+    let estimatedRemaining = uncatalogedCount * avgItemsPerBox;
+    let total = itemCount + estimatedRemaining;
+    let percent = total > 0 ? (itemCount / total) * 100 : 50;
+    estimates.push({ method: 'bottom-up', percent: percent, remaining: estimatedRemaining });
+  }
+
+  // 2. Top-down: user's percentage estimate
+  if (state.mainQuest.completionEstimate) {
+    let [lo, hi] = calibrationPercentRange(state.mainQuest.completionEstimate);
+    let midpoint = (lo + hi) / 2;
+    let totalEstimate = midpoint > 0 ? (itemCount / midpoint) * 100 : itemCount * 4;
+    let remaining = totalEstimate - itemCount;
+    estimates.push({ method: 'top-down-lo', percent: lo, remaining: (itemCount / lo * 100) - itemCount });
+    estimates.push({ method: 'top-down-hi', percent: hi, remaining: Math.max(0, (itemCount / hi * 100) - itemCount) });
+  }
+
+  // 3. Spatial: completed locations ratio
+  let allLocations = recentLocations();
+  let completedCount = state.mainQuest.completedLocations.length;
+  if (allLocations.length > 1 && completedCount > 0) {
+    let spatialPercent = (completedCount / allLocations.length) * 100;
+    estimates.push({ method: 'spatial', percent: spatialPercent });
+  }
+
+  // Calculate range from all estimates
+  if (estimates.length === 0) {
+    return { lowPercent: 0, highPercent: 100, itemCount, boxCount, uncatalogedCount, avgItemsPerBox };
+  }
+
+  let percents = estimates.map(e => e.percent);
+  let lowPercent = Math.max(0, Math.min(...percents));
+  let highPercent = Math.min(100, Math.max(...percents));
+
+  // Ensure low <= high
+  if (lowPercent > highPercent) {
+    [lowPercent, highPercent] = [highPercent, lowPercent];
+  }
+
+  // Round
+  lowPercent = Math.round(lowPercent);
+  highPercent = Math.round(highPercent);
+
+  // Estimate remaining items
+  let lowRemaining = highPercent < 100
+    ? Math.round((itemCount / highPercent * 100) - itemCount)
+    : 0;
+  let highRemaining = lowPercent > 0
+    ? Math.round((itemCount / lowPercent * 100) - itemCount)
+    : itemCount * 3;
+
+  return {
+    lowPercent, highPercent, lowRemaining, highRemaining,
+    itemCount, boxCount, uncatalogedCount, avgItemsPerBox
+  };
+}
+
+function renderCalibrationResult(estimation) {
+  let estimationMessage = (low, high) => `${(low === high) ?
+    `<p>You're approximately <strong>${low}%</strong> done.</p>` :
+    `<p>Based on your answers, you're between <strong>${low}-`
+    + `${high}%</strong> done.</p>`
+  }`
+
+  let remainingMessage = (count, low, high) => `<p>${count} ${helpers.pluralize('item', count)} logged `
+    + `${(low && high) ? `estimated ${(low === high) ? low :`${low}-${high}`} remaining.</p>` : '.</p>'}`
+
+  let uncatalogedMessage = (count, averageItems) => (count > 0) ?
+    `<p>${count} uncataloged ${helpers.pluralize('box', count)} `
+    + `mapped (~${Math.round(averageItems)} items each on average).</p>` :
+    ``;
+
+  return `<p><strong>Estimation complete.</strong></p>`
+    + `${estimationMessage(estimation.lowPercent, estimation.highPercent)}`
+    + `${remainingMessage(estimation.itemCount, estimation.lowRemaining, estimation.highRemaining)}`
+    + `${uncatalogedMessage(estimation.uncatalogedCount, estimation.avgItemsPerBox)}`;
+}
+
+function finishCalibration() {
+  state.mainQuest.calibratedAt = new Date().toISOString();
+  state.conversationStage = state._previousStage || 'FINISHED';
+  commitState();
+
+  addBotMessage(renderCalibrationResult(calculateCalibration()));
+
+  if (state.conversationStage === 'FINISHED') {
+    setChips(['New box', 'Catalog next box', 'Review all boxes', 'Show progress']);
+  } else {
+    setChips(['Add item', 'Review items', 'Show progress']);
+  }
+}
+
+function handleCatalogNextBox(locationHint) {
+  // If pendingCatalogId is set (from sidebar button click), use that
+  let entry = null;
+
+  if (state.pendingCatalogId) {
+    entry = state.mainQuest.uncatalogedBoxes.find((uncatalogedBox) => uncatalogedBox.id === state.pendingCatalogId);
+  }
+
+  if (!entry) {
+    // No specific entry selected
+    if (state.mainQuest.uncatalogedBoxes.length === 0) {
+      addBotMessage('<p>No uncataloged boxes to catalog. Use <em>"map 5 boxes garage"</em> to track uncataloged boxes.</p>');
+      setChips(['Continue']);
+      return;
+    }
+
+    // If a location hint is provided, find the matching entry
+    if (locationHint) {
+      entry = state.mainQuest.uncatalogedBoxes.find(
+        (uncatalogedBox) => uncatalogedBox.location.toLowerCase() === locationHint.toLowerCase()
+      );
+    }
+
+    // If multiple locations, ask which one
+    if (!entry) {
+      let locations = [];
+      state.mainQuest.uncatalogedBoxes.forEach((uncatalogedBox) => {
+        if (!locations.includes(uncatalogedBox.location)) { locations.push(uncatalogedBox.location); }
+      });
+
+      if (locations.length > 1) {
+        addBotMessage('<p>Which location?</p>');
+        setChips(locations.map((loc) => 'Catalog next box in ' + loc));
+        return;
+      }
+
+      // Single location, use the first entry
+      entry = state.mainQuest.uncatalogedBoxes[0];
+    }
+
+    state.pendingCatalogId = entry.id;
+  }
+
+  state.conversationStage = 'AWAITING_BOX_NAME';
+  commitState();
+
+  let desc = entry.description ? ' (' + escHtml(entry.description) + ')' : '';
+  let message = '<p>Cataloging a box in <strong>' + escHtml(entry.location) + '</strong>'
+    + desc + '. What would you like to call it?</p>';
+  addBotMessage(message);
+  setChips([]);
+}
+
+function catalogUncatalogedBox(id) {
+  // Store the id and route through processInput so it shows as a user message
+  let entry = state.mainQuest.uncatalogedBoxes.find((uncatalogedBox) => uncatalogedBox.id === id);
+  if (!entry) return;
+
+  state.pendingCatalogId = id;
+  commitState();
+  let commandText = 'Catalog next box in ' + entry.location;
+  addUserMessage(commandText, []);
+  processInput(commandText.toLowerCase(), []);
+}
+
+function removeUncatalogedBox(id) {
+  // Remove an uncataloged box entry
+  let entry = state.mainQuest.uncatalogedBoxes.find((uncatalogedBox) => uncatalogedBox.id === id);
+  if (!entry) return;
+
+  state.mainQuest.uncatalogedBoxes = state.mainQuest.uncatalogedBoxes.filter(
+    (uncatalogedBox) => uncatalogedBox.id !== id
+  );
+
+  commitState();
+  renderSidebar();
+
+  addBotMessage('<p>Removed <strong>' + entry.quantity + '</strong> uncataloged ' +
+    helpers.pluralize('box', entry.quantity) + ' from <strong>' + escHtml(entry.location) + '</strong>.</p>');
+
+  if (state.conversationStage === 'FINISHED') {
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Show progress']);
+  } else {
+    setChips(['Add item', 'Review items', 'Show progress']);
   }
 }
 
@@ -4705,5 +5415,16 @@ if (typeof module !== 'undefined') {
     showFateReviewList: showFateReviewList, collectFateItems: collectFateItems,
     buildFateReviewPath: buildFateReviewPath, handleFateReviewMenu: handleFateReviewMenu,
     fateReviewChips: fateReviewChips,
-    showFateReviewCurrentItem: showFateReviewCurrentItem };
+    showFateReviewCurrentItem: showFateReviewCurrentItem,
+    catalogUncatalogedBox: catalogUncatalogedBox,
+    handleCatalogNextBox: handleCatalogNextBox,
+    handleCalibrationStart: handleCalibrationStart,
+    handleCalibrationBoxes: handleCalibrationBoxes,
+    handleCalibrationPercent: handleCalibrationPercent,
+    handleCalibrationLocations: handleCalibrationLocations,
+    calculateCalibration: calculateCalibration,
+    finishCalibration: finishCalibration,
+    calibrationPercentLabel: calibrationPercentLabel,
+    calibrationPercentRange: calibrationPercentRange,
+    removeUncatalogedBox: removeUncatalogedBox };
 }

@@ -186,7 +186,7 @@ reset();
 var mapBox = makeBox('Test Box', 'Garage');
 addItem(mapBox, 'Test Item', 'keep');
 processInput('map remaining work', []);
-assertIncludes('mentions coming soon', lastBotMessage, 'coming soon');
+assertIncludes('suggests map command', lastBotMessage, 'map 5 boxes in garage');
 assertIncludes('shows stats anyway', lastBotMessage, '1');
 
 // 14. Common words detected in item names
