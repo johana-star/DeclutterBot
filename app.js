@@ -28,6 +28,22 @@ const helpers = {
     return _.reject(state.boxes, (box) => box.deleted_at);
   },
 
+  welcomeBackMessage: function(includeItemCount) {
+    const boxCount = state.boxes.length;
+    const boxText = '<strong>' + boxCount + '</strong> box' + (boxCount !== 1 ? 'es' : '');
+
+    if (includeItemCount) {
+      let itemCount = 0;
+      state.boxes.forEach(function(box) {
+        itemCount += helpers.activeItems(box).length;
+      });
+      const itemText = '<strong>' + itemCount + '</strong> item' + (itemCount !== 1 ? 's' : '');
+      return '<p>Back at it. ' + boxText + ', ' + itemText + ' so far.</p><p>Pick up where you left off?</p>';
+    }
+
+    return '<p>Back at it. ' + boxText + ' in play. Pick up where you left off?</p>';
+  },
+
   emoji: {
     middleDot: '\u00b7',
     multiplicationSign: '\u00d7',
@@ -112,8 +128,8 @@ function saveState() {
       if (!state.storageFull) {
         state.storageFull = true;
         addBotMessage(
-          '**Storage full.** Delete items marked **trash** to continue, or export your inventory.' +
-          '\n\nState is saved in memory until you refresh the page.'
+          '<p><strong>Storage full.</strong> Delete items marked <strong>trash</strong> to continue, or export your inventory.</p>' +
+          '<p>State is saved in memory until you refresh the page.</p>'
         );
         setChips(['Export JSON', 'Always ignore']);
       }
@@ -1152,9 +1168,9 @@ function handleBoxName(text) {
   var box = {id:uid(),name:raw,location:'',notes:'',parentId:null,createdAt:new Date().toISOString(),items:[]};
   state.boxes.push(box); state.activeBoxId=box.id;
   state.conversationStage='AWAITING_LOCATION';
-  var locP = locationPrompt('**"' + raw + '"** ' + helpers.emoji.emDash + ' good name.');
-  addBotMessage(locP.message);
-  setChips(locP.chips);
+  let locPrompt = locationPrompt('<strong>"' + raw + '"</strong> ' + helpers.emoji.emDash + ' good name.');
+  addBotMessage(locPrompt.message);
+  setChips(locPrompt.chips);
 }
 
 function handleBoxBatchConfirm(text) {
@@ -1170,9 +1186,9 @@ function handleBoxBatchConfirm(text) {
     };
     state.boxes.push(box); state.activeBoxId=box.id;
     state.conversationStage='AWAITING_LOCATION';
-    var bsLocP = locationPrompt('Just the one **"'+batch.baseName+'"** then.');
-    addBotMessage(bsLocP.message);
-    setChips(bsLocP.chips);
+    let boxLocationPrompt = locationPrompt('Just the one <strong>"'+batch.baseName+'"</strong> then.');
+    addBotMessage(boxLocationPrompt.message);
+    setChips(boxLocationPrompt.chips);
     return;
   }
   if (command.includes('change') || command.includes('quantity')) {
@@ -1187,9 +1203,9 @@ function handleBoxBatchConfirm(text) {
   var qty = numMatch ? parseInt(numMatch[0], 10) : batch.qty;
   batch.qty = qty;
   state.conversationStage = 'AWAITING_BOX_BATCH_LOCATION';
-  var bmLocP = locationPrompt('Where are all ' + qty + ' **' + batch.baseName + '** boxes located? (They\'ll share the same location)');
-  addBotMessage(bmLocP.message);
-  setChips(bmLocP.chips);
+  let locPrompt = locationPrompt('Where are all ' + qty + ' <strong>' + batch.baseName + '</strong> boxes located? (They\'ll share the same location)');
+  addBotMessage(locPrompt.message);
+  setChips(locPrompt.chips);
 }
 
 function handleBoxBatchQty(text) {
@@ -1254,12 +1270,12 @@ function locationPrompt(boxLabel) {
 
   var msg;
   if (recent.length === 0) {
-    msg = (boxLabel ? boxLabel + '\n\n' : '') +
-      'Where is this box located? (e.g. "spare bedroom", "garage shelf 2", "storage unit A")';
+    msg = '<p>' + (boxLabel ? boxLabel + '</p><p>' : '') +
+      'Where is this box located? (e.g. "spare bedroom", "garage shelf 2", "storage unit A")</p>';
   } else {
     var examples = recent.map(function(l) { return '"' + l + '"'; }).join(', ');
-    msg = (boxLabel ? boxLabel + '\n\n' : '') +
-      'Where is this box located? (e.g. ' + examples + ')';
+    msg = '<p>' + (boxLabel ? boxLabel + '</p><p>' : '') +
+      'Where is this box located? (e.g. ' + examples + ')</p>';
   }
 
   var chips = recent.slice();
@@ -1293,8 +1309,8 @@ function handleLocation(text) {
   box.location = text.trim() || 'unspecified';
   state.conversationStage = 'BOX_OPEN';
   addBotMessage(
-    '**"' + box.name + '"** in the _' + box.location + '_.' +
-    '\n\nFirst item?'
+    '<p><strong>"' + box.name + '"</strong> in the <em>' + box.location + '</em>.</p>' +
+    '<p>First item?</p>'
   );
   setChips(['Skip to next box','Review items','Done']);
 }
@@ -1555,13 +1571,13 @@ function handleItemName(text, photos) {
   addItem(box, item);
   state.activeItemId = item.id;
 
-  var warn = entry.warning ? '\n\n_' + entry.warning + '_' : '';
+  var warn = entry.warning ? '</br></br><em>' + entry.warning + '</em>' : '';
 
   if (entry.fate !== null && entry.notes !== null) {
     // Both provided — log and move on
     state.activeItemId = null;
     state.conversationStage = 'BOX_OPEN';
-    addBotMessage('<strong>' + name + '.</strong> ' + item.fate + (item.notes ? ' (' + item.notes + ')' : '') + '.' + warn + '\n\n<strong>' + helpers.activeItems(box).length + ' in the box.</strong> What\'s next?');
+    addBotMessage('<p><strong>' + name + '.</strong> ' + item.fate + (item.notes ? ' (' + item.notes + ')' : '') + '.' + warn + '</p><p><strong>' + helpers.activeItems(box).length + ' in the box.</strong> What\'s next?</p>');
     setBoxOpenChips();
   } else if (entry.fate !== null && entry.notes === null) {
     // Fate provided — skip fate prompt, ask for notes
@@ -1575,17 +1591,17 @@ function handleItemName(text, photos) {
     }
 
     addBotMessage(
-      (fateToEmoji[entry.fate] || helpers.emoji.shrug)
-      + ' <strong>' + titleize(item.fate) + '.<strong> ' + warn
+      '<p>' + (fateToEmoji[entry.fate] || helpers.emoji.shrug)
+      + ' <strong>' + titleize(item.fate) + '.</strong> ' + warn
       + 'Anything to note? (condition, value, where it\'s going) '
-      + helpers.emoji.emDash + ' or just say <em>"next"</em>.'
+      + helpers.emoji.emDash + ' or just say <em>"next"</em>.</p>'
     );
     setChips(['Next item', 'No notes', 'Done with this box']);
   } else if (entry.fate === null && entry.notes !== null) {
     // Notes provided (2-part, second wasn't a fate) — already logged with unsure, done
     state.activeItemId = null;
     state.conversationStage = 'BOX_OPEN';
-    addBotMessage('<strong>' + name + '.</strong> unsure (' + item.notes + ').' + warn + '\n\n<strong>' + helpers.activeItems(box).length + ' in the box.</strong> What\'s next?');
+    addBotMessage('<p><strong>' + name + '.</strong> unsure (' + item.notes + ').' + warn + '</p><p><strong>' + helpers.activeItems(box).length + ' in the box.</strong> What\'s next?</p>');
     setBoxOpenChips();
   } else {
     // Name only — normal fate prompt
@@ -1717,11 +1733,7 @@ function handleBatchFate(text, photos) {
 
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
-  addBotMessage(
-    '<p>' + fateMessages[matched] + '</br></br><strong>' + helpers.activeItems(box).length + '</strong> item(s) logged in "'
-    + box.name + '". What\'s next?</p>'
-
-  );
+  addBotMessage(fateMessages[matched] + '\n\n<strong>' + helpers.activeItems(box).length + '</strong> item(s) logged in "' + box.name + '". What\'s next?');
   setBoxOpenChips();
 }
 
@@ -1801,7 +1813,7 @@ function doneWithBox() {
   if (box) { delete boxTrashPreferences[box.id]; }
   state.activeBoxId=null; state.activeItemId=null; state.conversationStage='FINISHED';
   addBotMessage(
-    '**"' + box.name + '"** ' + helpers.emoji.emDash + ' done.\n\n' + summary + '.\n\nAnother box, or done for now?'
+    '<p><strong>"' + box.name + '"</strong> ' + helpers.emoji.emDash + ' done.</p><p>' + summary + '.</p><p>Another box, or done for now?</p>'
   );
   setChips(['New box','Done for now','Review all boxes','Review by fate']);
 }
@@ -2025,9 +2037,9 @@ function handleFinished(text) {
     var boxes = helpers.activeBoxes();
     var lines = _.map(boxes, (box, i) => {
       var loc = box.location ? ' (' + box.location + ')' : '';
-      return (i+1) + '. **' + box.name + '**' + loc + ' — ' + boxSummaryLine(box);
-    }).join('\n');
-    addBotMessage('<strong>All boxes:</strong>\n' + lines.trim());
+      return (i+1) + '. <strong>' + box.name + '</strong>' + loc + ' — ' + boxSummaryLine(box);
+    }).join('<br>');
+    addBotMessage('<p><strong>All boxes:</strong><br>' + lines + '</p>');
 
     // Identify empty boxes and their positions in the review list
     var emptyBoxPositions = _.compact(_.map(boxes, (box, i) => {
@@ -2295,7 +2307,7 @@ function handleMoveLocationConfirm(newLocation) {
   state.conversationStage = 'FINISHED';
   addBotMessage(
     '<p>Moved <strong>"' + box.name + '"</strong> from <em>' + prevLocation +
-    '</em> to _' + location + '_.</p>'
+    '</em> to <em>' + location + '</em>.</p>'
   );
   handleFinished('review all');
 }
@@ -2386,10 +2398,7 @@ function handleFreeform(text, photos) {
       state.conversationStage = 'AWAITING_BOX_NAME';
       setChips([]);
     } else {
-      addBotMessage(
-        '<p>Back at it. <strong>' + state.boxes.length + '</strong> box' +
-        (state.boxes.length !== 1 ? 'es' : '') + ' in play. Pick up where you left off?</p>'
-      );
+      addBotMessage(helpers.welcomeBackMessage(false));
       state.conversationStage = 'FINISHED';
       setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     }
@@ -2683,8 +2692,8 @@ function importCSV(text) {
 
   var warnings = [];
   if (nearDupBoxes.length > 0) {
-    warnings.push('\n\n⚠️ **Possible duplicate box' + (nearDupBoxes.length !== 1 ? 'es' : '') + '** (same name/location, different id): ' +
-      nearDupBoxes.map(function(n) { return '**' + n + '**'; }).join(', ') + '. Items were merged into the existing box.');
+    warnings.push('\n\n⚠️ <strong>Possible duplicate box' + (nearDupBoxes.length !== 1 ? 'es' : '') + '</strong> (same name/location, different id): ' +
+      nearDupBoxes.map(function(n) { return '<strong>' + n + '</strong>'; }).join(', ') + '. Items were merged into the existing box.');
   }
   if (nearDupItems.length > 0) {
     var grouped = {};
@@ -2693,9 +2702,9 @@ function importCSV(text) {
       grouped[d.boxName].push(d.itemName);
     });
     var details = Object.keys(grouped).map(function(boxName) {
-      return '**' + boxName + '**: ' + grouped[boxName].join(', ');
+      return '<strong>' + boxName + '</strong>: ' + grouped[boxName].join(', ');
     }).join('; ');
-    warnings.push('\n\n⚠️ **Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '** skipped (same name/fate/notes, no id match): ' + details + '.');
+    warnings.push('\n\n⚠️ <strong>Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '</strong> skipped (same name/fate/notes, no id match): ' + details + '.');
   }
 
   addBotMessage(helpers.emoji.checkMark + ' ' + summary + warnings.join('') + '\n\nReady to continue organizing?');
@@ -2817,16 +2826,16 @@ function importJSON(data) {
   }
 
   var parts = [];
-  if (newBoxCount  > 0) { parts.push('**' + newBoxCount  + '** new box'  + (newBoxCount  !== 1 ? 'es' : '')); }
-  if (newItemCount > 0) { parts.push('**' + newItemCount + '** new item' + (newItemCount !== 1 ? 's' : '')); }
+  if (newBoxCount  > 0) { parts.push('<strong>' + newBoxCount  + '</strong> new box'  + (newBoxCount  !== 1 ? 'es' : '')); }
+  if (newItemCount > 0) { parts.push('<strong>' + newItemCount + '</strong> new item' + (newItemCount !== 1 ? 's' : '')); }
   var summary = parts.length > 0
     ? parts.join(' and ') + ' merged in'
     : 'No new items to import (all already present)';
 
   var warnings = [];
   if (nearDupBoxes.length > 0) {
-    warnings.push('\n\n' + helpers.emoji.warningSign + ' **Possible duplicate box' + (nearDupBoxes.length !== 1 ? 'es' : '') + '** (same name/location, different id): ' +
-      nearDupBoxes.map(function(n) { return '**' + n + '**'; }).join(', ') + '. Items were merged into the existing box.');
+    warnings.push('\n\n' + helpers.emoji.warningSign + ' <strong>Possible duplicate box' + (nearDupBoxes.length !== 1 ? 'es' : '') + '</strong> (same name/location, different id): ' +
+      nearDupBoxes.map(function(n) { return '<strong>' + n + '</strong>'; }).join(', ') + '. Items were merged into the existing box.');
   }
   if (nearDupItems.length > 0) {
     var grouped = {};
@@ -2835,15 +2844,15 @@ function importJSON(data) {
       grouped[d.boxName].push(d.itemName);
     });
     var details = Object.keys(grouped).map(function(boxName) {
-      return '**' + boxName + '**: ' + grouped[boxName].join(', ');
+      return '<strong>' + boxName + '</strong>: ' + grouped[boxName].join(', ');
     }).join('; ');
-    warnings.push('\n\n' + helpers.emoji.warningSign + ' **Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '** skipped (same name/fate/notes, no id match): ' + details + '.');
+    warnings.push('\n\n' + helpers.emoji.warningSign + ' <strong>Possible duplicate item' + (nearDupItems.length !== 1 ? 's' : '') + '</strong> skipped (same name/fate/notes, no id match): ' + details + '.');
   }
 
-  addBotMessage(summary + '.' +
+  addBotMessage('<p>' + summary + '.' +
     (data.exportedAt ? ' Exported ' + new Date(data.exportedAt).toLocaleDateString() + '.' : '') +
     warnings.join('') +
-    '\n\nWhat would you like to do?');
+    '\n\nWhat would you like to do?' + '</p>');
   setChips(['Review all boxes', 'Continue last box', 'New box']);
 }
 
@@ -2864,9 +2873,9 @@ function clearAll() {
   }, 0);
   state.conversationStage = 'AWAITING_RESET_CONFIRM';
   addBotMessage(
-    '⚠️ This clears everything — **' + boxCount + ' box' + (boxCount !== 1 ? 'es' : '') +
-    '** and **' + itemCount + ' item' + (itemCount !== 1 ? 's' : '') + '**, gone. Export first if you want a record.' +
-    '\n\nType **yes** to confirm reset, or **no** to cancel.'
+    '<p>⚠️ This clears everything — <strong>' + boxCount + ' box' + (boxCount !== 1 ? 'es' : '') +
+    '</strong> and <strong>' + itemCount + ' item' + (itemCount !== 1 ? 's' : '') + '</strong>, gone. Export first if you want a record.</p>' +
+    '<p>Type <strong>yes</strong> to confirm reset, or <strong>no</strong> to cancel.</p>'
   );
   setChips(['Yes', 'No']);
 }
@@ -2970,23 +2979,18 @@ if (sendBtn) {
   sendBtn.addEventListener('mousedown', function(e) { e.preventDefault(); });
 }
 
-if(state.boxes.length===0){
-  setTimeout(function(){
+if (state.boxes.length === 0) {
+  setTimeout(function() {
     addBotMessage(WELCOME_MSG);
-    state.conversationStage='AWAITING_BOX_NAME';
+    state.conversationStage = 'AWAITING_BOX_NAME';
     setChips([]);
-  },200);
+  }, 200);
 } else {
-  var _b=state.boxes.length;
-  var _i=0; for(var _j=0;_j<state.boxes.length;_j++) _i+=state.boxes[_j].items.length;
-  setTimeout(function(){
-    addBotMessage(
-      'Back at it. **' + _b + ' box' + (_b !== 1 ? 'es' : '') + '**, **' + _i + ' item' + (_i !== 1 ? 's' : '') + '** so far.' +
-      '\n\nPick up where you left off?'
-    );
-    state.conversationStage=state.activeBoxId?'BOX_OPEN':'FINISHED';
-    setChips(['New box','Continue last box','Review all boxes']);
-  },200);
+  setTimeout(function() {
+    addBotMessage(helpers.welcomeBackMessage(true));
+    state.conversationStage = state.activeBoxId ? 'BOX_OPEN' : 'FINISHED';
+    setChips(['New box', 'Continue last box', 'Review all boxes']);
+  }, 200);
 }
 }
 
@@ -3025,8 +3029,8 @@ function handleDeleteBox() {
   if (kids.length > 0) {
     var kidNames = kids.map(function(b){ return '"' + b.name + '"'; }).join(', ');
     addBotMessage(
-      '**"' + box.name + '"** contains ' + kids.length + ' box(es): ' + kidNames +
-      '. Move or delete those first.'
+      '<p><strong>"' + box.name + '"</strong> contains ' + kids.length + ' box(es): ' + kidNames +
+      '. Move or delete those first.</p>'
     );
     setBoxOpenChips();
     return;
@@ -3034,8 +3038,8 @@ function handleDeleteBox() {
   var activeCount = helpers.activeItems(box).length;
   if (activeCount > 0) {
     addBotMessage(
-      '**"' + box.name + '"** still has ' + activeCount + ' item(s).' +
-      ' Empty the box first, or use _"dump into <box name>"_ to transfer all items to another box.'
+      '<p><strong>"' + box.name + '"</strong> still has ' + activeCount + ' item(s).' +
+      ' Empty the box first, or use _"dump into <box name>"_ to transfer all items to another box.</p>'
     );
     setChips(['Review items', 'Dump into...', 'Done with this box']); // box has items
     return;
@@ -3122,8 +3126,8 @@ function handleDump(text) {
     }
     var chips = others.map(function(b){ return dumpChipLabel(box, b); });
     addBotMessage(
-      'Dump all ' + activeCount + ' item(s) from **"' + box.name + '"** into which box?' +
-      ' Type a new name to create one.'
+      '<p>Dump all ' + activeCount + ' item(s) from <strong>"' + box.name + '"</strong> into which box?' +
+      ' Type a new name to create one.</p>'
     );
     setChips(chips);
   }
@@ -3161,8 +3165,8 @@ function handleDumpTarget(text) {
     state.activeBoxId = target.id;
     state.conversationStage = 'AWAITING_LOCATION';
     addBotMessage(
-      'Created **"' + target.name + '"** and dumped **' + count + '** item(s) into it.' +
-      ' "' + source.name + '" is now empty.\n\nWhere is **"' + target.name + '"** located?'
+      '<p>Created <strong>"' + target.name + '"</strong> and dumped <strong>' + count + '</strong> item(s) into it.' +
+      ' "' + source.name + '" is now empty.</p><p>Where is <strong>"' + target.name + '"</strong> located?</p>'
     );
     return;
   }
@@ -3174,9 +3178,9 @@ function handleDumpTarget(text) {
   let reparentedChildren = state.boxes.filter((box) => box.parentId === source.id);
   reparentedChildren.forEach((child) => { child.parentId = target.id; });
   state.conversationStage = 'BOX_OPEN';
-  var msg = 'Dumped **' + count + '** item(s) from **"' + source.name + '"** into **"' + target.name + '"**.'
+  var msg = '<p>Dumped <strong>' + count + '</strong> item(s) from <strong>"' + source.name + '"</strong> into <strong>"' + target.name + '"</strong>.'
     + (reparentedChildren.length ? ' Also moved ' + reparentedChildren.length + ' nested box(es).' : '')
-    + ' "' + source.name + '" is now empty.';
+    + ' "' + source.name + '" is now empty.</p>';
   addBotMessage(msg);
   setChips(['Delete box', 'Add item', 'Done with this box']);
 }
@@ -3250,8 +3254,8 @@ function promoteLocationToBox(locationName, targetBox) {
 
   commitState();
   addBotMessage(
-    'Moved **' + matched.length + ' box' + (matched.length !== 1 ? 'es' : '') +
-    '** from location _' + locationName + '_ into **"' + targetBox.name + '"**.'
+    '<p>Moved <strong>' + matched.length + ' box' + (matched.length !== 1 ? 'es' : '') +
+    '</strong> from location <em>' + locationName + '</em> into <strong>"' + targetBox.name + '"</strong>.</p>'
   );
   setBoxOpenChips();
 }
@@ -3324,8 +3328,8 @@ function handlePromoteLocation(text) {
       );
       state.pendingPromoteLocation = { locationName: locationName };
       state.conversationStage = 'AWAITING_PROMOTE_LOCATION';
-      var locP = locationPrompt();
-      setChips(locP.chips);
+      let locPrompt = locationPrompt();
+      setChips(locPrompt.chips);
       return;
     }
 
@@ -3492,8 +3496,8 @@ function promoteItemToBox(item, parentBox) {
   });
   if (collision) {
     addBotMessage(
-      'A box called **"' + item.name + '"** already exists in _' + (parentBox.location || 'this location') + '_.' +
-      ' Rename the item first, then promote it.'
+      '<p>A box called <strong>"' + item.name + '"</strong> already exists in <em>' + (parentBox.location || 'this location') + '</em>.' +
+      ' Rename the item first, then promote it.</p>'
     );
     return;
   }
@@ -3523,11 +3527,11 @@ function promoteItemToBox(item, parentBox) {
   state.conversationStage = 'BOX_OPEN';
   commitState();
 
-  var notesLine = newBox.notes ? '\n\nNotes carried over: "' + newBox.notes + '".' : '';
+  var notesLine = newBox.notes ? '<p>Notes carried over: "' + newBox.notes + '".</p>' : '';
   addBotMessage(
-    '**"' + newBox.name + '"** is now a box inside **"' + parentBox.name + '"**.' +
+    '<p><strong>"' + newBox.name + '"</strong> is now a box inside <strong>"' + parentBox.name + '"</strong>.</p>' +
     notesLine +
-    '\n\nAdd its contents when you\'re ready.'
+    '<p>Add its contents when you\'re ready.</p>'
   );
   setChips(['Add item', 'Review items', 'Back to ' + parentBox.name]);
 }
@@ -3535,13 +3539,13 @@ function promoteItemToBox(item, parentBox) {
 function showItemDetail(group, groupIndex) {
   var box = activeBox();
   var lines = [];
-  lines.push('**' + (group.count > 1 ? group.count + ' × ' : '') + group.name + '**');
+  lines.push('<strong>' + (group.count > 1 ? group.count + ' × ' : '') + group.name + '</strong>');
   lines.push('Fate: ' + group.fate);
   if (group.notes) { lines.push('Notes: ' + group.notes); }
 
   state.conversationStage = 'AWAITING_ITEM_VIEW';
   state.activeItemViewGroup = groupIndex;
-  addBotMessage(lines.join('\n'));
+  addBotMessage('<p>' + lines.join('<br>') + '</p>');
   var actionChip = (group && group.fate === 'trash') ? 'Delete' : 'Trash';
   var chips = ['Change fate', 'Edit notes', actionChip, 'Move to box'];
   if (group && group.count === 1) { chips.push('Make it a box'); }
@@ -3730,7 +3734,7 @@ function handleItemMoveTarget(text) {
   moved.forEach(function(it){ target.items.push(it); });
 
   var count = moved.length;
-  var label = count > 1 ? count + ' × ' + group.name : '**' + group.name + '**';
+  var label = count > 1 ? count + ' × ' + group.name : '<strong>' + group.name + '</strong>';
   addBotMessage('<p>Moved ' + label + ' to <strong>' + target.name + '</strong>.</p>');
   state.activeItemViewGroup = null;
   state.conversationStage = 'BOX_OPEN';
@@ -3862,7 +3866,7 @@ function deletionLog(itemName) {
   var todayCount = stored.count;
   var parts = [todayCount + ' deleted today'];
   if (sessionDeletedCount !== todayCount) { parts.push(sessionDeletedCount + ' this session'); }
-  return helpers.emoji.trashBin + ' Deleted **' + itemName + '**. ' + parts.join(', ') + '.';
+  return '<p>' + helpers.emoji.trashBin + ' Deleted <strong>' + itemName + '</strong>. ' + parts.join(', ') + '.</p>';
 }
 
 function deleteActiveItem() {
@@ -3953,7 +3957,7 @@ function handleDeleteTrashedConfirm(text) {
 
   if (command === 'yes' || command === 'y') {
     var deletedCount = deleteAllItems(box);
-    var summary = 'Deleted **' + deletedCount + '** item(s).';
+    var summary = '<p>Deleted <strong>' + deletedCount + '</strong> item(s).</p>';
     addBotMessage(summary);
     state.conversationStage = 'AWAITING_DELETE_BOX_AFTER_TRASH_ALL';
     addBotMessage('Delete the empty box "' + box.name + '" too?');
@@ -4059,9 +4063,9 @@ function handleDisposal(text) {
     return;
   }
   var botMsg = skipping ?
-    'Kept **' + (item ? item.name : 'item') + '** in "' + (box ? box.name : 'box') + '".' +
-    '\n\nWhat\'s the next item?' :
-    'Noted. What\'s the next item?'
+    '<p>Kept <strong>' + (item ? item.name : 'item') + '</strong> in "' + (box ? box.name : 'box') + '".</p>' +
+    '<p>What\'s the next item?</p>' :
+    '<p>Noted. What\'s the next item?</p>'
   addBotMessage(botMsg);
   setBoxOpenChips();
 }
@@ -4125,11 +4129,11 @@ function fateReviewBulkChips(fate) {
 }
 
 function showFateReviewList(review) {
-  var lines = 'Items marked **' + review.fate + '** (' + review.items.length + '):\n';
+  var lines = '<p>Items marked <strong>' + review.fate + '</strong> (' + review.items.length + '):</p><p>';
   lines += review.items.map((entry, index) =>
     (index + 1) + '. <strong>' + entry.itemName + '</strong> (' + entry.boxPath + ')'
-  ).join('\n') + '\n';
-  addBotMessage(lines.trim() + '\n\nWhat would you like to do?');
+  ).join('</br>') + '</p>';
+  addBotMessage(lines + '<p>What would you like to do?</p>');
   setChips(['Item by item', 'Bulk action', 'Back']);
   state.conversationStage = 'AWAITING_FATE_REVIEW_ACTION';
 }
@@ -4236,9 +4240,9 @@ function showFateReviewCurrentItem(review) {
     return;
   }
   var progress = (review.index + 1) + ' of ' + review.items.length;
-  var msg = '**' + item.name + '** (' + entry.boxPath + ') [' + progress + ']';
-  if (item.notes) { msg += '\nNotes: ' + item.notes; }
-  msg += '\n\nWhat would you like to do with this one?';
+  var msg = '<p><strong>' + item.name + '</strong> (' + entry.boxPath + ') [' + progress + ']';
+  if (item.notes) { msg += '</br>Notes: ' + item.notes; }
+  msg += '</p><p>What would you like to do with this one?</p>';
   addBotMessage(msg);
   setChips(fateReviewChips(review.fate).concat(['Done reviewing']));
   state.conversationStage = 'AWAITING_FATE_REVIEW_ITEM';
@@ -4411,7 +4415,10 @@ function handleFateReviewBulk(text) {
     }, 0);
     state.pendingFateReview = null;
     state.conversationStage = 'FINISHED';
-    addBotMessage(deletionLog(deleteCount + ' items') + ' All <strong>' + review.fate + '</strong> items deleted.');
+    addBotMessage(
+      '<p>' + deletionLog(deleteCount + ' items') + ' All <strong>' + review.fate
+      + '</strong> items deleted.</p>'
+    );
     setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     return;
   }

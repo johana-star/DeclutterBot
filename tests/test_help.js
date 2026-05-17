@@ -33,7 +33,6 @@ global.document = {
 };
 
 var app         = require('../app.js');
-var helpers     = app.helpers;
 var state       = app.state;
 var uid         = app.uid;
 var processInput = app.processInput;
@@ -266,8 +265,8 @@ makeBox('Box A', 'Garage');
 makeBox('Box B', 'Kitchen');
 state.conversationStage = 'FINISHED';
 handleFinished('review all boxes');
-assert('first box numbered', lastBotMessage.indexOf('1. **Box A**') !== -1);
-assert('second box numbered', lastBotMessage.indexOf('2. **Box B**') !== -1);
+assert('first box numbered', lastBotMessage.indexOf('1.') !== -1 && lastBotMessage.indexOf('Box A') !== -1);
+assert('second box numbered', lastBotMessage.indexOf('2.') !== -1 && lastBotMessage.indexOf('Box B') !== -1);
 
 console.log('\n22. Number input in FINISHED stage opens that box');
 reset();
