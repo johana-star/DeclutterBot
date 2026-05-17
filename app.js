@@ -1347,7 +1347,21 @@ function parseQuantity(text) {
   }
 
   // Check for word numbers: "five boxes" or "twenty-one shelves"
+  // BUT ignore hyphenated number words like "two-prong cable" or "three-way valve"
   let words = trimmed.toLowerCase().split(/\s+/);
+
+  // Check if this looks like a hyphenated-number descriptor (e.g., "two-prong cable")
+  // Pattern: number-word immediately followed by hyphen and another word
+  if (words.length > 0) {
+    let firstWord = words[0];
+    // Check if first word is "number-something" where number is a known quantity word
+    let hyphenParts = firstWord.split('-');
+    if (hyphenParts.length >= 2 && WORD_NUMBERS[hyphenParts[0]]) {
+      // This is a hyphenated number descriptor like "two-prong" or "three-way"
+      // Don't treat as a batch quantity
+      return null;
+    }
+  }
 
   // Try two-word numbers first ("twenty one"), then single words ("five")
   // We check up to 2 words because that's the longest number phrase we support
@@ -1368,7 +1382,7 @@ function parseQuantity(text) {
     if (quantity && quantity > 1) {
       let itemName = words.slice(wordCount).join(' ').trim();
       if (itemName.length > 0) {
-        result = {qty: quantity, itemName: itemName};
+        result = {qty: quantity, quantity: quantity, itemName: itemName};
         return true; // stop iteration
       }
     }
@@ -1517,14 +1531,18 @@ function handleItemName(text, photos) {
   // Batch quantity detection runs on the full text first
   var parsed = parseQuantity(text);
   if (parsed) {
-    state.pendingBatch = { qty: parsed.qty, itemName: parsed.itemName };
+    state.pendingBatch = {
+      quantity: parsed.quantity,
+      itemName: parsed.itemName,
+      originalText: text.trim()
+    };
     state.conversationStage = 'AWAITING_BATCH_CONFIRM';
     addBotMessage(
-      '<p>I see <strong>' + parsed.qty + ' ' + helpers.emoji.multiplicationSign + ' ' +
-      parsed.itemName + '</strong>. Should I log ' + parsed.qty +
+      '<p>I see <strong>' + parsed.quantity + ' ' + helpers.emoji.multiplicationSign + ' ' +
+      parsed.itemName + '</strong>. Should I log ' + parsed.quantity +
       ' separate entries for these, all with the same fate?</p>'
     );
-    setChips(['Yes, log ' + parsed.qty, 'No, just 1', 'Change quantity']);
+    setChips(['Yes, log ' + parsed.quantity, 'No, just 1', 'Change quantity']);
     return;
   }
 
@@ -1589,15 +1607,17 @@ function handleBatchConfirm(text, photos) {
   if (command.startsWith('no') || command.indexOf('just 1') !== -1 || command === '1') {
     state.pendingBatch = null;
     var box = activeBox();
+    // Use original text if available, otherwise fall back to parsed itemName
+    var itemName = batch.originalText || batch.itemName;
     var item = {
-      id: uid(), name: batch.itemName, description: '', fate: 'unsure',
+      id: uid(), name: itemName, description: '', fate: 'unsure',
       notes: '', createdAt: new Date().toISOString(),
       deleted_at: null
     };
     addItem(box, item); state.activeItemId = item.id;
     state.conversationStage = 'AWAITING_FATE';
     addBotMessage(
-      '<p>Just the one <strong>' + batch.itemName +
+      '<p>Just the one <strong>' + itemName +
       '</strong>. What should we do with it?</p>'
     );
     setChips(FATE_TITLES);
@@ -1606,21 +1626,21 @@ function handleBatchConfirm(text, photos) {
   if (command.startsWith('yes') || command.indexOf('log') !== -1 ||
       command.indexOf('confirm') !== -1 || command.match(/^\d+$/)) {
     var nm = command.match(/\d+/);
-    var qty = nm ? parseInt(nm[0],10) : batch.qty;
+    var qty = nm ? parseInt(nm[0],10) : batch.quantity;
     commitBatch(qty, batch.itemName); return;
   }
   addBotMessage(
-    '<p>Log <strong>' + batch.qty + ' ' + helpers.emoji.multiplicationSign + ' ' +
+    '<p>Log <strong>' + batch.quantity + ' ' + helpers.emoji.multiplicationSign + ' ' +
     batch.itemName + '</strong> as separate entries?</p>'
   );
-  setChips(['Yes, log ' + batch.qty,'No, just 1','Change quantity']);
+  setChips(['Yes, log ' + batch.quantity,'No, just 1','Change quantity']);
 }
 
 function handleBatchQty(text) {
   var batch=state.pendingBatch; if(!batch){state.conversationStage='BOX_OPEN';return;}
   var parsed=parseQuantity(text);
   var wordQty=WORD_NUMBERS[text.toLowerCase().trim()];
-  var qty=wordQty||(parsed&&parsed.qty)||parseInt(text,10);
+  var qty=wordQty||(parsed&&parsed.quantity)||parseInt(text,10);
   if (!qty || isNaN(qty) || qty < 1) {
     addBotMessage(
       '<p>Sorry, I didn\'t catch a number. How many <strong>' + batch.itemName +
@@ -1628,7 +1648,7 @@ function handleBatchQty(text) {
     );
     return;
   }
-  batch.qty=qty; state.conversationStage='AWAITING_BATCH_CONFIRM';
+  batch.quantity=qty; state.conversationStage='AWAITING_BATCH_CONFIRM';
   addBotMessage(
     '<p>Got it ' + helpers.emoji.emDash + ' <strong>' + qty + ' ' +
     helpers.emoji.multiplicationSign + ' ' + batch.itemName +
@@ -1697,7 +1717,11 @@ function handleBatchFate(text, photos) {
 
   state.activeItemId = null;
   state.conversationStage = 'BOX_OPEN';
-  addBotMessage(fateMessages[matched] + '\n\n<strong>' + helpers.activeItems(box).length + '</strong> item(s) logged in "' + box.name + '". What\'s next?');
+  addBotMessage(
+    '<p>' + fateMessages[matched] + '</br></br><strong>' + helpers.activeItems(box).length + '</strong> item(s) logged in "'
+    + box.name + '". What\'s next?</p>'
+
+  );
   setBoxOpenChips();
 }
 
