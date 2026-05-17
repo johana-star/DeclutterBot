@@ -79,6 +79,7 @@ let state = {
   pendingRenameBoxId: null,
   movePositions: null,
   pendingMoveBoxId: null,
+  hasSeenProgressPrompt: false,
 };
 const FATES = ['trash','return','sell','keep','donate','unsure'];
 function titleize(str) {
@@ -799,6 +800,17 @@ function tryGlobalIntercept(command, photos, input) {
 
   // new box
   if (command === 'new box') { startNewBox(); return true; }
+
+  // show progress
+  if (command === 'show progress' || command === 'progress') {
+    showProgress();
+    return true;
+  }
+
+  // Progress-related chips
+  if (command === 'map remaining work') { handleMapRemainingWork(); return true; }
+  if (command === 'just show stats') { showProgress(); return true; }
+  if (command === 'not yet') { handleNotYetMapping(); return true; }
 
   // review items — only intercept if there is an active box
   if (command === 'review items') {
@@ -1571,7 +1583,7 @@ function handleItemName(text, photos) {
   addItem(box, item);
   state.activeItemId = item.id;
 
-  var warn = entry.warning ? '</br></br><em>' + entry.warning + '</em>' : '';
+  var warn = entry.warning ? '<br><br><em>' + entry.warning + '</em>' : '';
 
   if (entry.fate !== null && entry.notes !== null) {
     // Both provided — log and move on
@@ -2347,6 +2359,7 @@ function handleHelp() {
       '<p><em>"New box"</em> — start a new box<br/>',
       '<em>"Review all boxes"</em> — summary of every box; from there you can rename, move, or delete empty boxes<br/>',
       '<em>"Review by fate"</em> — review all items of a given fate across every box<br/>',
+      '<em>"Show progress"</em> — see how many boxes and items you\'ve cataloged<br/>',
       '<em>"Done for now"</em> — end session and see summary<br/>',
       '<em>"Import JSON"</em> / <em>"Import CSV"</em> — merge a saved inventory into current<br/>',
       '<em>"Export JSON"</em> / <em>"Export CSV"</em> — download your inventory<br/>',
@@ -2386,6 +2399,122 @@ function handleHelp() {
       state.conversationStage = 'FINISHED';
       setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
     }
+  }
+}
+
+function showProgress() {
+  const boxCount = helpers.activeBoxes().length;
+  let itemCount = 0;
+  let fateCounts = { keep: 0, donate: 0, sell: 0, trash: 0, unsure: 0, return: 0 };
+  let allItemNames = [];
+  let allNotes = [];
+
+  state.boxes.forEach(function(box) {
+    helpers.activeItems(box).forEach(function(item) {
+      itemCount++;
+      if (fateCounts[item.fate] !== undefined) {
+        fateCounts[item.fate]++;
+      }
+      if (item.name) allItemNames.push(item.name.toLowerCase());
+      if (item.notes) allNotes.push(item.notes.toLowerCase());
+    });
+  });
+
+  // Build detailed stats message
+  let message = '<p>You\'ve cataloged <strong>' + boxCount + '</strong> box' +
+    (boxCount !== 1 ? 'es' : '') + ', <strong>' + itemCount +
+    '</strong> item' + (itemCount !== 1 ? 's' : '') + '.</p>';
+
+  // Fate breakdown
+  if (itemCount > 0) {
+    let fateLines = [];
+    FATES.forEach(function(fate) {
+      if (fateCounts[fate] > 0) {
+        fateLines.push(
+          '<span class="fate-label fate-label-' + fate + '" ' +
+          'onclick="chipClick(\'review ' + fate + '\')">' +
+          titleize(fate) + ' ' + fateCounts[fate] +
+          '</span>'
+        );
+      }
+    });
+    if (fateLines.length > 0) {
+      message += '<p>' + fateLines.join(', ') + '</p>';
+    }
+  }
+
+  // Common words in item names (3+ occurrences)
+  if (allItemNames.length > 5) {
+    let wordCounts = {};
+    let commonWords = ['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'for', 'with', 'from'];
+    allItemNames.join(' ').split(/\s+/).forEach(function(word) {
+      word = word.replace(/[^a-z0-9]/g, '');
+      if (word.length > 2 && commonWords.indexOf(word) === -1) {
+        wordCounts[word] = (wordCounts[word] || 0) + 1;
+      }
+    });
+    let topWords = Object.keys(wordCounts)
+      .filter(function(w) { return wordCounts[w] >= 3; })
+      .sort(function(a, b) { return wordCounts[b] - wordCounts[a]; })
+      .slice(0, 5);
+    if (topWords.length > 0) {
+      message += '<p>Common in names: ' + topWords.join(', ') + '</p>';
+    }
+  }
+
+  // Common words in notes (3+ occurrences)
+  if (allNotes.length > 5) {
+    let notesWordCounts = {};
+    let commonWords = ['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'for', 'with', 'from', 'this', 'that', 'it', 'is'];
+    allNotes.join(' ').split(/\s+/).forEach(function(word) {
+      word = word.replace(/[^a-z0-9]/g, '');
+      if (word.length > 3 && commonWords.indexOf(word) === -1) {
+        notesWordCounts[word] = (notesWordCounts[word] || 0) + 1;
+      }
+    });
+    let topNotesWords = Object.keys(notesWordCounts)
+      .filter(function(w) { return notesWordCounts[w] >= 3; })
+      .sort(function(a, b) { return notesWordCounts[b] - notesWordCounts[a]; })
+      .slice(0, 5);
+    if (topNotesWords.length > 0) {
+      message += '<p>Common in notes: ' + topNotesWords.join(', ') + '</p>';
+    }
+  }
+
+  addBotMessage(message);
+
+  // Always offer mapping option alongside other actions
+  if (state.conversationStage === 'FINISHED') {
+    setChips(['Map remaining work', 'New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+  } else {
+    setChips(['Map remaining work', 'Add item', 'Review items', 'Done with this box']);
+  }
+
+  commitState();
+}
+
+function handleMapRemainingWork() {
+  // Placeholder for Milestone 3
+  const boxCount = helpers.activeBoxes().length;
+  const itemCount = state.boxes.reduce(function(sum, box) {
+    return sum + helpers.activeItems(box).length;
+  }, 0);
+
+  addBotMessage(
+    '<p>Mapping flow coming soon! For now, here are your stats:</p>' +
+    '<p>You\'ve cataloged <strong>' + boxCount + '</strong> box' +
+    (boxCount !== 1 ? 'es' : '') + ', <strong>' + itemCount +
+    '</strong> item' + (itemCount !== 1 ? 's' : '') + '.</p>'
+  );
+  setChips(['Continue']);
+}
+
+function handleNotYetMapping() {
+  addBotMessage('<p>No problem. You can check progress anytime with "Show progress".</p>');
+  if (state.conversationStage === 'FINISHED') {
+    setChips(['New box', 'Continue last box', 'Review all boxes', 'Review by fate']);
+  } else {
+    setBoxOpenChips();
   }
 }
 
@@ -4132,7 +4261,7 @@ function showFateReviewList(review) {
   var lines = '<p>Items marked <strong>' + review.fate + '</strong> (' + review.items.length + '):</p><p>';
   lines += review.items.map((entry, index) =>
     (index + 1) + '. <strong>' + entry.itemName + '</strong> (' + entry.boxPath + ')'
-  ).join('</br>') + '</p>';
+  ).join('<br>') + '</p>';
   addBotMessage(lines + '<p>What would you like to do?</p>');
   setChips(['Item by item', 'Bulk action', 'Back']);
   state.conversationStage = 'AWAITING_FATE_REVIEW_ACTION';
@@ -4241,7 +4370,7 @@ function showFateReviewCurrentItem(review) {
   }
   var progress = (review.index + 1) + ' of ' + review.items.length;
   var msg = '<p><strong>' + item.name + '</strong> (' + entry.boxPath + ') [' + progress + ']';
-  if (item.notes) { msg += '</br>Notes: ' + item.notes; }
+  if (item.notes) { msg += '<br>Notes: ' + item.notes; }
   msg += '</p><p>What would you like to do with this one?</p>';
   addBotMessage(msg);
   setChips(fateReviewChips(review.fate).concat(['Done reviewing']));

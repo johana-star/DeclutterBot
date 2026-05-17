@@ -380,6 +380,19 @@
   .chip.fate-unsure { border-color: var(--lavender); color: var(--iris); }  /* lavender / iris */
   .chip.fate-delete:hover { border: 1.5px dotted var(--cayenne); color: var(--cherry); background: var(--cream); }  /* saffron dotted on hover — permanent action */
 
+  /* Fate labels for inline text (not chips) */
+  .fate-label-trash  { color: var(--cherry); background: var(--blush); padding: 2px 6px; border-radius: 3px; cursor: pointer; }
+  .fate-label-return { color: var(--cayenne); background: var(--turmeric); padding: 2px 6px; border-radius: 3px; cursor: pointer; }
+  .fate-label-sell   { color: var(--molasses); background: var(--butter); padding: 2px 6px; border-radius: 3px; cursor: pointer; }
+  .fate-label-keep   { color: var(--pine); background: var(--mint); padding: 2px 6px; border-radius: 3px; cursor: pointer; }
+  .fate-label-donate { color: var(--navy); background: var(--horizon); padding: 2px 6px; border-radius: 3px; cursor: pointer; }
+  .fate-label-unsure { color: var(--iris); background: var(--lilac); padding: 2px 6px; border-radius: 3px; cursor: pointer; }
+
+  /* Hover states for clickable fate labels */
+  .fate-label:hover  { opacity: 0.7; }
+
+  .fate-label { text-decoration: wavy underline;}
+
   .chat-input-area {
     padding: 14px 20px;
     border-top: 1px solid var(--chevre);

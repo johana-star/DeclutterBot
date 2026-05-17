@@ -25,6 +25,7 @@ tests/test_import_csv.js
 tests/test_import.js
 tests/test_item_entry.js
 tests/test_item_view.js
+tests/test_main_quest.js
 tests/test_mantras.js
 tests/test_move_boxes_commands.js
 tests/test_move_boxes_complete.js
