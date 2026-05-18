@@ -501,7 +501,53 @@ function updateContextBar() {
       ? 'No active box ' + helpers.emoji.emDash + ' say hi to get started'
       : 'No active box ' + helpers.emoji.emDash + ' type "help" or "?" for commands';
   }
+
+  // Update progress estimator if calibrated
+  if (typeof document !== 'undefined') {
+    var estimatorElem = document.getElementById('progress-estimator');
+    if (estimatorElem && state.mainQuest.calibratedAt) {
+      estimatorElem.style.display = 'inline';
+      estimatorElem.innerHTML = renderProgress(calculateCalibration(), 'estimator');
+    } else {
+      estimatorElem.textContent = '';
+      estimatorElem.style.display = 'none';
+    }
+  }
 }
+
+function renderProgress(estimation, variant = 'bar') {
+  // 8 banner colors from styleguide
+  const DARK_COLORS  = ['sakura', 'cherry', 'cayenne', 'mustard', 'sage', 'coastal', 'abyss', 'lavender'];
+  const LIGHT_COLORS = ['blush', 'peony', 'ginger', 'butter', 'thyme', 'horizon', 'navy', 'lilac'];
+
+  // Use calibration percentage for fill calculation
+  const avgPercent = (estimation.lowPercent + estimation.highPercent) / 2;
+
+  // Estimator: 32 chars (4 per color), Bar: 8 chars (1 per color)
+  const totalChars    = variant === 'estimator' ? 32 : 8;
+  const charsPerColor = variant === 'estimator' ? 4 : 1;
+  const filledChars = Math.round((avgPercent / 100) * totalChars);
+
+  let bar = [...Array(totalChars).keys()].map((index) => {
+    const colorIndex = Math.floor(index / charsPerColor);
+    const isFilled = index < filledChars;
+    const color = isFilled ? DARK_COLORS[colorIndex] : LIGHT_COLORS[colorIndex];
+    const char = isFilled ? '█' : '▒';
+    return `<span style="color:var(--${color})">${char}</span>`;
+  }).join('');
+
+  if (variant === 'estimator') {
+    // Mode (average) of remaining items
+    let roundEstimates = (high, low) => high && low ? Math.round((high + low) / 2) : 0;
+    return `${bar} ~${roundEstimates(estimation.highRemaining, estimation.lowRemaining)} left`;
+  } else {
+    let displayRange = (high, low, leading='', trailing='') =>
+      high && low ? (high === low ? `${leading}${low}${trailing}` : `${leading}${low}-${high}${trailing}`) : '';
+    return `<p>[${bar}] ${displayRange(estimation.highPercent, estimation.lowPercent, '', '%')}`
+      + ` complete ${helpers.emoji.emDash} ${displayRange(estimation.highRemaining, estimation.lowRemaining, '~')} to catalog</p>`;
+  }
+}
+
 
 function updateBudgetDisplay(recalculating) {
   if (typeof document === 'undefined') { return; }
@@ -2561,6 +2607,11 @@ function showProgress() {
     (boxCount !== 1 ? 'es' : '') + ', <strong>' + itemCount +
     '</strong> item' + (itemCount !== 1 ? 's' : '') + '.</p>';
 
+  // Progress bar - only shown if calibrated
+  if (state.mainQuest.calibratedAt) {
+    message += renderProgress(calculateCalibration());
+  }
+
   // Fate breakdown
   if (itemCount > 0) {
     let fateLines = [];
@@ -2927,7 +2978,7 @@ function handleCalibrationBoxes(command) {
   state.conversationStage = 'AWAITING_CALIBRATION_PERCENT';
   commitState();
   addBotMessage(renderCalibrationPercent(state.mainQuest.completionEstimate));
-  setChips(['Less than 25%', '25-50%', '50-75%', 'More than 75%']);
+  setChips(['0-5%', 'Less than 25%', '25-50%', '50-75%', '75-95%', '95-100%']);
 }
 
 function renderCalibrationPercent(previousEstimate) {
@@ -2940,19 +2991,26 @@ function renderCalibrationPercent(previousEstimate) {
 
 function handleCalibrationPercent(command) {
   let estimate = null;
-  if (command.includes('less') || command.includes('<') || command.includes('25%') && !command.includes('50')) {
-    estimate = 'less-than-25';
-  } else if (command.includes('25') && command.includes('50')) {
-    estimate = '25-50';
-  } else if (command.includes('50') && command.includes('75')) {
+  let normalized = command.toLowerCase().replace(/\s/g, '');
+
+  // Check from most specific to least specific
+  if (normalized.includes('95-100') || normalized.includes('95%') && normalized.includes('100')) {
+    estimate = '95-100';
+  } else if (normalized.includes('75-95') || normalized.includes('75%') && normalized.includes('95')) {
+    estimate = '75-95';
+  } else if (normalized.includes('50-75') || normalized.includes('50%') && normalized.includes('75')) {
     estimate = '50-75';
-  } else if (command.includes('more') || command.includes('>') || command.includes('75%')) {
-    estimate = 'more-than-75';
+  } else if (normalized.includes('25-50') || normalized.includes('25%') && normalized.includes('50')) {
+    estimate = '25-50';
+  } else if (normalized.includes('0-5') || normalized.includes('0%') && normalized.includes('5')) {
+    estimate = '0-5';
+  } else if (normalized.includes('less') || normalized.includes('<') || normalized.includes('25') && !normalized.includes('50')) {
+    estimate = 'less-than-25';
   }
 
   if (!estimate) {
     addBotMessage(`<p>Please pick one:</p>`);
-    setChips(['Less than 25%', '25-50%', '50-75%', 'More than 75%']);
+    setChips(['0-5%', 'Less than 25%', '25-50%', '50-75%', '75-95%', '95-100%']);
     return;
   }
 
@@ -3022,20 +3080,24 @@ function handleCalibrationLocations(command) {
 
 function calibrationPercentLabel(estimate) {
   let labels = {
+    '0-5': '0-5%',
     'less-than-25': 'less than 25%',
     '25-50': '25-50%',
     '50-75': '50-75%',
-    'more-than-75': 'more than 75%'
+    '75-95': '75-95%',
+    '95-100': '95-100%'
   };
   return labels[estimate] || estimate;
 }
 
 function calibrationPercentRange(estimate) {
   let ranges = {
+    '0-5': [0, 5],
     'less-than-25': [5, 25],
     '25-50': [25, 50],
     '50-75': [50, 75],
-    'more-than-75': [75, 95]
+    '75-95': [75, 95],
+    '95-100': [95, 100]
   };
   return ranges[estimate] || [25, 75];
 }
@@ -5424,6 +5486,7 @@ if (typeof module !== 'undefined') {
     handleCalibrationLocations: handleCalibrationLocations,
     calculateCalibration: calculateCalibration,
     finishCalibration: finishCalibration,
+    renderProgress: renderProgress,
     calibrationPercentLabel: calibrationPercentLabel,
     calibrationPercentRange: calibrationPercentRange,
     removeUncatalogedBox: removeUncatalogedBox };

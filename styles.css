@@ -618,6 +618,13 @@
     border-color: var(--peony);
   }
 
+  #progress-estimator {
+    display: inline;
+    font-size: 1.5em;
+    line-height: 1;
+    vertical-align: middle;
+  }
+
   @media (max-width: 640px) {
     .sidebar { display: none; }
   }

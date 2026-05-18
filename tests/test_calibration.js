@@ -175,13 +175,13 @@ processInput('none', []);
 processInput('50-75%', []);
 assert('50-75 stored', state.mainQuest.completionEstimate === '50-75');
 
-// 15. More than 75% recognized
-console.log('\n15. More than 75% recognized');
+// 15. 75-95% recognized
+console.log('\n15. 75-95% recognized');
 reset();
 processInput('how much left?', []);
 processInput('none', []);
-processInput('more than 75%', []);
-assert('more-than-75 stored', state.mainQuest.completionEstimate === 'more-than-75');
+processInput('75-95%', []);
+assert('75-95 stored', state.mainQuest.completionEstimate === '75-95');
 
 // 16. Invalid input re-prompts
 console.log('\n16. Invalid percentage input re-prompts');
@@ -293,13 +293,19 @@ let r2 = app.calibrationPercentRange('25-50');
 assert('25-50 is [25,50]', r2[0] === 25 && r2[1] === 50);
 let r3 = app.calibrationPercentRange('50-75');
 assert('50-75 is [50,75]', r3[0] === 50 && r3[1] === 75);
-let r4 = app.calibrationPercentRange('more-than-75');
-assert('more-than-75 is [75,95]', r4[0] === 75 && r4[1] === 95);
+let r4 = app.calibrationPercentRange('75-95');
+assert('75-95 is [75,95]', r4[0] === 75 && r4[1] === 95);
+let r5 = app.calibrationPercentRange('95-100');
+assert('95-100 is [95,100]', r5[0] === 95 && r5[1] === 100);
+let r6 = app.calibrationPercentRange('0-5');
+assert('0-5 is [0,5]', r6[0] === 0 && r6[1] === 5);
 
 // 28. calibrationPercentLabel returns human labels
 console.log('\n28. calibrationPercentLabel returns human labels');
+assert('0-5', app.calibrationPercentLabel('0-5') === '0-5%');
 assert('less-than-25', app.calibrationPercentLabel('less-than-25') === 'less than 25%');
-assert('more-than-75', app.calibrationPercentLabel('more-than-75') === 'more than 75%');
+assert('75-95', app.calibrationPercentLabel('75-95') === '75-95%');
+assert('95-100', app.calibrationPercentLabel('95-100') === '95-100%');
 
 // ── FULL FLOW ─────────────────────────────────────────────────────────────────
 
