@@ -49,4 +49,3 @@ tests/test_trash_all.js
 tests/test_trash.js
 tests/test.js
 tree.txt
-ui.js

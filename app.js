@@ -1,20 +1,6 @@
 // app.js — DeclutterBot core logic
 // DOM-touching functions (addBotMessage, setChips, renderSidebar, etc.)
 // are expected to be defined globally or stubbed before this file runs.
-// Pure helper functions are also available in helpers.js
-
-// Load and make helpers globally available (for tests and modular usage)
-if (typeof require !== 'undefined') {
-  try {
-    require('./helpers.js');
-  } catch(e) {
-    try {
-      require('./tests/helpers.js');
-    } catch(e2) {
-      // helpers.js not available, but that's okay - functions are defined below
-    }
-  }
-}
 
 const _ = typeof require !== 'undefined' ? require('./tests/lodash.js') : window._;
 

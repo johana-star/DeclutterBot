@@ -110,7 +110,6 @@ DeclutterBot will detect the quantity, ask you to confirm, then log each as a se
 ```
 index.html          Browser entry point — HTML, CSS, and UI bindings
 app.js              All application logic
-helpers.js          Pure utility functions (no side effects)
 tests/              Test suite — run with: node tests/test.js
   test.js           Auto-discovers and runs all test_*.js files
   lodash.js         Bundled lodash for tests (no network dependency)

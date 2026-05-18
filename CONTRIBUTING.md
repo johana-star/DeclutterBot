@@ -535,12 +535,7 @@ Following CONTRIBUTING.md principles: each milestone is testable, incremental, a
 - Test: verify bar renders correctly, range calculation accurate
 - **Ships:** Visual feedback on progress
 
-**Milestone 5: Contextual prompting** (Discovery)
-- Detect when user hits thresholds (10+ boxes, 100+ items)
-- Offer "Want to map the rest?" chip in natural conversation breaks
-- Trigger after box completion, during review screens
-- Test: verify triggers fire correctly, don't spam user
-- **Ships:** Opt-in discovery model
+**Milestone 5: Contextual prompting** — removed. High complexity for little value: the feature requires counter state, jitter logic, migration, and careful chip management, but only surfaces to uncalibrated users — invisible to anyone who has already calibrated.
 
 **Milestone 6: Milestones & achievements** (Delight)
 - Detect progress thresholds (25%, 50%, 75%, 100% of estimate)
