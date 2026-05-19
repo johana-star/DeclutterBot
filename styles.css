@@ -393,6 +393,21 @@
 
   .fate-label { text-decoration: wavy underline;}
 
+  .ewaste-filter-tag {
+    color: var(--abyss);
+    text-decoration: underline wavy var(--coastal);
+    text-underline-offset: 3px;
+    cursor: pointer;
+    margin-right: 8px;
+  }
+  .ewaste-filter-tag:hover { opacity: 0.7; }
+  .ewaste-filter-label {
+    color: var(--coastal);
+    font-size: 0.85em;
+    letter-spacing: 0.03em;
+    margin-right: 4px;
+  }
+
   .chat-input-area {
     padding: 14px 20px;
     border-top: 1px solid var(--chevre);

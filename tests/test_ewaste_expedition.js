@@ -211,9 +211,6 @@ addItem(outputBox, 'old monitor', 'trash', 'cracked screen');
 addItem(outputBox, 'spare keyboard', 'unsure');
 addItem(outputBox, 'dead mouse', 'trash');
 processInput('e-waste expedition', []);
-console.log('='*9);
-console.log(lastBotMessage);
-console.log('='*9);
 assertIncludes('contains old monitor', lastBotMessage, 'old monitor');
 assertIncludes('contains spare keyboard', lastBotMessage, 'spare keyboard');
 assertIncludes('contains dead mouse', lastBotMessage, 'dead mouse');
@@ -284,6 +281,102 @@ addItem(helpBox2, 'charger', 'trash');
 addItem(helpBox2, 'dead phone', 'unsure');
 processInput('?', []);
 assertIncludes('e-waste present in help above threshold', lastBotMessage, 'E-waste expedition');
+
+
+// ── FILTER TAGS ───────────────────────────────────────────────────────────────
+
+console.log('\n24. Filter tags shown when 1+ word appears 2+ times across found items');
+reset();
+const filterBox = makeBox('Cable shelf');
+addItem(filterBox, 'hdmi cable', 'trash', 'amazon basics');
+addItem(filterBox, 'usb cable', 'trash', 'short cable');
+addItem(filterBox, 'power cable', 'unsure');
+processInput('e-waste expedition', []);
+assertIncludes('filter tags present', lastBotMessage, 'ewaste-filter-tag');
+assertIncludes('"cable" tag shown (appears 3x in names)', lastBotMessage, '>cable<');
+
+console.log('\n25. Filter tags absent when no word appears 2+ times');
+reset();
+const uniqueBox = makeBox('Unique items');
+addItem(uniqueBox, 'old laptop', 'trash', 'dead battery');
+addItem(uniqueBox, 'broken tablet', 'trash', 'cracked screen');
+addItem(uniqueBox, 'spare router', 'unsure', 'factory reset needed');
+processInput('e-waste expedition', []);
+assertNotIncludes('no repeated words — no filter tags', lastBotMessage, 'ewaste-filter-tag');
+
+console.log('\n26. filter ewaste <word> command filters displayed items');
+reset();
+const mixedBox = makeBox('Mixed shelf');
+addItem(mixedBox, 'hdmi cable', 'trash');
+addItem(mixedBox, 'usb cable', 'trash');
+addItem(mixedBox, 'old phone', 'unsure');
+addItem(mixedBox, 'phone charger', 'trash');
+processInput('filter ewaste cable', []);
+assertIncludes('cable items shown', lastBotMessage, 'hdmi cable');
+assertIncludes('usb cable shown', lastBotMessage, 'usb cable');
+assertNotIncludes('phone not shown when filtering cable', lastBotMessage, 'old phone');
+
+console.log('\n27. Filter header shows count of filtered vs total');
+reset();
+const countBox = makeBox('Count shelf');
+addItem(countBox, 'hdmi cable', 'trash');
+addItem(countBox, 'usb cable', 'trash');
+addItem(countBox, 'old phone', 'unsure');
+addItem(countBox, 'phone charger', 'trash');
+processInput('filter ewaste cable', []);
+assertIncludes('header shows filtered count', lastBotMessage, '2 of 4');
+
+console.log('\n28. Filter header shows active filter label');
+reset();
+const labelBox = makeBox('Label shelf');
+addItem(labelBox, 'hdmi cable', 'trash');
+addItem(labelBox, 'usb cable', 'trash');
+addItem(labelBox, 'phone', 'unsure');
+addItem(labelBox, 'charger', 'trash');
+processInput('filter ewaste cable', []);
+assertIncludes('filter label shown in header', lastBotMessage, 'filtered by');
+assertIncludes('filter word shown', lastBotMessage, 'cable');
+
+console.log('\n29. Filter tags still shown when filter is active (switching is one click)');
+reset();
+const switchBox = makeBox('Switch shelf');
+addItem(switchBox, 'hdmi cable', 'trash', 'short cable');
+addItem(switchBox, 'usb cable', 'trash');
+addItem(switchBox, 'old phone', 'unsure', 'phone broken');
+addItem(switchBox, 'phone charger', 'trash');
+processInput('filter ewaste cable', []);
+assertIncludes('filter tags still present when filter active', lastBotMessage, 'ewaste-filter-tag');
+
+console.log('\n30. Unfiltered expedition shows all items with no filter label');
+reset();
+const allBox = makeBox('All shelf');
+addItem(allBox, 'hdmi cable', 'trash');
+addItem(allBox, 'usb cable', 'trash');
+addItem(allBox, 'old phone', 'unsure');
+processInput('e-waste expedition', []);
+assertNotIncludes('no filter label when unfiltered', lastBotMessage, 'filtered by');
+assertIncludes('all items shown', lastBotMessage, 'old phone');
+
+console.log('\n31. filter ewaste command works as global intercept from BOX_OPEN');
+reset();
+const interceptBox = makeBox('Intercept shelf');
+addItem(interceptBox, 'hdmi cable', 'trash');
+addItem(interceptBox, 'usb cable', 'unsure');
+addItem(interceptBox, 'old phone', 'trash');
+state.conversationStage = 'BOX_OPEN';
+state.activeBoxId = interceptBox.id;
+processInput('filter ewaste cable', []);
+assertIncludes('filter works from BOX_OPEN', lastBotMessage, 'hdmi cable');
+assertNotIncludes('phone excluded from filter', lastBotMessage, 'old phone');
+
+console.log('\n32. Back chip present when filter is active');
+reset();
+const backFilterBox = makeBox('Back filter shelf');
+addItem(backFilterBox, 'hdmi cable', 'trash');
+addItem(backFilterBox, 'usb cable', 'trash');
+addItem(backFilterBox, 'phone', 'unsure');
+processInput('filter ewaste cable', []);
+assert('Back chip present with active filter', lastChips.includes('Back'));
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────
 console.log('\n' + (failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed\n');

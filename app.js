@@ -941,6 +941,10 @@ function tryGlobalIntercept(command, photos, input) {
 
   // E-waste Expedition side quest
   if (command === 'e-waste expedition') { handleEwasteExpedition(); return true; }
+  if (command.startsWith('filter ewaste')) {
+    handleEwasteExpedition(command.split(' ').slice(2).join(' ') || null);
+    return true;
+  }
   if (command === 'just show stats') { showProgress(); return true; }
   if (command === 'not yet') { handleNotYetMapping(); return true; }
   if (command === 'map another') { command = 'map box'; } // Alias for chip
@@ -2732,7 +2736,7 @@ function handleNotYetMapping() {
   }
 }
 
-function handleEwasteExpedition() {
+function handleEwasteExpedition(filter) {
   const foundEWaste = helpers.ewasteItems();
   if (foundEWaste.length === 0) {
     addBotMessage('<p>No e-waste candidates found. Items marked trash or unsure with electronics keywords in their name or notes will show up here.</p>');
@@ -2740,17 +2744,55 @@ function handleEwasteExpedition() {
     return;
   }
 
-  const notes = (item) => item.notes ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>' : '';
-  let message = `<p><strong>E-waste expedition</strong> ${helpers.emoji.emDash} `
-  + `${foundEWaste.length} ${helpers.pluralize('item', foundEWaste.length)} to sort out:</p>`
-  + foundEWaste.reduce((accumulator, { item, box }) => {
-    const grouping = accumulator.find((group) => group.box.id === box.id);
-    grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
-    return accumulator;
-  }, []).map(({ box, items }) =>
-    `<p><strong>${box.name}</strong></p>`
-    + `<p>${items.map((item) => item.name + notes(item)).join('<br/>')}</p>`
-  ).join();
+  // Compute top words across all found items (names + notes combined) for filter tags
+  const stopWords = ['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'for', 'with', 'from'];
+  const wordCounts = {};
+  foundEWaste.forEach(({ item }) => {
+    const text = helpers.normalize(item.name) + ' ' + helpers.normalize(item.notes);
+    text.split(/\s+/).forEach((word) => {
+      const cleaned = word.replace(/[^a-z0-9]/g, '');
+      if (cleaned.length > 2 && !stopWords.includes(cleaned)) {
+        wordCounts[cleaned] = (wordCounts[cleaned] || 0) + 1;
+      }
+    });
+  });
+  const topWords = Object.keys(wordCounts)
+    .filter((word) => wordCounts[word] >= 2)
+    .sort((a, b) => wordCounts[b] - wordCounts[a])
+    .slice(0, 5);
+
+
+    // Build filter tags HTML — coastal wavy underline, preceded by a 'filters:' label
+    const filterTagsHtml = topWords.length >= 1
+    ? '<p><span class="ewaste-filter-label">filters:</span>' + topWords.map((word) =>
+      '<span class="ewaste-filter-tag" onclick="chipClick(' + "'filter ewaste " + word + "')" + '">'
+    + word + '</span>'
+  ).join('') + '</p>'
+  : '';
+
+  const notes = (item) => item.notes
+  ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>'
+  : '';
+
+  // Apply filter if set
+  let displayItems = foundEWaste, headerCount = foundEWaste.length, filterLabel = '';
+  if (filter) {
+    displayItems = foundEWaste.filter(({ item }) => `${item.name} ${item.notes}`.includes(filter));
+    headerCount = displayItems.length + ' of ' + foundEWaste.length;
+    filterLabel = ' — filtered by <em>' + filter + '</em>';
+  }
+
+  let message = '<p><strong>E-waste expedition</strong> ' + helpers.emoji.emDash + ' '
+    + headerCount + ' ' + helpers.pluralize('item', foundEWaste.length) + ' to sort out' + filterLabel + ':</p>'
+    + filterTagsHtml
+    + displayItems.reduce((accumulator, { item, box }) => {
+        const grouping = accumulator.find((group) => group.box.id === box.id);
+        grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
+        return accumulator;
+      }, []).map(({ box, items }) =>
+        '<p><strong>' + box.name + '</strong></p>'
+        + '<p>' + items.map((item) => item.name + notes(item)).join('<br/>') + '</p>'
+      ).join('');
 
   addBotMessage(message);
   setChips(['Back']);
