@@ -19,6 +19,7 @@ tests/test_empty_boxes_detect.js
 tests/test_empty_boxes_elliptical.js
 tests/test_empty_boxes_positions.js
 tests/test_empty_boxes_soft_delete.js
+tests/test_ewaste_expedition.js
 tests/test_export_csv.js
 tests/test_fate_review.js
 tests/test_help.js

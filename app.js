@@ -67,7 +67,21 @@ const helpers = {
     return word + 's';
   },
 
-  normalize: (text) => (text || '').toLowerCase().trim()
+  normalize: (text) => (text || '').toLowerCase().trim(),
+
+  // Returns all active trash+unsure items whose name or notes match EWASTE_PATTERN,
+  // as an array of {item, box} pairs. Used by handleEwasteExpedition and showProgress.
+  ewasteItems: () =>
+    helpers.activeBoxes().flatMap((box) =>
+      helpers.activeItems(box)
+        .filter((item) => {
+          const isEligibleFate = item.fate === 'trash' || item.fate === 'unsure';
+          const nameMatch = EWASTE_PATTERN.test((item.name || '').toLowerCase());
+          const notesMatch = EWASTE_PATTERN.test((item.notes || '').toLowerCase());
+          return isEligibleFate && (nameMatch || notesMatch);
+        })
+        .map((item) => ({ item, box }))
+    )
 };
 
 let state = {
@@ -103,6 +117,17 @@ function titleize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 const FATE_TITLES = FATES.map(titleize);
+
+// E-waste keyword pattern — shared by helpers.ewasteItems() and disposalPrompt()
+const EWASTE_PATTERN = new RegExp([
+  'batter', 'aa\\b', 'aaa\\b', '9v\\b', 'lithium',
+  'laptop', 'phone', 'computer', 'monitor', 'printer',
+  'cable', 'charger', 'keyboard', 'mouse', '\\btv\\b',
+  'tablet', 'speaker', 'headphone', 'camera', 'router',
+  'hard.?drive', 'ssd', '\\bram\\b', '\\bcpu\\b', '\\bgpu\\b',
+  'ewaste', 'e-waste', 'electronic'
+].join('|'));
+
 let collapsedBoxIds = [];
 let sessionDeletedCount = 0;
 let sessionTrashPreference = null; // null | 'always' | 'never'
@@ -913,6 +938,9 @@ function tryGlobalIntercept(command, photos, input) {
 
   // Progress-related chips
   if (command === 'map remaining work') { handleMapRemainingWork(); return true; }
+
+  // E-waste Expedition side quest
+  if (command === 'e-waste expedition') { handleEwasteExpedition(); return true; }
   if (command === 'just show stats') { showProgress(); return true; }
   if (command === 'not yet') { handleNotYetMapping(); return true; }
   if (command === 'map another') { command = 'map box'; } // Alias for chip
@@ -2532,6 +2560,7 @@ function handleHelp() {
       '<em>"Import JSON"</em> / <em>"Import CSV"</em> — merge a saved inventory into current<br/>',
       '<em>"Export JSON"</em> / <em>"Export CSV"</em> — download your inventory<br/>',
       '<em>"Reset"</em> — clear all data (asks for confirmation)<br/>',
+      (helpers.ewasteItems().length >= 3 ? '<em>"E-waste expedition"</em> — list electronics candidates for disposal<br/>' : ''),
       helpers.emoji.upArrow + ' / ' + helpers.emoji.downArrow + ' arrow keys — recall previous commands</p>',
     ];
 
@@ -2657,10 +2686,13 @@ function showProgress() {
   addBotMessage(message);
 
   // Always offer mapping option alongside other actions
+  // E-waste expedition chip surfaces only when threshold is met (3+ candidates)
+  const ewasteChip = helpers.ewasteItems().length >= 3 ? ['E-waste expedition'] : [];
+
   if (state.conversationStage === 'FINISHED') {
-    setChips(['How much left?', 'Map remaining work', 'New box', 'Continue last box', 'Review all boxes']);
+    setChips(['How much left?', 'Map remaining work', 'New box', 'Continue last box', 'Review all boxes'].concat(ewasteChip));
   } else {
-    setChips(['How much left?', 'Map remaining work', 'Add item', 'Review items', 'Done with this box']);
+    setChips(['How much left?', 'Map remaining work', 'Add item', 'Review items', 'Done with this box'].concat(ewasteChip));
   }
 
   commitState();
@@ -2698,6 +2730,30 @@ function handleNotYetMapping() {
   } else {
     setBoxOpenChips();
   }
+}
+
+function handleEwasteExpedition() {
+  const foundEWaste = helpers.ewasteItems();
+  if (foundEWaste.length === 0) {
+    addBotMessage('<p>No e-waste candidates found. Items marked trash or unsure with electronics keywords in their name or notes will show up here.</p>');
+    setChips(['Back']);
+    return;
+  }
+
+  const notes = (item) => item.notes ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>' : '';
+  let message = `<p><strong>E-waste expedition</strong> ${helpers.emoji.emDash} `
+  + `${foundEWaste.length} ${helpers.pluralize('item', foundEWaste.length)} to sort out:</p>`
+  + foundEWaste.reduce((accumulator, { item, box }) => {
+    const grouping = accumulator.find((group) => group.box.id === box.id);
+    grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
+    return accumulator;
+  }, []).map(({ box, items }) =>
+    `<p><strong>${box.name}</strong></p>`
+    + `<p>${items.map((item) => item.name + notes(item)).join('<br/>')}</p>`
+  ).join();
+
+  addBotMessage(message);
+  setChips(['Back']);
 }
 
 function handleMapUncatalogedBox(text) {
@@ -4719,14 +4775,12 @@ function maybeMantraOnItem() {
 function disposalPrompt(itemName) {
   var n = (itemName||'').toLowerCase();
   // Batteries — more accessible drop-offs than general e-waste
-  if (n.match(/batter|aa|aaa|9v|lithium/)) {
+  if (n.match(/batter|aa\b|aaa\b|9v\b|lithium/)) {
     return 'Batteries can be dropped off at many libraries, hardware stores, or e-waste facilities' +
       ' ' + helpers.emoji.emDash + ' where will you take this?';
   }
-  // E-waste
-  var ewastePattern1 = /laptop|phone|computer|monitor|printer|cable|charger|keyboard|mouse|\btv\b/;
-  var ewastePattern2 = /tablet|speaker|headphone|camera|router|hard drive|ssd|ram|cpu|gpu/;
-  if (n.match(ewastePattern1) || n.match(ewastePattern2)) {
+  // E-waste — uses shared EWASTE_PATTERN
+  if (EWASTE_PATTERN.test(n)) {
     return 'E-waste needs a special drop-off ' + helpers.emoji.emDash + ' where will you take it?';
   }
   // Clothing / textiles

@@ -343,6 +343,8 @@ When planning work sessions, use **story points** (relative effort) rather than 
 
 ## Completed Tasks
 
+- E-waste Expedition side quest — `e-waste expedition` command lists all active trash+unsure items matching `EWASTE_PATTERN` (electronics keywords in name or notes), grouped by source box with notes inline. Chip surfaces in `showProgress` and `handleHelp` when 3+ candidates exist; invisible otherwise. `EWASTE_PATTERN` is a shared constant used by both `helpers.ewasteItems()` and `disposalPrompt()` — no duplicate keyword lists. 30 tests in `test_ewaste_expedition.js`.
+
 - Promote location to box — `convert location <name>`, `convert location <name> to box`, `nest <name>`, `nest <name> in <location>`. Finds all boxes whose `location` string matches the name, reparents them under a target box (existing box with that name, or newly created), sets their `location` to `null`. `effectiveLocation(box)` walks the parent chain to find the nearest non-null location — boxes with `location: null` inherit from their parent. Ambiguous case (name matches both a location and a box) surfaces a clarifying message. 26 tests in test_promote_location.js.
 
 - Multi-line item entry — Shift+Enter inserts a newline in the textarea (Enter still submits). When a multiline submission arrives in `AWAITING_ITEM_NAME` or `BOX_OPEN`, `processMultilineItems(lines)` handles it: empty lines skipped, each non-empty line parsed through `parseItemEntry`, batch quantities expanded, all items logged immediately with no fate/notes prompts (name-only lines get unsure). Lines with unrecognized fates are cached and reported in the summary message with the original line text for easy resubmission. Summary: "N items added." Stage awareness (routing line 1 to the active prompt handler) deferred to v2. 37 tests in test_multiline.js.
@@ -394,12 +396,14 @@ Side quests are contextual action prompts that bridge the gap between "cataloged
 
 **Core Quest Types:**
 
-1. **E-waste Expedition Quest** 🔌
-   - **Trigger:** 3+ items marked trash with "ewaste" in notes, or electronics category
-   - **Action:** Groups e-waste items by disposal category (batteries, cables, devices)
-   - **Output:** Generates packing manifest with item-specific notes
-   - **Optional:** Find e-waste facilities near user location
+1. **E-waste Expedition Quest** 🔌 ✅
+   - **Trigger:** 3+ items marked trash or unsure matching `EWASTE_PATTERN` (name or notes)
+   - **Action:** Lists all e-waste candidates grouped by source box with notes inline
+   - **Output:** Flat list with item names, notes, and box context
+   - **Chip:** Surfaces in `showProgress` and `handleHelp` when threshold met; hidden otherwise
    - **Value:** E-waste requires special disposal; this makes the detailed notes actionable
+   - **Deferred to v2:** Find e-waste facilities near user location; user-editable keyword list (see Settings Drawer)
+   - 30 tests in `tests/test_ewaste_expedition.js`
 
 2. **Cable Consolidation Quest** 🎯
    - **Trigger:** 10+ cables/chargers/power bricks marked "unsure"
@@ -535,7 +539,12 @@ Following CONTRIBUTING.md principles: each milestone is testable, incremental, a
 - Test: verify bar renders correctly, range calculation accurate
 - **Ships:** Visual feedback on progress
 
-**Milestone 5: Contextual prompting** — removed. High complexity for little value: the feature requires counter state, jitter logic, migration, and careful chip management, but only surfaces to uncalibrated users — invisible to anyone who has already calibrated.
+**Milestone 5: Contextual prompting** (Discovery)
+- Detect when user hits thresholds (10+ boxes, 100+ items)
+- Offer "Want to map the rest?" chip in natural conversation breaks
+- Trigger after box completion, during review screens
+- Test: verify triggers fire correctly, don't spam user
+- **Ships:** Opt-in discovery model
 
 **Milestone 6: Milestones & achievements** (Delight)
 - Detect progress thresholds (25%, 50%, 75%, 100% of estimate)
