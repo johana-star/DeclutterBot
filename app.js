@@ -232,6 +232,12 @@ function loadState() {
         if (item.photos !== undefined) { delete item.photos; }
       });
     });
+
+    // Seed issuedIds ledger from loaded state so uid() won't re-issue existing IDs
+    state.boxes.forEach(function(box) {
+      issuedIds.add(box.id);
+      box.items.forEach(function(item) { issuedIds.add(item.id); });
+    });
   } catch(e) {} }
 }
 
@@ -241,12 +247,22 @@ function commitState() {
   updateContextBar();
 }
 
+// Ledger of every ID ever issued by uid() — prevents re-issuing IDs that have
+// been generated but not yet committed to state. Seeded from state on loadState().
+const issuedIds = new Set();
+
 function uid(length = 7) {
-  const inUse = new Set(
-    state.boxes.flatMap((box) => [box.id, ...box.items.map((item) => item.id)])
-  );
+  const spaceSize = Math.pow(36, length);
+  const inUse = new Set([
+    ...issuedIds,
+    ...state.boxes.flatMap((box) => [box.id, ...box.items.map((item) => item.id)])
+  ]);
+  if (inUse.size >= spaceSize) {
+    throw new Error('uid: ID space exhausted for length ' + length + ' (36^' + length + ' = ' + spaceSize + ')');
+  }
   let id;
   do { id = Math.random().toString(36).slice(2, 2 + length); } while (inUse.has(id));
+  issuedIds.add(id);
   return id;
 }
 
@@ -5580,7 +5596,7 @@ function initSidebarDrag() {
 
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
-  module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, helpers, queries, countFates, countFatesDeep,
+  module.exports = { state, FATES, LETTERS, uid, issuedIds, activeBox, activeItem, helpers, queries, countFates, countFatesDeep,
     processInput, handleMove, handleBatchConfirm, handleBatchQty,
     commitBatch, handleFate, handleItemNotes, handleItemName, parseItemEntry,
     processMultilineItems,

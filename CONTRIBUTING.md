@@ -631,6 +631,7 @@ Following CONTRIBUTING.md principles: each milestone is testable, incremental, a
 - No chips shown after "Review items" on an empty box ✅ fixed — `setBoxOpenChips()` now called after the empty message in `reviewBox`.
 - Trash N from box review ✅ fixed — `state._reviewingBox` flag set in `handleTrashByNumber`, checked in `deleteActiveItem` and `handleDisposal` to call `reviewBox()` instead of `setBoxOpenChips()`.
 - Change fate from box review ✅ resolved — elliptical action chips (Keep, Donate, Sell, Unsure, Trash, Delete) now appear in the review screen. 1-2 eligible items show numbered chips (e.g. `Keep 1`); 3+ show an elliptical chip (e.g. `Keep...`) which prepopulates the input and sends a reminder listing eligible item numbers. Chip order and filter logic driven by the `FATES` constant via `flatMap`. Implemented via `buildActionChips`, `eligibleGroupNumbers`, and `handleEllipticalAction` helpers.
+- `uid()` is now guaranteed to be unique and throws an error when the uid space is exhausted.
 
 ## Session Summary
 

@@ -15,9 +15,10 @@ global.escHtml          = function(s) { return String(s || ''); };
 global.renderMarkdown   = function(s) { return s; };
 global.localStorage     = { getItem: function() { return null; }, setItem: function() {}, removeItem: function() {} };
 
-const app   = require('../app.js');
-const state = app.state;
-const uid   = app.uid;
+const app       = require('../app.js');
+const state     = app.state;
+const uid       = app.uid;
+const issuedIds = app.issuedIds;
 
 // ── HARNESS ───────────────────────────────────────────────────────────────────
 let passed = 0, failed = 0;
@@ -29,6 +30,7 @@ function assert(desc, condition) {
 function reset() {
   state.boxes = [];
   state.activeBoxId = null;
+  issuedIds.clear();
 }
 
 // Base-36 single-character alphabet: 0-9 + a-z = 36 possible values
@@ -66,7 +68,7 @@ console.log('\n3. With 35 of 36 single-char ids in use, uid(1) returns the one r
 reset();
 // Leave out one id — use the last one as the expected result
 const remaining = BASE36[BASE36.length - 1]; // 'z'
-populateIds(BASE36.slice(0, 35)); // all except 'z'
+populateIds(BASE36.slice(0, BASE36.length - 1)); // all except 'z'
 const result = uid(1);
 assert('returns the only available id', result === remaining);
 
@@ -127,6 +129,38 @@ for (let i = 0; i < 20; i++) {
   sequentialIds.add(newId);
 }
 assert('20 unique ids generated sequentially', sequentialIds.size === 20);
+
+console.log('\n7. uid() registers generated ids in issuedIds ledger');
+reset();
+const before = issuedIds.size;
+const newId = uid(1);
+assert('id added to issuedIds', issuedIds.has(newId));
+assert('ledger grew by 1', issuedIds.size === before + 1);
+
+console.log('\n8. uid(1) never re-issues an id already in issuedIds even if not in state');
+reset();
+// Generate an id, do NOT add it to state, then verify it is never re-issued
+const firstId = uid(1);
+// issuedIds has firstId; state does not
+const subsequent = new Set();
+for (let i = 0; i < 34; i++) { subsequent.add(uid(1)); }
+assert('first id never re-issued', !subsequent.has(firstId));
+
+console.log('\n9. uid(1) throws when ID space is exhausted');
+reset();
+// Fill all 36 single-char ids into issuedIds
+BASE36.forEach((id) => issuedIds.add(id));
+let threw = false;
+try { uid(1); } catch (e) { threw = true; }
+assert('throws on exhausted space', threw);
+
+console.log('\n10. Error message identifies the exhausted length and space size');
+reset();
+BASE36.forEach((id) => issuedIds.add(id));
+let errorMessage = '';
+try { uid(1); } catch (e) { errorMessage = e.message; }
+assert('error mentions length', errorMessage.includes('length 1'));
+assert('error mentions space size', errorMessage.includes('36'));
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────
 console.log('\n' + (failed === 0 ? '\u2705' : '\u274c') + ' ' + passed + ' passed, ' + failed + ' failed\n');
