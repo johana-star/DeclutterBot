@@ -81,6 +81,24 @@ const helpers = {
           return isEligibleFate && (nameMatch || notesMatch);
         })
         .map((item) => ({ item, box }))
+    ),
+
+  // Returns all active donate items as an array of {item, box} pairs.
+  // Used by handleDonationRun and showProgress.
+  donationItems: () =>
+    helpers.activeBoxes().flatMap((box) =>
+      helpers.activeItems(box)
+        .filter((item) => item.fate === 'donate')
+        .map((item) => ({ item, box }))
+    ),
+
+  // Returns all active sell items as an array of {item, box} pairs.
+  // Used by handleSellQuest and showProgress.
+  sellItems: () =>
+    helpers.activeBoxes().flatMap((box) =>
+      helpers.activeItems(box)
+        .filter((item) => item.fate === 'sell')
+        .map((item) => ({ item, box }))
     )
 };
 
@@ -941,6 +959,12 @@ function tryGlobalIntercept(command, photos, input) {
 
   // E-waste Expedition side quest
   if (command === 'e-waste expedition') { handleEwasteExpedition(); return true; }
+
+  // Donation Run side quest
+  if (command === 'donation run') { handleDonationRun(); return true; }
+
+  // Sell Quest side quest
+  if (command === 'sell quest') { handleSellQuest(); return true; }
   if (command.startsWith('filter ewaste')) {
     handleEwasteExpedition(command.split(' ').slice(2).join(' ') || null);
     return true;
@@ -2564,6 +2588,8 @@ function handleHelp() {
       '<em>"Import JSON"</em> / <em>"Import CSV"</em> — merge a saved inventory into current<br/>',
       '<em>"Export JSON"</em> / <em>"Export CSV"</em> — download your inventory<br/>',
       '<em>"Reset"</em> — clear all data (asks for confirmation)<br/>',
+      (helpers.sellItems().length >= 5 ? '<em>"Sell quest"</em> — review your sell pile<br/>' : ''),
+      (helpers.donationItems().length >= 5 ? '<em>"Donation run"</em> — pack up your donate pile<br/>' : ''),
       (helpers.ewasteItems().length >= 3 ? '<em>"E-waste expedition"</em> — list electronics candidates for disposal<br/>' : ''),
       helpers.emoji.upArrow + ' / ' + helpers.emoji.downArrow + ' arrow keys — recall previous commands</p>',
     ];
@@ -2690,14 +2716,16 @@ function showProgress() {
   addBotMessage(message);
 
   // Always offer mapping option alongside other actions
-  // E-waste expedition chip surfaces only when threshold is met (3+ candidates)
+  // Side quest chips surface only when their thresholds are met
+  const baseChips = ['How much left?', 'Map remaining work'];
+  const maybeFinishedChips = state.conversationStage === 'FINISHED'
+          ? ['New box', 'Continue last box', 'Review all boxes']
+          : ['Add item', 'Review items', 'Done with this box'];
+  const sellChip = helpers.sellItems().length >= 5 ? ['Sell quest'] : [];
+  const donationChip = helpers.donationItems().length >= 5 ? ['Donation run'] : [];
   const ewasteChip = helpers.ewasteItems().length >= 3 ? ['E-waste expedition'] : [];
 
-  if (state.conversationStage === 'FINISHED') {
-    setChips(['How much left?', 'Map remaining work', 'New box', 'Continue last box', 'Review all boxes'].concat(ewasteChip));
-  } else {
-    setChips(['How much left?', 'Map remaining work', 'Add item', 'Review items', 'Done with this box'].concat(ewasteChip));
-  }
+  setChips(baseChips.concat(sellChip).concat(donationChip).concat(ewasteChip).concat(maybeFinishedChips));
 
   commitState();
 }
@@ -2736,6 +2764,58 @@ function handleNotYetMapping() {
   }
 }
 
+function handleSellQuest() {
+  const found = helpers.sellItems();
+  if (found.length === 0) {
+    addBotMessage('<p>No sell candidates yet. Mark items as sell while reviewing a box and they\'ll show up here.</p>');
+    setChips(['Back']);
+    return;
+  }
+
+  const notes = (item) => item.notes
+    ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>'
+    : '';
+
+  const message = '<p><strong>Sell quest</strong> ' + helpers.emoji.emDash + ' '
+    + found.length + ' ' + helpers.pluralize('item', found.length) + ' ready to sell:</p>'
+    + found.reduce((accumulator, { item, box }) => {
+        const grouping = accumulator.find((group) => group.box.id === box.id);
+        grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
+        return accumulator;
+      }, []).map(({ box, items }) =>
+        '<p><strong>' + box.name + '</strong></p>'
+        + '<p>' + items.map((item) => item.name + notes(item)).join('<br/>') + '</p>'
+      ).join('');
+
+  addBotMessage(message);
+  setChips(['Back']);
+}
+
+function handleDonationRun() {
+  const found = helpers.donationItems();
+  if (found.length === 0) {
+    addBotMessage('<p>No donation candidates yet. Mark items as donate while reviewing a box and they\'ll show up here.</p>');
+    setChips(['Back']);
+    return;
+  }
+
+  const notes = (item) => item.notes ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>' : '';
+
+  const message = '<p><strong>Donation run</strong> ' + helpers.emoji.emDash + ' '
+    + found.length + ' ' + helpers.pluralize('item', found.length) + ' ready to go:</p>'
+    + found.reduce((accumulator, { item, box }) => {
+        const grouping = accumulator.find((group) => group.box.id === box.id);
+        grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
+        return accumulator;
+      }, []).map(({ box, items }) =>
+        '<p><strong>' + box.name + '</strong></p>'
+        + '<p>' + items.map((item) => item.name + notes(item)).join('<br/>') + '</p>'
+      ).join('');
+
+  addBotMessage(message);
+  setChips(['Back']);
+}
+
 function handleEwasteExpedition(filter) {
   const foundEWaste = helpers.ewasteItems();
   if (foundEWaste.length === 0) {
@@ -2770,9 +2850,7 @@ function handleEwasteExpedition(filter) {
   ).join('') + '</p>'
   : '';
 
-  const notes = (item) => item.notes
-  ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>'
-  : '';
+  const notes = (item) => item.notes ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>' : '';
 
   // Apply filter if set
   let displayItems = foundEWaste, headerCount = foundEWaste.length, filterLabel = '';

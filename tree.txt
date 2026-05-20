@@ -12,6 +12,7 @@ tests/test_box_batch.js
 tests/test_calibration.js
 tests/test_context_bar_estimator.js
 tests/test_delete_dump.js
+tests/test_donation_run.js
 tests/test_elliptical_chips.js
 tests/test_empty_boxes_chips.js
 tests/test_empty_boxes_delete_commands.js
@@ -41,11 +42,13 @@ tests/test_nest.js
 tests/test_progress_bar.js
 tests/test_promote_location.js
 tests/test_promote.js
+tests/test_query_factory.js
 tests/test_rename_boxes_commands.js
 tests/test_rename_boxes_complete.js
 tests/test_rename_boxes_detect.js
 tests/test_rename_boxes_elliptical.js
 tests/test_reset.js
+tests/test_sell_quest.js
 tests/test_trash_all.js
 tests/test_trash.js
 tests/test.js
