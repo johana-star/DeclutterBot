@@ -67,39 +67,44 @@ const helpers = {
     return word + 's';
   },
 
-  normalize: (text) => (text || '').toLowerCase().trim(),
+  normalize: (text) => (text || '').toLowerCase().trim()
+};
 
-  // Returns all active trash+unsure items whose name or notes match EWASTE_PATTERN,
-  // as an array of {item, box} pairs. Used by handleEwasteExpedition and showProgress.
-  ewasteItems: () =>
-    helpers.activeBoxes().flatMap((box) =>
+// queryFactory — produces a named query object over active inventory items.
+// Takes a predicate to select items, returns an object with:
+//   items(filter?)    — flat [{item, box}] array, optionally narrowed by a string filter
+//   itemsByBox(filter?) — [{box, items[]}] grouped for display
+//   count(filter?)    — total item count (not box count)
+const queryFactory = (predicate) => ({
+  items: (filter) => {
+    const base = helpers.activeBoxes().flatMap((box) =>
       helpers.activeItems(box)
-        .filter((item) => {
-          const isEligibleFate = item.fate === 'trash' || item.fate === 'unsure';
-          const nameMatch = EWASTE_PATTERN.test((item.name || '').toLowerCase());
-          const notesMatch = EWASTE_PATTERN.test((item.notes || '').toLowerCase());
-          return isEligibleFate && (nameMatch || notesMatch);
-        })
+        .filter(predicate)
         .map((item) => ({ item, box }))
-    ),
+    );
+    if (!filter) { return base; }
+    return base.filter(({ item }) =>
+      `${helpers.normalize(item.name)} ${helpers.normalize(item.notes)}`.includes(helpers.normalize(filter))
+    );
+  },
+  itemsByBox: (filter) =>
+    queryFactory(predicate).items(filter).reduce((accumulator, { item, box }) => {
+      const grouping = accumulator.find((group) => group.box.id === box.id);
+      grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
+      return accumulator;
+    }, []),
+  count: (filter) => queryFactory(predicate).items(filter).length
+});
 
-  // Returns all active donate items as an array of {item, box} pairs.
-  // Used by handleDonationRun and showProgress.
-  donationItems: () =>
-    helpers.activeBoxes().flatMap((box) =>
-      helpers.activeItems(box)
-        .filter((item) => item.fate === 'donate')
-        .map((item) => ({ item, box }))
-    ),
+// Named query objects.
+const isTrashOrUnsure = (item) => item.fate === 'trash' || item.fate === 'unsure';
+const ewasteNameOrNotesMatch  = (item) => EWASTE_PATTERN.test((item.name  || '').toLowerCase())
+  || EWASTE_PATTERN.test((item.notes || '').toLowerCase());
 
-  // Returns all active sell items as an array of {item, box} pairs.
-  // Used by handleSellQuest and showProgress.
-  sellItems: () =>
-    helpers.activeBoxes().flatMap((box) =>
-      helpers.activeItems(box)
-        .filter((item) => item.fate === 'sell')
-        .map((item) => ({ item, box }))
-    )
+const queries = {
+  ewasteItems:   queryFactory((item) => isTrashOrUnsure(item) && (ewasteNameOrNotesMatch(item))),
+  donationItems: queryFactory((item) => item.fate === 'donate'),
+  sellItems:     queryFactory((item) => item.fate === 'sell'),
 };
 
 let state = {
@@ -136,7 +141,7 @@ function titleize(str) {
 }
 const FATE_TITLES = FATES.map(titleize);
 
-// E-waste keyword pattern — shared by helpers.ewasteItems() and disposalPrompt()
+// E-waste keyword pattern — shared by queries.ewasteItems predicate and disposalPrompt()
 const EWASTE_PATTERN = new RegExp([
   'batter', 'aa\\b', 'aaa\\b', '9v\\b', 'lithium',
   'laptop', 'phone', 'computer', 'monitor', 'printer',
@@ -2588,9 +2593,9 @@ function handleHelp() {
       '<em>"Import JSON"</em> / <em>"Import CSV"</em> — merge a saved inventory into current<br/>',
       '<em>"Export JSON"</em> / <em>"Export CSV"</em> — download your inventory<br/>',
       '<em>"Reset"</em> — clear all data (asks for confirmation)<br/>',
-      (helpers.sellItems().length >= 5 ? '<em>"Sell quest"</em> — review your sell pile<br/>' : ''),
-      (helpers.donationItems().length >= 5 ? '<em>"Donation run"</em> — pack up your donate pile<br/>' : ''),
-      (helpers.ewasteItems().length >= 3 ? '<em>"E-waste expedition"</em> — list electronics candidates for disposal<br/>' : ''),
+      (queries.sellItems.count() >= 5 ? '<em>"Sell quest"</em> — review your sell pile<br/>' : ''),
+      (queries.donationItems.count() >= 5 ? '<em>"Donation run"</em> — pack up your donate pile<br/>' : ''),
+      (queries.ewasteItems.count() >= 3 ? '<em>"E-waste expedition"</em> — list electronics candidates for disposal<br/>' : ''),
       helpers.emoji.upArrow + ' / ' + helpers.emoji.downArrow + ' arrow keys — recall previous commands</p>',
     ];
 
@@ -2721,9 +2726,9 @@ function showProgress() {
   const maybeFinishedChips = state.conversationStage === 'FINISHED'
           ? ['New box', 'Continue last box', 'Review all boxes']
           : ['Add item', 'Review items', 'Done with this box'];
-  const sellChip = helpers.sellItems().length >= 5 ? ['Sell quest'] : [];
-  const donationChip = helpers.donationItems().length >= 5 ? ['Donation run'] : [];
-  const ewasteChip = helpers.ewasteItems().length >= 3 ? ['E-waste expedition'] : [];
+  const sellChip = queries.sellItems.count() >= 5 ? ['Sell quest'] : [];
+  const donationChip = queries.donationItems.count() >= 5 ? ['Donation run'] : [];
+  const ewasteChip = queries.ewasteItems.count() >= 3 ? ['E-waste expedition'] : [];
 
   setChips(baseChips.concat(sellChip).concat(donationChip).concat(ewasteChip).concat(maybeFinishedChips));
 
@@ -2765,8 +2770,8 @@ function handleNotYetMapping() {
 }
 
 function handleSellQuest() {
-  const found = helpers.sellItems();
-  if (found.length === 0) {
+  const itemCount = queries.sellItems.count();
+  if (itemCount === 0) {
     addBotMessage('<p>No sell candidates yet. Mark items as sell while reviewing a box and they\'ll show up here.</p>');
     setChips(['Back']);
     return;
@@ -2777,12 +2782,8 @@ function handleSellQuest() {
     : '';
 
   const message = '<p><strong>Sell quest</strong> ' + helpers.emoji.emDash + ' '
-    + found.length + ' ' + helpers.pluralize('item', found.length) + ' ready to sell:</p>'
-    + found.reduce((accumulator, { item, box }) => {
-        const grouping = accumulator.find((group) => group.box.id === box.id);
-        grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
-        return accumulator;
-      }, []).map(({ box, items }) =>
+    + itemCount + ' ' + helpers.pluralize('item', itemCount) + ' ready to sell:</p>'
+    + queries.sellItems.itemsByBox().map(({ box, items }) =>
         '<p><strong>' + box.name + '</strong></p>'
         + '<p>' + items.map((item) => item.name + notes(item)).join('<br/>') + '</p>'
       ).join('');
@@ -2792,8 +2793,8 @@ function handleSellQuest() {
 }
 
 function handleDonationRun() {
-  const found = helpers.donationItems();
-  if (found.length === 0) {
+  const itemCount = queries.donationItems.count();
+  if (itemCount === 0) {
     addBotMessage('<p>No donation candidates yet. Mark items as donate while reviewing a box and they\'ll show up here.</p>');
     setChips(['Back']);
     return;
@@ -2802,12 +2803,8 @@ function handleDonationRun() {
   const notes = (item) => item.notes ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>' : '';
 
   const message = '<p><strong>Donation run</strong> ' + helpers.emoji.emDash + ' '
-    + found.length + ' ' + helpers.pluralize('item', found.length) + ' ready to go:</p>'
-    + found.reduce((accumulator, { item, box }) => {
-        const grouping = accumulator.find((group) => group.box.id === box.id);
-        grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
-        return accumulator;
-      }, []).map(({ box, items }) =>
+    + itemCount + ' ' + helpers.pluralize('item', itemCount) + ' ready to go:</p>'
+    + queries.donationItems.itemsByBox().map(({ box, items }) =>
         '<p><strong>' + box.name + '</strong></p>'
         + '<p>' + items.map((item) => item.name + notes(item)).join('<br/>') + '</p>'
       ).join('');
@@ -2817,8 +2814,8 @@ function handleDonationRun() {
 }
 
 function handleEwasteExpedition(filter) {
-  const foundEWaste = helpers.ewasteItems();
-  if (foundEWaste.length === 0) {
+  const itemCount = queries.ewasteItems.count();
+  if (itemCount === 0) {
     addBotMessage('<p>No e-waste candidates found. Items marked trash or unsure with electronics keywords in their name or notes will show up here.</p>');
     setChips(['Back']);
     return;
@@ -2827,6 +2824,7 @@ function handleEwasteExpedition(filter) {
   // Compute top words across all found items (names + notes combined) for filter tags
   const stopWords = ['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'for', 'with', 'from'];
   const wordCounts = {};
+  const foundEWaste = queries.ewasteItems.items();
   foundEWaste.forEach(({ item }) => {
     const text = helpers.normalize(item.name) + ' ' + helpers.normalize(item.notes);
     text.split(/\s+/).forEach((word) => {
@@ -2853,21 +2851,17 @@ function handleEwasteExpedition(filter) {
   const notes = (item) => item.notes ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>' : '';
 
   // Apply filter if set
-  let displayItems = foundEWaste, headerCount = foundEWaste.length, filterLabel = '';
+  let displayItems = foundEWaste, headerCount = itemCount, filterLabel = '';
   if (filter) {
     displayItems = foundEWaste.filter(({ item }) => `${item.name} ${item.notes}`.includes(filter));
-    headerCount = displayItems.length + ' of ' + foundEWaste.length;
+    headerCount = displayItems.length + ' of ' + itemCount;
     filterLabel = ' — filtered by <em>' + filter + '</em>';
   }
 
   let message = '<p><strong>E-waste expedition</strong> ' + helpers.emoji.emDash + ' '
-    + headerCount + ' ' + helpers.pluralize('item', foundEWaste.length) + ' to sort out' + filterLabel + ':</p>'
+    + headerCount + ' ' + helpers.pluralize('item', itemCount) + ' to sort out' + filterLabel + ':</p>'
     + filterTagsHtml
-    + displayItems.reduce((accumulator, { item, box }) => {
-        const grouping = accumulator.find((group) => group.box.id === box.id);
-        grouping ? grouping.items.push(item) : accumulator.push({ box, items: [item] });
-        return accumulator;
-      }, []).map(({ box, items }) =>
+    + queries.ewasteItems.itemsByBox(filter).map(({ box, items }) =>
         '<p><strong>' + box.name + '</strong></p>'
         + '<p>' + items.map((item) => item.name + notes(item)).join('<br/>') + '</p>'
       ).join('');
@@ -5578,7 +5572,7 @@ function initSidebarDrag() {
 
 // Export core globals for Node.js testing
 if (typeof module !== 'undefined') {
-  module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, helpers, countFates, countFatesDeep,
+  module.exports = { state, FATES, LETTERS, uid, activeBox, activeItem, helpers, queries, countFates, countFatesDeep,
     processInput, handleMove, handleBatchConfirm, handleBatchQty,
     commitBatch, handleFate, handleItemNotes, handleItemName, parseItemEntry,
     processMultilineItems,

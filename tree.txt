@@ -51,5 +51,6 @@ tests/test_reset.js
 tests/test_sell_quest.js
 tests/test_trash_all.js
 tests/test_trash.js
+tests/test_uid.js
 tests/test.js
 tree.txt

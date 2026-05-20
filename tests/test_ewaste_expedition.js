@@ -20,7 +20,7 @@ global.localStorage     = { getItem: function() { return null; }, setItem: funct
 
 const app          = require('../app.js');
 const state        = app.state;
-const helpers      = app.helpers;
+const queries      = app.queries;
 const processInput = app.processInput;
 
 // ── HARNESS ───────────────────────────────────────────────────────────────────
@@ -86,18 +86,18 @@ function addItem(box, name, fate, notes) {
 
 console.log('\nE-waste Expedition Side Quest\n');
 
-// ── helpers.ewasteItems() ─────────────────────────────────────────────────────
+// ── queries.ewasteItems ──────────────────────────────────────────────────────────
 
 console.log('1. ewasteItems returns empty array with no items');
 reset();
-assert('empty array', helpers.ewasteItems().length === 0);
+assert('empty array', queries.ewasteItems.count() === 0);
 
 console.log('\n2. trash items with e-waste keywords in name are returned');
 reset();
 const box1 = makeBox('Electronics shelf');
 addItem(box1, 'old laptop', 'trash');
 addItem(box1, 'broken charger', 'trash');
-const found = helpers.ewasteItems();
+const found = queries.ewasteItems.items();
 assert('laptop returned', found.some(({ item }) => item.name === 'old laptop'));
 assert('charger returned', found.some(({ item }) => item.name === 'broken charger'));
 
@@ -105,14 +105,14 @@ console.log('\n3. unsure items with e-waste keywords are returned');
 reset();
 const box2 = makeBox('Junk drawer');
 addItem(box2, 'mystery cable', 'unsure');
-const foundUnsure = helpers.ewasteItems();
+const foundUnsure = queries.ewasteItems.items();
 assert('unsure cable returned', foundUnsure.some(({ item }) => item.name === 'mystery cable'));
 
 console.log('\n4. items with e-waste keywords in notes are returned');
 reset();
 const box3 = makeBox('Closet');
 addItem(box3, 'old thing', 'trash', 'ewaste, needs special disposal');
-const foundNotes = helpers.ewasteItems();
+const foundNotes = queries.ewasteItems.items();
 assert('item with ewaste in notes returned', foundNotes.some(({ item }) => item.name === 'old thing'));
 
 console.log('\n5. keep/donate/sell/return items are excluded even with matching keywords');
@@ -122,34 +122,34 @@ addItem(box4, 'working laptop', 'keep');
 addItem(box4, 'spare charger', 'donate');
 addItem(box4, 'old phone', 'sell');
 addItem(box4, 'borrowed cable', 'return');
-assert('keep item excluded', helpers.ewasteItems().length === 0);
+assert('keep item excluded', queries.ewasteItems.count() === 0);
 
 console.log('\n6. items without e-waste keywords are excluded regardless of fate');
 reset();
 const box5 = makeBox('Misc');
 addItem(box5, 'wooden chair', 'trash');
 addItem(box5, 'winter jacket', 'unsure');
-assert('non-ewaste items excluded', helpers.ewasteItems().length === 0);
+assert('non-ewaste items excluded', queries.ewasteItems.count() === 0);
 
 console.log('\n7. soft-deleted items are excluded');
 reset();
 const box6 = makeBox('Shelf');
 const deletedItem = addItem(box6, 'deleted cable', 'trash');
 deletedItem.deleted_at = new Date().toISOString();
-assert('soft-deleted item excluded', helpers.ewasteItems().length === 0);
+assert('soft-deleted item excluded', queries.ewasteItems.count() === 0);
 
 console.log('\n8. items from soft-deleted boxes are excluded');
 reset();
 const deletedBox = makeBox('Gone shelf');
 deletedBox.deleted_at = new Date().toISOString();
 addItem(deletedBox, 'old phone', 'trash');
-assert('item in deleted box excluded', helpers.ewasteItems().length === 0);
+assert('item in deleted box excluded', queries.ewasteItems.count() === 0);
 
 console.log('\n9. ewasteItems returns correct box reference');
 reset();
 const box7 = makeBox('Gadget box', 'bedroom');
 addItem(box7, 'old router', 'trash');
-const refs = helpers.ewasteItems();
+const refs = queries.ewasteItems.items();
 assert('box id matches', refs[0].box.id === box7.id);
 assert('box name matches', refs[0].box.name === 'Gadget box');
 
@@ -160,7 +160,7 @@ reset();
 const boxBatt = makeBox('Battery box');
 addItem(boxBatt, 'AA batteries', 'trash');
 addItem(boxBatt, 'lithium pack', 'unsure');
-assert('AA batteries matched', helpers.ewasteItems().length === 2);
+assert('AA batteries matched', queries.ewasteItems.count() === 2);
 
 console.log('\n11. keyword coverage — devices');
 reset();
@@ -168,14 +168,14 @@ const boxDev = makeBox('Device box');
 addItem(boxDev, 'old phone', 'trash');
 addItem(boxDev, 'broken tablet', 'trash');
 addItem(boxDev, 'dead camera', 'unsure');
-assert('phone, tablet, camera all matched', helpers.ewasteItems().length === 3);
+assert('phone, tablet, camera all matched', queries.ewasteItems.count() === 3);
 
 console.log('\n12. keyword coverage — computer components');
 reset();
 const boxComp = makeBox('Parts bin');
 addItem(boxComp, 'old SSD', 'trash');
 addItem(boxComp, 'spare RAM stick', 'unsure');
-assert('SSD and RAM matched', helpers.ewasteItems().length === 2);
+assert('SSD and RAM matched', queries.ewasteItems.count() === 2);
 
 // ── CHIP THRESHOLD ────────────────────────────────────────────────────────────
 

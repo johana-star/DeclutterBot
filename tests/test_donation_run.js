@@ -20,7 +20,7 @@ global.localStorage     = { getItem: function() { return null; }, setItem: funct
 
 const app          = require('../app.js');
 const state        = app.state;
-const helpers      = app.helpers;
+const queries      = app.queries;
 const processInput = app.processInput;
 
 // ── HARNESS ───────────────────────────────────────────────────────────────────
@@ -86,18 +86,18 @@ function addItem(box, name, fate, notes) {
 
 console.log('\nDonation Run Side Quest\n');
 
-// ── helpers.donationItems() ───────────────────────────────────────────────────
+// ── queries.donationItems ────────────────────────────────────────────────────────
 
 console.log('1. donationItems returns empty array with no items');
 reset();
-assert('empty array', helpers.donationItems().length === 0);
+assert('empty array', queries.donationItems.count() === 0);
 
 console.log('\n2. donate items are returned');
 reset();
 const box1 = makeBox('Living room shelf');
 addItem(box1, 'old lamp', 'donate');
 addItem(box1, 'spare blanket', 'donate');
-const found = helpers.donationItems();
+const found = queries.donationItems.items();
 assert('lamp returned', found.some(({ item }) => item.name === 'old lamp'));
 assert('blanket returned', found.some(({ item }) => item.name === 'spare blanket'));
 
@@ -109,27 +109,27 @@ addItem(box2, 'trash item', 'trash');
 addItem(box2, 'sell item', 'sell');
 addItem(box2, 'unsure item', 'unsure');
 addItem(box2, 'return item', 'return');
-assert('no non-donate items returned', helpers.donationItems().length === 0);
+assert('no non-donate items returned', queries.donationItems.count() === 0);
 
 console.log('\n4. soft-deleted items are excluded');
 reset();
 const box3 = makeBox('Deleted shelf');
 const deletedItem = addItem(box3, 'deleted donation', 'donate');
 deletedItem.deleted_at = new Date().toISOString();
-assert('soft-deleted item excluded', helpers.donationItems().length === 0);
+assert('soft-deleted item excluded', queries.donationItems.count() === 0);
 
 console.log('\n5. items in soft-deleted boxes are excluded');
 reset();
 const deletedBox = makeBox('Gone box');
 deletedBox.deleted_at = new Date().toISOString();
 addItem(deletedBox, 'donation in deleted box', 'donate');
-assert('item in deleted box excluded', helpers.donationItems().length === 0);
+assert('item in deleted box excluded', queries.donationItems.count() === 0);
 
 console.log('\n6. donationItems returns correct box reference');
 reset();
 const box4 = makeBox('Bedroom shelf', 'bedroom');
 addItem(box4, 'old lamp', 'donate');
-const refs = helpers.donationItems();
+const refs = queries.donationItems.items();
 assert('box id matches', refs[0].box.id === box4.id);
 assert('box name matches', refs[0].box.name === 'Bedroom shelf');
 
