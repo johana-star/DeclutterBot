@@ -48,6 +48,7 @@ tests/test_rename_boxes_complete.js
 tests/test_rename_boxes_detect.js
 tests/test_rename_boxes_elliptical.js
 tests/test_reset.js
+tests/test_search.js
 tests/test_sell_quest.js
 tests/test_trash_all.js
 tests/test_trash.js

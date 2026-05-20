@@ -992,6 +992,12 @@ function tryGlobalIntercept(command, photos, input) {
   // Donation Run side quest
   if (command === 'donation run') { handleDonationRun(); return true; }
 
+  // Search items by word
+  if (command.split(' ')[0] === 'search' && command.split(' ').length > 1) {
+    handleSearch(command.split(' ').slice(1).join(' '));
+    return true;
+  }
+
   // Sell Quest side quest
   if (command === 'sell quest') { handleSellQuest(); return true; }
   if (command.startsWith('filter ewaste')) {
@@ -2617,6 +2623,7 @@ function handleHelp() {
       '<em>"Import JSON"</em> / <em>"Import CSV"</em> — merge a saved inventory into current<br/>',
       '<em>"Export JSON"</em> / <em>"Export CSV"</em> — download your inventory<br/>',
       '<em>"Reset"</em> — clear all data (asks for confirmation)<br/>',
+      '<em>"Search [word]"</em> — find all items matching a word across all boxes<br/>',
       (queries.sellItems.count() >= 5 ? '<em>"Sell quest"</em> — review your sell pile<br/>' : ''),
       (queries.donationItems.count() >= 5 ? '<em>"Donation run"</em> — pack up your donate pile<br/>' : ''),
       (queries.ewasteItems.count() >= 3 ? '<em>"E-waste expedition"</em> — list electronics candidates for disposal<br/>' : ''),
@@ -2719,7 +2726,9 @@ function showProgress() {
       .sort(function(a, b) { return wordCounts[b] - wordCounts[a]; })
       .slice(0, 5);
     if (topWords.length > 0) {
-      message += '<p>Common in names: ' + topWords.join(', ') + '</p>';
+      message += '<p>Common in names: ' + topWords.map(function(word) {
+        return '<span class="word-link" onclick="chipClick(\'' + 'search ' + word + '\')">' + word + '</span>';
+      }).join(', ') + '</p>';
     }
   }
 
@@ -2738,7 +2747,9 @@ function showProgress() {
       .sort(function(a, b) { return notesWordCounts[b] - notesWordCounts[a]; })
       .slice(0, 5);
     if (topNotesWords.length > 0) {
-      message += '<p>Common in notes: ' + topNotesWords.join(', ') + '</p>';
+      message += '<p>Common in notes: ' + topNotesWords.map(function(word) {
+        return '<span class="word-link" onclick="chipClick(\'' + 'search ' + word + '\')">' + word + '</span>';
+      }).join(', ') + '</p>';
     }
   }
 
@@ -2810,6 +2821,33 @@ function handleSellQuest() {
     + queries.sellItems.itemsByBox().map(({ box, items }) =>
         '<p><strong>' + box.name + '</strong></p>'
         + '<p>' + items.map((item) => item.name + notes(item)).join('<br/>') + '</p>'
+      ).join('');
+
+  addBotMessage(message);
+  setChips(['Back']);
+}
+
+function handleSearch(word) {
+  const emptyQuery = queryFactory(() => true);
+  const count      = emptyQuery.count(word);
+
+  if (count === 0) {
+    addBotMessage('<p>No items found matching <em>' + word + '</em>.</p>');
+    setChips(['Back']);
+    return;
+  }
+
+  const notes = (item) => item.notes
+    ? ' ' + helpers.emoji.middleDot + ' <em>' + item.notes + '</em>'
+    : '';
+
+  const fateTag = (item) => ' <span class="fate-label fate-label-' + item.fate + ' fate-label-static">' + item.fate + '</span>';
+
+  const message = '<p><strong>Search:</strong> <em>' + word + '</em> ' + helpers.emoji.emDash + ' '
+    + count + ' ' + helpers.pluralize('item', count) + '</p>'
+    + emptyQuery.itemsByBox(word).map(({ box, items }) =>
+        '<p><strong>' + box.name + '</strong></p>'
+        + '<p>' + items.map((item) => item.name + fateTag(item) + notes(item)).join('<br/>') + '</p>'
       ).join('');
 
   addBotMessage(message);
