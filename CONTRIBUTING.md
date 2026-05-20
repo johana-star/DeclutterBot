@@ -343,8 +343,6 @@ When planning work sessions, use **story points** (relative effort) rather than 
 
 ## Completed Tasks
 
-- E-waste Expedition side quest — `e-waste expedition` command lists all active trash+unsure items matching `EWASTE_PATTERN` (electronics keywords in name or notes), grouped by source box with notes inline. Chip surfaces in `showProgress` and `handleHelp` when 3+ candidates exist; invisible otherwise. `EWASTE_PATTERN` is a shared constant used by both `helpers.ewasteItems()` and `disposalPrompt()` — no duplicate keyword lists. 30 tests in `test_ewaste_expedition.js`.
-
 - Promote location to box — `convert location <name>`, `convert location <name> to box`, `nest <name>`, `nest <name> in <location>`. Finds all boxes whose `location` string matches the name, reparents them under a target box (existing box with that name, or newly created), sets their `location` to `null`. `effectiveLocation(box)` walks the parent chain to find the nearest non-null location — boxes with `location: null` inherit from their parent. Ambiguous case (name matches both a location and a box) surfaces a clarifying message. 26 tests in test_promote_location.js.
 
 - Multi-line item entry — Shift+Enter inserts a newline in the textarea (Enter still submits). When a multiline submission arrives in `AWAITING_ITEM_NAME` or `BOX_OPEN`, `processMultilineItems(lines)` handles it: empty lines skipped, each non-empty line parsed through `parseItemEntry`, batch quantities expanded, all items logged immediately with no fate/notes prompts (name-only lines get unsure). Lines with unrecognized fates are cached and reported in the summary message with the original line text for easy resubmission. Summary: "N items added." Stage awareness (routing line 1 to the active prompt handler) deferred to v2. 37 tests in test_multiline.js.
@@ -397,44 +395,39 @@ Side quests are contextual action prompts that bridge the gap between "cataloged
 **Core Quest Types:**
 
 1. **E-waste Expedition Quest** 🔌 ✅
-   - **Trigger:** 3+ items marked trash or unsure matching `EWASTE_PATTERN` (name or notes)
-   - **Action:** Lists all e-waste candidates grouped by source box with notes inline
-   - **Output:** Flat list with item names, notes, and box context
-   - **Chip:** Surfaces in `showProgress` and `handleHelp` when threshold met; hidden otherwise
-   - **Value:** E-waste requires special disposal; this makes the detailed notes actionable
-   - **Deferred to v2:** Find e-waste facilities near user location; user-editable keyword list (see Settings Drawer)
-   - 30 tests in `tests/test_ewaste_expedition.js`
+   - **Trigger:** 3+ active trash/unsure items matching `EWASTE_PATTERN` (name or notes)
+   - **Output:** Flat list grouped by source box, notes inline, clickable coastal filter tags
+   - **Command:** `e-waste expedition` — global intercept, chip in `showProgress` and `handleHelp`
+   - **Deferred to v2:** Find e-waste facilities; user-editable keyword list (see Settings Drawer)
+   - 45 tests in `test_ewaste_expedition.js`
 
 2. **Cable Consolidation Quest** 🎯
    - **Trigger:** 10+ cables/chargers/power bricks marked "unsure"
-   - **Action:** "Cable Roulette" - shows 3-5 cables at a time with user's own notes
+   - **Action:** "Cable Roulette" — shows 3-5 cables at a time with user's own notes
    - **Chips:** "Keep it", "Bag for ewaste", "Test it first"
    - **Value:** Gamifies tedious cable sorting by batching decisions into manageable chunks
 
-3. **Donation Run Quest** 📦
-   - **Trigger:** 5+ items marked donate
-   - **Action:** Groups items by likely destination (Goodwill, textile recycling, specialty)
-   - **Output:** Packing list with box-by-box breakdown
-   - **Optional:** Find donation centers, generate directions
-   - **Value:** Turns vague "donate pile" into organized drop-off mission
+3. **Donation Run Quest** 📦 ✅
+   - **Trigger:** 5+ active items with `fate === 'donate'`
+   - **Output:** Flat list grouped by source box, notes inline
+   - **Command:** `donation run` — global intercept, chip in `showProgress` and `handleHelp`
+   - **Deferred to v2:** Destination grouping (Goodwill, textile recycling, specialty); directions
+   - 30 tests in `test_donation_run.js`
 
-4. **Sell Quest** 💰
-   - **Trigger:** 5+ items marked sell
-   - **Action:** Estimates total value, offers to generate marketplace listings
-   - **Output:** Draft Craigslist/Marketplace posts with descriptions from item notes
-   - **Value:** Monetizes decluttering decisions with minimal friction
+4. **Sell Quest** 💰 ✅
+   - **Trigger:** 5+ active items with `fate === 'sell'`
+   - **Output:** Flat list grouped by source box, notes inline
+   - **Command:** `sell quest` — global intercept, chip in `showProgress` and `handleHelp`
+   - **Deferred to v2:** Marketplace listing generation
+   - 32 tests in `test_sell_quest.js`
 
-5. **Box Archaeology Quest** 🗺️
-   - **Trigger:** User mentions uncataloged boxes or system detects low box count
-   - **Action:** Estimates remaining work (X boxes × 2min = Y total time)
-   - **Progress tracking:** Shows completion percentage as boxes are logged
-   - **Value:** Turns daunting backlog into concrete, time-boxed challenge
+5. **Box Archaeology Quest** 🗺️ — removed, redundant with Main Quest calibration flow
+
+**queryFactory** — factory function that takes a predicate and returns a named query object with three methods: `items(filter?)` (flat `{item, box}` array), `itemsByBox(filter?)` (grouped for display), `count(filter?)`. All three quests use named query objects (`queries.ewasteItems`, `queries.donationItems`, `queries.sellItems`) produced by `queryFactory`. Exported as `app.queries`. 31 tests in `test_query_factory.js`.
 
 **Implementation Notes:**
-- Start with E-waste Quest (high value, clear scope, rewards user's detailed notes)
-- Quest chips appear contextually during review screens when trigger thresholds met
-- Track completed quests in state for "Quest completed!" acknowledgments
-- Build utility progressively: encouragement → draft generation → external integration
+- Quest chips appear in `showProgress` and `handleHelp` when thresholds are met; invisible otherwise
+- All quests are global intercepts — work from any conversation stage
 
 **Related:** Main Quest feature (see below) tracks overall catalog completion.
 
@@ -653,7 +646,7 @@ Following CONTRIBUTING.md principles: each milestone is testable, incremental, a
 **Known issue:** Test failure in test_trash.js "shows 2 deleted today" when run in full suite (likely localStorage state bleed between tests, passes in actual use). See TEST_FAILURE_NOTES.md for details.
 - Move any box by name (not just the active box)
 - Rename to DeclutterBot ✅ completed
-- `uid()` generates a random 7-char base-36 string (~78 billion possibilities) but does not verify uniqueness against existing IDs. A collision would silently corrupt parentId/activeBoxId foreign key relationships. Fix: collect all in-use IDs at generation time and retry on collision. Add a test that generates a large number of IDs and asserts no duplicates.
+- `uid()` ✅ collision guard added — collects all in-use box and item IDs at generation time and retries on collision. Accepts optional `length` parameter (default 7) used in tests to reduce the ID space to 1 character (36 possibilities) for deterministic collision testing. 8 tests in `test_uid.js`.
 - Remove vestigial `photos: []` field from item objects — photos were deactivated at the UI level but the field remains on every item object, adding noise to exported JSON. Safe to remove before the location model is implemented since the field is never populated. Removal points: item creation in `handleFate`, `commitBatch`, and any other place items are constructed. Also remove from import normalization and any test fixtures that include it.
 - Location model and photo support — see full spec in Design Philosophy section. Summary: 24 photos app-wide, one per room (location), 300px longest side, 128 colors, ~81 KB each, ~2 MB total. Replaces the old per-item photo flow. Previously deactivated features (camera button, ZIP export, base64 dataUrl persistence) should not be restored — the new implementation stores photos on location objects, not items, and uses the quantized PNG approach specified above. Blocked on location model implementation.
 - Nested boxes ✅ implemented — nest command, parentId data model, sidebar indent/caret, delete guard, dump with child re-parenting

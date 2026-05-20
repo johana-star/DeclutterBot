@@ -241,7 +241,15 @@ function commitState() {
   updateContextBar();
 }
 
-function uid() { return Math.random().toString(36).slice(2,9); }
+function uid(length = 7) {
+  const inUse = new Set(
+    state.boxes.flatMap((box) => [box.id, ...box.items.map((item) => item.id)])
+  );
+  let id;
+  do { id = Math.random().toString(36).slice(2, 2 + length); } while (inUse.has(id));
+  return id;
+}
+
 function activeBox() {
   return state.boxes.find(function(box) { return box.id === state.activeBoxId; });
 }
