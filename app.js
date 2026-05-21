@@ -2044,7 +2044,9 @@ function handleFate(text, photos) {
       setChips(['Skip disposal note', 'Done with this box']);
       return;
     }
-    addBotMessage(helpers.emoji.trashBin + ' <strong>Trash</strong> ' + helpers.emoji.emDash + ' delete this item now?');
+    addBotMessage(
+      `<p>${helpers.emoji.trashBin} <strong>Trash</strong> ${helpers.emoji.emDash} delete this item now?</p>`
+    );
     state.conversationStage = 'AWAITING_TRASH_DELETE';
     setChips(['Yes', 'No', 'Always this session', 'Never this session', 'Always for this box', 'Never for this box']);
     return;
